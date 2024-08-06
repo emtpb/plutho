@@ -31,8 +31,8 @@ def b_operator_global(node_points, s, t, jacobian_inverted_T):
     return np.array([
         [global_dN[0][0],               0, global_dN[0][1],               0, global_dN[0][2],               0],
         [              0, global_dN[1][0],               0, global_dN[1][1],               0, global_dN[1][2]],
+        [global_dN[1][0], global_dN[0][0], global_dN[1][1], global_dN[0][1], global_dN[1][2], global_dN[0][2]],
         [         N[0]/r,               0,          N[1]/r,               0,          N[2]/r,               0],
-        [global_dN[1][0], global_dN[0][0], global_dN[1][1], global_dN[0][1], global_dN[1][2], global_dN[0][2]]
     ])
 
 def integral_M(node_points, density):
@@ -161,28 +161,20 @@ def assemble(nodes, elements, density, elasticity_matrix, piezo_matrix, permitti
 
 def charge_integral_u(node_points, u_e, piezo_matrix, jacobian_inverted_T):
     def inner(s, t):
-        N = local_shape_functions(s, t)
-        r = np.dot(node_points, N)[0]
-        dN = gradient_local_shape_functions()
-        global_dN = np.dot(jacobian_inverted_T, dN)
+        r = local_to_global_coordinates(node_points, s, t)[0]
+        b_opt_global = b_operator_global(node_points, s, t, jacobian_inverted_T)
 
-        b = np.array([
-            [global_dN[0][0],               0],
-            [              0, global_dN[1][0]],
-            [         N[0]/r,               0],
-            [global_dN[1][0], global_dN[0][0]]
-        ])
         # [1] commponent is taken because the normal of the boundary line is in z-direction
-        return np.dot(np.dot(piezo_matrix, b), np.dot(u_e, N))[1]*r
+        return np.dot(np.dot(piezo_matrix, b_opt_global), u_e)[1]*r
 
     return line_quadrature(inner)
 
 def charge_integral_v(node_points, v_e, permittivity_matrix, jacobian_inverted_T):
     def inner(s, t):
-        N = local_shape_functions(s, t)
-        r = np.dot(node_points, N)[0]
+        r = local_to_global_coordinates(node_points, s, t)[0]
         dN = gradient_local_shape_functions()
         global_dN = np.dot(jacobian_inverted_T, dN)
+
         return np.dot(np.dot(permittivity_matrix, global_dN), v_e)[1]*r
 
     return line_quadrature(inner)
@@ -200,10 +192,12 @@ def calculate_charge(u, permittivity_matrix, piezo_matrix, elements, nodes, numb
         jacobian_inverted_T = np.linalg.inv(jacobian).T
         jacobian_det = np.linalg.det(jacobian)
 
-        u_e = np.array([
-            [u[2*element[0]],   u[2*element[1]],   u[2*element[2]]],
-            [u[2*element[0]+1], u[2*element[1]+1], u[2*element[2]+1]]
-        ])
+        u_e = np.array([u[2*element[0]],
+                        u[2*element[0]+1],
+                        u[2*element[1]],
+                        u[2*element[1]+1],
+                        u[2*element[2]],
+                        u[2*element[2]+1]])
         Ve_e = np.array([u[element[0]+2*number_of_nodes],
                          u[element[1]+2*number_of_nodes],
                          u[element[2]+2*number_of_nodes]])
@@ -224,56 +218,6 @@ def get_electrode_triangles(electrode_elements, all_elements):
                 break
 
     return triangle_elements
-
-def solve_time(M, C, K, delta_t, number_of_time_steps, dirichlet_nodes, dirichlet_values, gamma, beta, number_of_nodes, electrode_elements):
-    # Init arrays
-    u = np.zeros((M.shape[0], number_of_time_steps), dtype=np.float64) # Displacement u which is calculated
-    v = np.zeros((M.shape[0], number_of_time_steps), dtype=np.float64) # Displacement u derived after t (du/dt)
-    a = np.zeros((M.shape[0], number_of_time_steps), dtype=np.float64) # v derived after u (d^2u/dt^2)
-
-    q = np.zeros(number_of_time_steps, dtype=np.float64)
-
-
-    M, C, K, f_dirichlet = apply_dirichlet(M, C, K, dirichlet_nodes[0], dirichlet_nodes[1], number_of_nodes)
-    #np.savetxt("M.txt", M.todense())
-    #np.savetxt("C.txt", C.todense())
-    #np.savetxt("K.txt", K.todense())
-
-    M_star = (M + gamma*delta_t*C + beta*delta_t**2*K).tocsr()
-    #M_star = apply_dirichlet_m_star(M_star.tolil(), dirichlet_nodes[0], dirichlet_nodes[1], number_of_nodes, beta, delta_t)
-    #dense = M_star.todense()
-    #print("Condition number", np.linalg.cond(dense))
-    #print("Determinant", np.linalg.det(dense))
-    #print("Rang of matrix", np.linalg.matrix_rank(dense))
-    #print("Size of the matrix", dense.shape)
-
-    np.savetxt("M_star.txt", M_star.todense())
-
-    print("Starting simulation")
-    for time_index in range(number_of_time_steps-1):
-        # Calculate load vector and add dirichlet boundary conditions
-        f = get_load_vector(dirichlet_nodes[0], dirichlet_values[0][time_index+1], dirichlet_nodes[1], dirichlet_values[1][time_index+1], number_of_nodes)
-
-        np.savetxt(os.path.join("f", f"f_{time_index}.txt"), f)
-        # Perform Newmark method
-        # Predictor step
-        u_tilde = u[:, time_index] + delta_t*v[:, time_index] + delta_t**2/2*(1-2*beta)*a[:, time_index]
-        v_tilde = v[:, time_index] + (1-gamma)*delta_t*a[:, time_index]
-
-
-        # Solve for next time step
-        a[:, time_index+1] = slin.spsolve(M_star, f-f_dirichlet.reshape(len(f_dirichlet))-1*K*u_tilde-1*C*v_tilde)
-
-        # Perform corrector step
-        u[:, time_index+1] = u_tilde + beta*delta_t**2*a[:, time_index+1]
-        v[:, time_index+1] = v_tilde + gamma*delta_t*a[:, time_index+1]
-
-        # Calculate charge
-        q[time_index] = calculate_charge(u[:, time_index], permittivity_matrix, piezo_matrix, electrode_elements, nodes, number_of_nodes)
-
-        print(f"Finished time step {time_index+1}")
-
-    return u, q
 
 def solve_time_effective_stiffness(M, C, K, delta_t, number_of_time_steps, dirichlet_nodes, dirichlet_values, gamma, beta, number_of_nodes, electrode_elements):
     # Init arrays
@@ -369,53 +313,6 @@ def apply_dirichlet_effective_stiffness(M, C, K, nodes_u, nodes_v, number_of_nod
 
     return M, C, K
 
-
-def apply_dirichlet(M, C, K, nodes_u, nodes_v, number_of_nodes):
-    # Set rows of matrices to 0 and diagonal of K to 1 (at node points)
-
-    f_dirichlet = np.zeros(3*number_of_nodes)[:, None]
-
-    # Matrices for u_r component
-    for node in nodes_u:
-        # Set rows to 0
-        M[2*node, :] = 0
-        C[2*node, :] = 0
-        K[2*node, :] = 0
-
-        f_dirichlet += M[:, 2*node].todense() + C[:, 2*node].todense() + K[:, 2*node].todense() 
-        M[:, 2*node] = 0
-        C[:, 2*node] = 0
-        K[:, 2*node] = 0
-
-        f_dirichlet[2*node] = 0
-
-        # Set diagonal values to 1
-        K[2*node, 2*node] = 1
-
-    # Set bc for v
-    # Offset because the V values are set in the latter part of the matrix
-    offset = 2*number_of_nodes
-
-    for node in nodes_v:
-        # Set rows to 0
-        M[node+offset, :] = 0
-        C[node+offset, :] = 0
-        K[node+offset, :] = 0
-
-        f_dirichlet += M[:, node+offset].todense()  + C[:, node+offset].todense() + K[:, node+offset].todense()
-
-        M[:, node+offset] = 0
-        C[:, node+offset] = 0
-        K[:, node+offset] = 0
-
-
-        f_dirichlet[node+offset] = 0
-        
-        # Set diagonal values to 1
-        K[node+offset, node+offset] = 1
-
-    return M, C, K, f_dirichlet
-
 def create_node_excitation(parser, excitation, number_of_time_steps):
     # For "Electrode" set excitation function
     # "Symaxis" and "Ground" are set to 0
@@ -500,7 +397,7 @@ if __name__ == "__main__":
     # Time parameters
     #NUMBER_TIME_STEPS = 2*8192
     NUMBER_TIME_STEPS = int(0.5*8192)
-    #NUMBER_TIME_STEPS = 20
+    #NUMBER_TIME_STEPS = 100
     DELTA_T = 1e-8
     time_list = np.arange(0, NUMBER_TIME_STEPS)*DELTA_T
 
@@ -545,6 +442,6 @@ if __name__ == "__main__":
     M, C, K = assemble(nodes, elements, rho, elasticity_matrix, piezo_matrix, permittivity_matrix, alpha_M, alpha_K)
     u, q = solve_time_effective_stiffness(M, C, K, DELTA_T, NUMBER_TIME_STEPS, dirichlet_nodes, dirichlet_values, GAMMA, BETA, number_of_nodes, electrode_triangles)
 
-    #create_vector_field_as_csv(u, nodes, "fields")
+    create_vector_field_as_csv(u, nodes, "fields")
 
     np.save("charge", q)

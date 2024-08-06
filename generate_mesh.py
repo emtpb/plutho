@@ -13,7 +13,7 @@ if __name__ == "__main__":
 
     gmsh_point_indices = []
     for point in corner_points:
-        gmsh_point_indices.append(gmsh.model.geo.addPoint(point[0], point[1], 0, 0.00015)) # 0.00005
+        gmsh_point_indices.append(gmsh.model.geo.addPoint(point[0], point[1], 0, 0.0001)) # 0.00005
 
     bottom_line = gmsh.model.geo.addLine(gmsh_point_indices[0], gmsh_point_indices[1])
     right_line = gmsh.model.geo.addLine(gmsh_point_indices[1], gmsh_point_indices[2])

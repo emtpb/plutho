@@ -24,7 +24,7 @@ def calculate_impedance(q, excitation, DELTA_T):
     plt.xlabel("Frequency f / Hz")
     plt.ylabel("Impedence |Z| / $\Omega$")
     plt.yscale("log")
-    plt.xscale("log")
+    #plt.xscale("log")
     plt.legend()
     plt.grid()
     plt.show()
@@ -39,7 +39,7 @@ if __name__ == "__main__":
     NUMBER_TIME_STEPS = int(0.5*8192)
     #NUMBER_TIME_STEPS = 1000
     #DELTA_T = 1e-9
-    DELTA_T = 0.5e-8
+    DELTA_T = 1e-8
     time_list = np.arange(0, NUMBER_TIME_STEPS)*DELTA_T
 
     excitation = np.zeros(NUMBER_TIME_STEPS)
