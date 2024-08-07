@@ -177,3 +177,6 @@ cython_debug/
 # Ignore fields
 f/
 fields/
+fields_high_delta_t/
+fields_low_delta_t/
+charge.npy

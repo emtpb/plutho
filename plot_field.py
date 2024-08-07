@@ -3,6 +3,7 @@ import numpy.typing as npt
 from tkinter import *
 from typing import List
 import matplotlib
+import matplotlib.pyplot as plt
 
 class Fields:
     points: npt.NDArray
@@ -95,6 +96,23 @@ class Fields:
         else:
             pass
 
+    def get_value_at(self, field_identifier, r, z):
+        # Get point
+        point_index = None
+        for index, point in enumerate(self.points):
+            if point[0] == r and point[1] == r:
+                point_index = index
+                break
+
+        if field_identifier == "u_r":
+            return self.u_r[point_index, :]
+        elif field_identifier == "u_z":
+            return self.u_z[point_index, :]
+        elif field_identifier == "v":
+            return self.v[point_index, :]
+        else:
+            return None
+
     def update(self):
         point_thickness = 13
         cmap = matplotlib.cm.get_cmap("Reds")
@@ -123,12 +141,54 @@ class Fields:
         self.canvas.pack()
         self.top.mainloop()
 
-if __name__ == "__main__":
-    NUMBER_TIME_STEPS = 100
-    files = [f"fields/u_{i}.csv" for i in range(NUMBER_TIME_STEPS)]
-    DELTA_T = 0.5e-8
-    NUMBER_POINTS = 663
-    time_list = np.arange(0, NUMBER_TIME_STEPS)*DELTA_T
-    fields = Fields(time_list, NUMBER_POINTS, files)
+def plot_field_valuse(time_steps, values_CFS, values_FEM):
+    plt.plot(time_steps, values_CFS[:len(time_steps)], label="CFS")
+    plt.plot(time_steps, values_FEM[:len(time_steps)], label="MyFEM")
+    plt.grid()
+    plt.legend()
+    plt.show()
 
-    fields.draw_fields("v")
+def parse_hist_file(file_path):
+    lines = []
+    with open(file_path, "r", encoding="UTF-8") as fd:
+        lines = fd.readlines()
+    time_steps = []
+    u_r = []
+    u_z = []
+    for time_index, line in enumerate(lines[3:]):
+        current_time_step, current_u_r, current_u_z = line.split() 
+        time_steps.append(float(current_time_step))
+        u_r.append(float(current_u_r))
+        u_z.append(float(current_u_z))
+
+    return time_steps, u_r, u_z
+
+
+if __name__ == "__main__":
+    NUMBER_TIME_STEPS = 8192
+    files_high_delta_t = [f"fields/u_{i}.csv" for i in range(NUMBER_TIME_STEPS)]
+    #files_low_delta_t = [f"fields_low_delta_t/u_{i}.csv" for i in range(NUMBER_TIME_STEPS)]
+    DELTA_T = 1e-8
+    NUMBER_POINTS = 318
+    time_list_high_delta_t = np.arange(0, NUMBER_TIME_STEPS)*DELTA_T
+    #time_list_low_delta_t = np.arange(0, 10*NUMBER_TIME_STEPS)*1/10*DELTA_T
+    fields_high_delta_t = Fields(time_list_high_delta_t, NUMBER_POINTS, files_high_delta_t)
+    #fields_low_delta_t = Fields(time_list_low_delta_t, NUMBER_POINTS, files_low_delta_t)
+
+    #fields.draw_fields("v")
+
+    u_z_fem_high_delta_t = fields_high_delta_t.get_value_at("u_z", 0, 0)
+    #u_z_fem_low_delta_t = fields_low_delta_t.get_value_at("u_z", 0, 0)
+
+    cfs_file = "piezo-mechDisplacement-node-1-result_node.hist"
+    time_steps, u_r_cfs, u_z_cfs = parse_hist_file(cfs_file)
+
+
+    plt.plot(time_list_high_delta_t, u_z_cfs, "+",label="OpenCFS")
+    plt.plot(time_list_high_delta_t, u_z_fem_high_delta_t, label="MyFEM")
+    #plt.plot(time_list_low_delta_t, u_z_fem_low_delta_t[:10*NUMBER_TIME_STEPS], label="MyFEM low delta_t")
+    plt.grid()
+    plt.legend()
+    plt.show()
+
+    #plot_field_valuse(time_list_high_delta_t, u_z_cfs, u_z_fem)

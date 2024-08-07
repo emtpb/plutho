@@ -86,6 +86,7 @@ def quadratic_quadrature(func):
         func(weight_1, weight_2)*weight_1
 
 def line_quadrature(func):
+    # TODO Analyze difference
     #return func(1/np.sqrt(3), 0) + func(-1/np.sqrt(3), 0)
     return integrate.quad(lambda x: func(x, 0), 0, 1)[0]
 
@@ -163,9 +164,18 @@ def charge_integral_u(node_points, u_e, piezo_matrix, jacobian_inverted_T):
     def inner(s, t):
         r = local_to_global_coordinates(node_points, s, t)[0]
         b_opt_global = b_operator_global(node_points, s, t, jacobian_inverted_T)
-
         # [1] commponent is taken because the normal of the boundary line is in z-direction
         return np.dot(np.dot(piezo_matrix, b_opt_global), u_e)[1]*r
+
+        # TODO Check why this variant is different
+        #b = np.array([
+        #    [global_dN[0][0],               0],
+        #    [              0, global_dN[1][0]],
+        #    [global_dN[1][0], global_dN[0][0]],
+        #    [         N[0]/r,               0],
+        #])
+
+        #return np.dot(np.dot(piezo_matrix, b), np.dot(u_e, N))[1]*r
 
     return line_quadrature(inner)
 
@@ -181,16 +191,22 @@ def charge_integral_v(node_points, v_e, permittivity_matrix, jacobian_inverted_T
 
 def calculate_charge(u, permittivity_matrix, piezo_matrix, elements, nodes, number_of_nodes):
     q = 0
+
     for element in elements:
-        dN = gradient_local_shape_functions()
         node_points = np.array([
             [nodes[element[0]][0], nodes[element[1]][0], nodes[element[2]][0]],
             [nodes[element[0]][1], nodes[element[1]][1], nodes[element[2]][1]]
         ])
 
-        jacobian = np.dot(node_points, dN.T)
-        jacobian_inverted_T = np.linalg.inv(jacobian).T
-        jacobian_det = np.linalg.det(jacobian)
+        #dN = gradient_local_shape_functions()
+        #jacobian = np.dot(node_points, dN.T)
+        #jacobian_inverted_T = np.linalg.inv(jacobian).T
+        #jacobian_det = np.linalg.det(jacobian)
+
+        # Since its a line integral along the top edge of the model where the triangles are aligned in a line
+        # it is necessarry to use a different determinant. In this case the determinant is the difference between the
+        # first 2 points of the triangle (which are always on the boundary line in gmsh)
+        jacobian_det = nodes[element[0]][0]-nodes[element[1]][0]
 
         u_e = np.array([u[2*element[0]],
                         u[2*element[0]+1],
@@ -202,11 +218,11 @@ def calculate_charge(u, permittivity_matrix, piezo_matrix, elements, nodes, numb
                          u[element[1]+2*number_of_nodes],
                          u[element[2]+2*number_of_nodes]])
 
-        q_u = charge_integral_u(node_points, u_e, piezo_matrix, jacobian_inverted_T)*2*np.pi*jacobian_det
+        q_u = charge_integral_u(node_points, u_e, piezo_matrix, jacobian_inverted_T)*jacobian_det*2*np.pi
         q_v = charge_integral_v(node_points, Ve_e, permittivity_matrix, jacobian_inverted_T)*2*np.pi*jacobian_det
-
-        q += q_u - q_v
         
+        q += q_u - q_v
+
     return q
 
 def get_electrode_triangles(electrode_elements, all_elements):
@@ -219,7 +235,7 @@ def get_electrode_triangles(electrode_elements, all_elements):
 
     return triangle_elements
 
-def solve_time_effective_stiffness(M, C, K, delta_t, number_of_time_steps, dirichlet_nodes, dirichlet_values, gamma, beta, number_of_nodes, electrode_elements):
+def solve_time(M, C, K, delta_t, number_of_time_steps, dirichlet_nodes, dirichlet_values, gamma, beta, number_of_nodes, electrode_elements):
     # Init arrays
     u = np.zeros((M.shape[0], number_of_time_steps), dtype=np.float64) # Displacement u which is calculated
     v = np.zeros((M.shape[0], number_of_time_steps), dtype=np.float64) # Displacement u derived after t (du/dt)
@@ -233,22 +249,67 @@ def solve_time_effective_stiffness(M, C, K, delta_t, number_of_time_steps, diric
     #np.savetxt("C.txt", C.todense())
     #np.savetxt("K.txt", K.todense())
 
-    K_star = (K+gamma/(beta*delta_t)*C+1/(beta*delta_t**2)*M).tocsr()
+    M_star = (M + gamma*delta_t*C + beta*delta_t**2*K).tocsr()
     #M_star = apply_dirichlet_m_star(M_star.tolil(), dirichlet_nodes[0], dirichlet_nodes[1], number_of_nodes, beta, delta_t)
-    dense = K_star.todense()
-    print("Condition number", np.linalg.cond(dense))
-    print("Determinant", np.linalg.det(dense))
-    print("Rang of matrix", np.linalg.matrix_rank(dense))
-    print("Size of the matrix", dense.shape)
-
-    np.savetxt("K_star.txt", K_star.todense())
+    #dense = M_star.todense()
+    #print("Condition number", np.linalg.cond(dense))
+    #print("Determinant", np.linalg.det(dense))
+    #print("Rang of matrix", np.linalg.matrix_rank(dense))
+    #print("Size of the matrix", dense.shape)
 
     print("Starting simulation")
     for time_index in range(number_of_time_steps-1):
         # Calculate load vector and add dirichlet boundary conditions
         f = get_load_vector(dirichlet_nodes[0], dirichlet_values[0][time_index+1], dirichlet_nodes[1], dirichlet_values[1][time_index+1], number_of_nodes)
 
-        np.savetxt(os.path.join("f", f"f_{time_index}.txt"), f)
+        # Perform Newmark method
+        # Predictor step
+        u_tilde = u[:, time_index] + delta_t*v[:, time_index] + delta_t**2/2*(1-2*beta)*a[:, time_index]
+        v_tilde = v[:, time_index] + (1-gamma)*delta_t*a[:, time_index]
+
+
+        # Solve for next time step
+        a[:, time_index+1] = slin.spsolve(M_star, f-1*K*u_tilde-1*C*v_tilde)
+
+        # Perform corrector step
+        u[:, time_index+1] = u_tilde + beta*delta_t**2*a[:, time_index+1]
+        v[:, time_index+1] = v_tilde + gamma*delta_t*a[:, time_index+1]
+
+        # Calculate charge
+        q[time_index] = calculate_charge(u[:, time_index], permittivity_matrix, piezo_matrix, electrode_elements, nodes, number_of_nodes)
+
+        print(f"Finished time step {time_index+1}")
+
+    return u, q
+
+def solve_time_effective_stiffness(M, C, K, delta_t, number_of_time_steps, dirichlet_nodes, dirichlet_values, gamma, beta, number_of_nodes, electrode_elements, nodes):
+    # Init arrays
+    u = np.zeros((M.shape[0], number_of_time_steps), dtype=np.float64) # Displacement u which is calculated
+    v = np.zeros((M.shape[0], number_of_time_steps), dtype=np.float64) # Displacement u derived after t (du/dt)
+    a = np.zeros((M.shape[0], number_of_time_steps), dtype=np.float64) # v derived after u (d^2u/dt^2)
+
+    q = np.zeros(number_of_time_steps, dtype=np.float64)
+    q_u = np.zeros(number_of_time_steps, dtype=np.float64)
+    q_v = np.zeros(number_of_time_steps, dtype=np.float64)
+
+
+    M, C, K = apply_dirichlet_effective_stiffness(M, C, K, dirichlet_nodes[0], dirichlet_nodes[1], number_of_nodes)
+    #np.savetxt("M.txt", M.todense())
+    #np.savetxt("C.txt", C.todense())
+    #np.savetxt("K.txt", K.todense())
+
+    K_star = (K+gamma/(beta*delta_t)*C+1/(beta*delta_t**2)*M).tocsr()
+    #dense = K_star.todense()
+    #print("Condition number", np.linalg.cond(dense))
+    #print("Determinant", np.linalg.det(dense))
+    #print("Rang of matrix", np.linalg.matrix_rank(dense))
+    #print("Size of the matrix", dense.shape)
+
+    print("Starting simulation")
+    for time_index in range(number_of_time_steps-1):
+        # Calculate load vector and add dirichlet boundary conditions
+        f = get_load_vector(dirichlet_nodes[0], dirichlet_values[0][time_index+1], dirichlet_nodes[1], dirichlet_values[1][time_index+1], number_of_nodes)
+
         # Perform Newmark method
         # Predictor step
         u_tilde = u[:, time_index] + delta_t*v[:, time_index] + delta_t**2/2*(1-2*beta)*a[:, time_index]
@@ -262,9 +323,13 @@ def solve_time_effective_stiffness(M, C, K, delta_t, number_of_time_steps, diric
         v[:, time_index+1] = v_tilde + gamma*delta_t*a[:, time_index+1]
 
         # Calculate charge
-        q[time_index+1] = calculate_charge(u[:, time_index+1], permittivity_matrix, piezo_matrix, electrode_elements, nodes, number_of_nodes)
+        q[time_index+1], q_u[time_index+1], q_v[time_index+1] = calculate_charge(u[:, time_index+1], permittivity_matrix, piezo_matrix, electrode_elements, nodes, number_of_nodes)
 
         print(f"Finished time step {time_index+1}")
+
+    np.savetxt("q_u.txt", q_u)
+    np.savetxt("q_v.txt", q_v)
+    np.savetxt("q", q)
 
     return u, q
 
@@ -335,6 +400,7 @@ def create_node_excitation(parser, excitation, number_of_time_steps):
     return [dirichlet_nodes_u, dirichlet_nodes_v], [dirichlet_values_u, dirichlet_values_v]
 
 def create_vector_field_as_csv(u, nodes, folder_path):
+    # TODO Add check if folder exists
     number_of_nodes = len(nodes)
     number_of_time_steps = u.shape[1]
 
@@ -395,9 +461,9 @@ def calculate_impedance(q, excitation, DELTA_T):
 
 if __name__ == "__main__":
     # Time parameters
-    #NUMBER_TIME_STEPS = 2*8192
-    NUMBER_TIME_STEPS = int(0.5*8192)
     #NUMBER_TIME_STEPS = 100
+    #NUMBER_TIME_STEPS = int(0.5*8192)
+    NUMBER_TIME_STEPS = 8192
     DELTA_T = 1e-8
     time_list = np.arange(0, NUMBER_TIME_STEPS)*DELTA_T
 
@@ -440,7 +506,7 @@ if __name__ == "__main__":
     electrode_triangles = get_electrode_triangles(electrode_elements, elements)
 
     M, C, K = assemble(nodes, elements, rho, elasticity_matrix, piezo_matrix, permittivity_matrix, alpha_M, alpha_K)
-    u, q = solve_time_effective_stiffness(M, C, K, DELTA_T, NUMBER_TIME_STEPS, dirichlet_nodes, dirichlet_values, GAMMA, BETA, number_of_nodes, electrode_triangles)
+    u, q = solve_time_effective_stiffness(M, C, K, DELTA_T, NUMBER_TIME_STEPS, dirichlet_nodes, dirichlet_values, GAMMA, BETA, number_of_nodes, electrode_triangles, nodes)
 
     create_vector_field_as_csv(u, nodes, "fields")
 

@@ -378,6 +378,16 @@ def draw_mesh(nodes, elements):
     c.pack()
     top.mainloop()
 
+def get_electrode_triangles(electrode_elements, all_elements):
+    triangle_elements = []
+    for element in electrode_elements:
+        for check_element in all_elements:
+            if element[0] in check_element and element[1] in check_element:
+                triangle_elements.append(check_element)
+                break
+
+    return triangle_elements
+
 if __name__ == "__main__":
     mesh_file = "piezo.msh"
     start_time = time.time()
@@ -390,7 +400,10 @@ if __name__ == "__main__":
     print("Total number of nodes", len(nodes))
     print("Total number of triangles", len(elements))
 
-    draw_mesh(nodes, elements)
+    electrode_elements = parser.getElementsInPhysicalGroup("Electrode")
+    electrode_triangles = get_electrode_triangles(electrode_elements, elements)
+
+    draw_mesh(nodes, electrode_triangles)
 
 
     
