@@ -174,9 +174,5 @@ cython_debug/
 # Built Visual Studio Code Extensions
 *.vsix
 
-# Ignore fields
-f/
-fields/
-fields_high_delta_t/
-fields_low_delta_t/
-charge.npy
+# Ignore data
+examples/data/*
