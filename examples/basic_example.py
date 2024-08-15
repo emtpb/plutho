@@ -90,22 +90,24 @@ if __name__ == "__main__":
     excitation = np.zeros(TIME_STEP_COUNT)
     excitation[1:10] = np.array([0.2, 0.4, 0.6, 0.8, 1, 0.8, 0.6, 0.4, 0.2])
 
-    u, q = simulate(data_directory, TIME_STEP_COUNT, DELTA_T, excitation)
+    # Run simulation and save results
+    #u, q = simulate(data_directory, TIME_STEP_COUNT, DELTA_T, excitation)
 
     #np.save(os.path.join(data_directory, "displacement"), u)
     #np.save(os.path.join(data_directory, "charge"), q)
 
-
+    # Load simulation
     u = np.load(os.path.join(data_directory, "displacement.npy"))
     q = np.load(os.path.join(data_directory, "charge.npy"))
     frequencies_fem, impedence_fem = pfem.calculate_impedance(q, excitation, DELTA_T)
 
-    # Get OpenCFS comparison plot
-    #time_list_cfs, charge_cfs = pfem.read_charge_open_cfs(os.path.join(data_directory, "charge_opencfs.hist"))
-    #frequencies_cfs, impedence_cfs = pfem.alculate_impedance(charge_cfs, excitation, DELTA_T)
+    # Get OpenCFS data
+    time_list_cfs, charge_cfs = pfem.read_charge_open_cfs(os.path.join(data_directory, "charge_opencfs.hist"))
+    frequencies_cfs, impedence_cfs = pfem.calculate_impedance(charge_cfs, excitation, DELTA_T)
 
+    # Plot FEM and OpenCfs
     plt.plot(frequencies_fem, np.abs(impedence_fem), label="MyFEM")
-    #plt.plot(frequencies_cfs, np.abs(impedence_cfs), "+", label="OpenCFS")
+    plt.plot(frequencies_cfs, np.abs(impedence_cfs), "+", label="OpenCFS")
     plt.xlabel("Frequency f / Hz")
     plt.ylabel("Impedence |Z| / $\\Omega$")
     plt.yscale("log")
