@@ -82,6 +82,9 @@ def simulate(data_directory, time_step_count, delta_t, excitation):
 if __name__ == "__main__":
     data_directory = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
 
+    if not os.path.exists(data_directory):
+        os.mkdir(data_directory)
+
     # Simulation parameters
     TIME_STEP_COUNT = 8192
     DELTA_T = 1e-8
