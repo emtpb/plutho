@@ -1,8 +1,38 @@
+"""Main module for the simulation of piezoelectric systems."""
+
+# Python standard libraries
 import numpy as np
+import numpy.typing as npt
 import scipy.integrate as integrate
 import scipy.sparse as sparse
 import scipy.sparse.linalg as slin
+from dataclasses import dataclass
+
+# Local libraries
 from piezo_fem.mesh.mesh_parser import GmshParser
+
+@dataclass
+class MaterialData:
+    elasticity_matrix: npt.NDArray
+    permittivity_matrix: npt.NDArray
+    piezo_matrix: npt.NDArray
+    density: float
+    thermal_diffusivity: float
+    heat_capacity: float
+    alpha_m: float
+    alpha_k: float
+
+@dataclass
+class SimulationData:
+    delta_t: float
+    number_of_time_steps: float
+    gamma: float
+    beta: float
+
+@dataclass
+class MeshData:
+    nodes: npt.NDArray
+    elements: npt.NDArray
 
 def local_shape_functions(s, t):
     return np.array([1-s-t, s, t])
@@ -33,7 +63,7 @@ def b_operator_global(node_points, s, t, jacobian_inverted_T):
         [         N[0]/r,               0,          N[1]/r,               0,          N[2]/r,               0],
     ])
 
-def integral_M(node_points, density):
+def integral_M(node_points):
     def inner(s, t):
         N = local_shape_functions(s, t)
         
@@ -42,7 +72,7 @@ def integral_M(node_points, density):
         r = local_to_global_coordinates(node_points, s, t)[0]
 
         # Get all combinations of shape function multiplied with each other
-        return density*np.outer(N, N)*r
+        return np.outer(N, N)*r
 
     return quadratic_quadrature(inner)
 
@@ -88,9 +118,10 @@ def line_quadrature(func):
     #return func(1/np.sqrt(3), 0) + func(-1/np.sqrt(3), 0)
     return integrate.quad(lambda x: func(x, 0), 0, 1)[0]
 
-def assemble(nodes, elements, density, elasticity_matrix, piezo_matrix, permittivity_matrix, alpha_m, alpha_k):
+def assemble(mesh_data, material_data):
     # TODO Assembly takes to long rework this algorithm
     # Maybe the 2x2 matrix slicing is not very fast
+    nodes = mesh_data.nodes
     
     number_of_nodes = len(nodes)
     Mu = sparse.lil_matrix((2*number_of_nodes, 2*number_of_nodes), dtype=np.float64)
@@ -98,7 +129,7 @@ def assemble(nodes, elements, density, elasticity_matrix, piezo_matrix, permitti
     KuV = sparse.lil_matrix((2*number_of_nodes, number_of_nodes), dtype=np.float64)
     KVe = sparse.lil_matrix((number_of_nodes, number_of_nodes), dtype=np.float64)
 
-    for element in elements:
+    for element in mesh_data.elements:
         dN = gradient_local_shape_functions()
         # Get node points of element in format
         # [x1 x2 x3]
@@ -115,10 +146,10 @@ def assemble(nodes, elements, density, elasticity_matrix, piezo_matrix, permitti
         # --> Dirichlet nodes could be leaved out?
         # Multiply with jac_det because its integrated with respect to local coordinates
         # Mutiply with 2*pi because theta is integrated from 0 to 2*pi
-        Mu_e = integral_M(node_points, density)*jacobian_det*2*np.pi
-        Ku_e = integral_Ku(node_points, jacobian_inverted_T, elasticity_matrix)*jacobian_det*2*np.pi
-        KuV_e = integral_KuV(node_points, jacobian_inverted_T, piezo_matrix)*jacobian_det*2*np.pi
-        KVe_e = integral_KVe(node_points, jacobian_inverted_T, permittivity_matrix)*jacobian_det*2*np.pi
+        Mu_e = material_data.density*integral_M(node_points)*jacobian_det*2*np.pi
+        Ku_e = integral_Ku(node_points, jacobian_inverted_T, material_data.elasticity_matrix)*jacobian_det*2*np.pi
+        KuV_e = integral_KuV(node_points, jacobian_inverted_T, material_data.piezo_matrix)*jacobian_det*2*np.pi
+        KVe_e = integral_KVe(node_points, jacobian_inverted_T, material_data.permittivity_matrix)*jacobian_det*2*np.pi
 
         # Now assemble all element matrices
         for local_p, global_p in enumerate(element):
@@ -139,7 +170,7 @@ def assemble(nodes, elements, density, elasticity_matrix, piezo_matrix, permitti
                 KVe[global_p, global_q] += KVe_e[local_p, local_q]
 
     # Calculate damping matrix
-    Cu = alpha_m*Mu+alpha_k*Ku
+    Cu = material_data.alpha_m*Mu+material_data.alpha_k*Ku
     #Cu = np.zeros((2*number_of_nodes, 2*number_of_nodes))
 
     # Calculate block matrices
@@ -187,7 +218,8 @@ def charge_integral_v(node_points, v_e, permittivity_matrix, jacobian_inverted_T
 
     return line_quadrature(inner)
 
-def calculate_charge(u, permittivity_matrix, piezo_matrix, elements, nodes, number_of_nodes):
+def calculate_charge(u, permittivity_matrix, piezo_matrix, elements, nodes):
+    number_of_nodes = len(nodes)
     q = 0
 
     for element in elements:
@@ -227,9 +259,13 @@ def calculate_charge(u, permittivity_matrix, piezo_matrix, elements, nodes, numb
 
 
 
-def solve_time(M, C, K, nodes, electrode_elements, delta_t, number_of_time_steps, dirichlet_nodes, dirichlet_values, permittivity_matrix, piezo_matrix, gamma, beta):
+def solve_time(M, C, K, mesh_data, material_data, simulation_data, dirichlet_nodes, dirichlet_values, electrode_elements):
     """Effective stiffness implementation"""
-    number_of_nodes = len(nodes)
+    number_of_nodes = len(mesh_data.nodes)
+    number_of_time_steps = simulation_data.number_of_time_steps
+    beta = simulation_data.beta
+    gamma = simulation_data.gamma
+    delta_t = simulation_data.delta_t
 
     # Init arrays
     u = np.zeros((M.shape[0], number_of_time_steps), dtype=np.float64) # Displacement u which is calculated
@@ -260,7 +296,7 @@ def solve_time(M, C, K, nodes, electrode_elements, delta_t, number_of_time_steps
         v[:, time_index+1] = v_tilde + gamma*delta_t*a[:, time_index+1]
 
         # Calculate charge
-        q[time_index+1] = calculate_charge(u[:, time_index+1], permittivity_matrix, piezo_matrix, electrode_elements, nodes, number_of_nodes)
+        q[time_index+1] = calculate_charge(u[:, time_index+1], material_data.permittivity_matrix, material_data.piezo_matrix, electrode_elements, mesh_data.nodes)
 
         if (time_index + 1) % 100 == 0:
             print(f"Finished time step {time_index+1}")

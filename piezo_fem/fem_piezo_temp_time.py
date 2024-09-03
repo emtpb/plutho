@@ -1,4 +1,4 @@
-"""Main module for the simulation of piezoelectric systems."""
+"""Main module for the simulation of piezoelectric systems with thermal field."""
 
 # Python standard libraries
 import numpy as np
@@ -286,17 +286,54 @@ def calculate_charge(u, permittivity_matrix, piezo_matrix, elements, nodes):
 
     return q
 
-def calculate_loss(u, mesh_data):
+def calculate_loss(u, mesh_data: MeshData):
     nodes = mesh_data.nodes
     elements = mesh_data.elements
-    
+    number_of_nodes = len(nodes)
+
+    S = np.zeros(len(elements))
+    E = np.zeros(len(elements))
+
+    for index, element in enumerate(elements):
+        node_points = np.array([
+            [nodes[element[0]][0], nodes[element[1]][0], nodes[element[2]][0]],
+            [nodes[element[0]][1], nodes[element[1]][1], nodes[element[2]][1]]
+        ])
+
+        dN = gradient_local_shape_functions()
+        node_points = np.array([
+            [nodes[element[0]][0], nodes[element[1]][0], nodes[element[2]][0]],
+            [nodes[element[0]][1], nodes[element[1]][1], nodes[element[2]][1]]
+        ])
+        jacobian = np.dot(node_points, dN.T)
+        jacobian_inverted_T = np.linalg.inv(jacobian).T
+        b_opt = b_operator_global(node_points, 1/3, 1/3, jacobian_inverted_T)
+        dN = gradient_local_shape_functions()
+        global_dN = np.dot(jacobian_inverted_T, dN)
+        u_e = np.array([u[2*element[0]],
+                        u[2*element[0]+1],
+                        u[2*element[1]],
+                        u[2*element[1]+1],
+                        u[2*element[2]],
+                        u[2*element[2]+1]])
+        Ve_e = np.array([u[element[0]+2*number_of_nodes],
+                         u[element[1]+2*number_of_nodes],
+                         u[element[2]+2*number_of_nodes]])
+
+        S_e = np.dot(b_opt, u_e)
+        E_e = -np.dot(global_dN, Ve_e)
+
+        S[index] = S_e
+        E[index] = E_e
+
+    return E
 
 def solve_time(M, C, K, mesh_data, material_data, simulation_data, dirichlet_nodes, dirichlet_values, electrode_elements):
     """Effective stiffness implementation"""
     number_of_nodes = len(mesh_data.nodes)
     number_of_time_steps = simulation_data.number_of_time_steps
     beta = simulation_data.beta
-    gamma = simulation_data.beta
+    gamma = simulation_data.gamma
     delta_t = simulation_data.delta_t
 
     # Init arrays
@@ -305,7 +342,7 @@ def solve_time(M, C, K, mesh_data, material_data, simulation_data, dirichlet_nod
     a = np.zeros((M.shape[0], number_of_time_steps), dtype=np.float64) # v derived after u (d^2u/dt^2)
 
     q = np.zeros(number_of_time_steps, dtype=np.float64) # Charge calculated during simulation
-    power_loss = np.zeros((M.shape[0], number_of_time_steps), dtype=np.float64)
+    power_loss = np.zeros((len(mesh_data.elements), number_of_time_steps), dtype=np.float64)
 
     M, C, K = apply_dirichlet_bc(M, C, K, dirichlet_nodes[0], dirichlet_nodes[1], number_of_nodes)
 
@@ -344,12 +381,15 @@ def solve_time(M, C, K, mesh_data, material_data, simulation_data, dirichlet_nod
             mesh_data.nodes
         )
 
-        power_loss[:, time_index+1] = calculate_loss(
-            u[:, time_index+1]
-        )
+        #power_loss[:, time_index+1] = calculate_loss(
+        #    u[:, time_index+1],
+         #   mesh_data
+        #)
 
         if (time_index + 1) % 100 == 0:
             print(f"Finished time step {time_index+1}")
+
+     
 
     return u, q
 
