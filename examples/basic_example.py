@@ -1,23 +1,12 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-
+import gmsh
 import piezo_fem as pfem
-
-def get_electrode_triangles(electrode_elements, all_elements):
-    triangle_elements = []
-    for element in electrode_elements:
-        for check_element in all_elements:
-            if element[0] in check_element and element[1] in check_element:
-                triangle_elements.append(check_element)
-                break
-
-    return triangle_elements
 
 def simulate(mesh_file_path, time_step_count, delta_t, excitation):
     # Create mesh and load it
     pfem.mesh.generate_rectangular_mesh(mesh_file_path)
-    parser = pfem.mesh.GmshParser(mesh_file_path)
 
     # Get nodes and elements from parser
     nodes, elements = pfem.mesh.get_mesh_nodes_and_elements(mesh_file_path)
@@ -53,7 +42,7 @@ def simulate(mesh_file_path, time_step_count, delta_t, excitation):
     thermal_diffusivity = thermal_conductivity/(rho*heat_capacity)
 
     # Excitation
-    excitation_nodes, excitation_values = pfem.create_node_excitation(parser, excitation, time_step_count)
+    excitation_nodes, excitation_values = pfem.create_node_excitation(mesh_file_path, excitation, time_step_count)
 
     material_data = pfem.MaterialData(
         elasticity_matrix,
@@ -112,12 +101,14 @@ if __name__ == "__main__":
     # Run simulation and save results
     u, q = simulate(mesh_file_path, TIME_STEP_COUNT, DELTA_T, excitation)
 
+
+    print(u.shape)
     np.save(os.path.join(data_directory, "displacement"), u)
     np.save(os.path.join(data_directory, "charge"), q)
 
     # Load simulation
-    u = np.load(os.path.join(data_directory, "displacement.npy"))
-    q = np.load(os.path.join(data_directory, "charge.npy"))
+    #u = np.load(os.path.join(data_directory, "displacement.npy"))
+    #q = np.load(os.path.join(data_directory, "charge.npy"))
     
     print("Creating post processing views")
     pfem.mesh.create_post_processing_views(mesh_file_path, u, 1000, DELTA_T)
@@ -138,5 +129,7 @@ if __name__ == "__main__":
     plt.grid()
     plt.show()
     
+    gmsh.open(os.path.join(data_directory, "mesh_results.msh"))
+    gmsh.fltk.run()
 
 

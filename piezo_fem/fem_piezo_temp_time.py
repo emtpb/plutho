@@ -8,8 +8,8 @@ import scipy.sparse as sparse
 import scipy.sparse.linalg as slin
 from dataclasses import dataclass
 
-# Local libraries
-from piezo_fem.mesh.mesh_parser import GmshParser
+import piezo_fem
+from piezo_fem import mesh
 
 @dataclass
 class MaterialData:
@@ -116,15 +116,15 @@ def integral_Ktheta(node_points, jacobian_inverted_T):
 
     return quadratic_quadrature(inner)
 
-def integral_theta_load(node_points, point_loss, density, heat_capacity):
+def integral_theta_load(node_points, point_loss, thermal_diffusivity, density, heat_capacity):
     def inner(s, t):
         N = local_shape_functions(s, t)
         r = local_to_global_coordinates(node_points, s, t)[0]
 
         return np.array([
-            N[0]*point_loss[0]/(density*heat_capacity),
-            N[1]*point_loss[1]/(density*heat_capacity),
-            N[2]*point_loss[2]/(density*heat_capacity)
+            N[0]*point_loss/(density*heat_capacity)/3,
+            N[1]*point_loss/(density*heat_capacity)/3,
+            N[2]*point_loss/(density*heat_capacity)/3
         ])
 
     return quadratic_quadrature(inner)
@@ -286,55 +286,16 @@ def calculate_charge(u, permittivity_matrix, piezo_matrix, elements, nodes):
 
     return q
 
-def calculate_loss(u, mesh_data: MeshData):
-    nodes = mesh_data.nodes
-    elements = mesh_data.elements
-    number_of_nodes = len(nodes)
-
-    S = np.zeros(len(elements))
-    E = np.zeros(len(elements))
-
-    for index, element in enumerate(elements):
-        node_points = np.array([
-            [nodes[element[0]][0], nodes[element[1]][0], nodes[element[2]][0]],
-            [nodes[element[0]][1], nodes[element[1]][1], nodes[element[2]][1]]
-        ])
-
-        dN = gradient_local_shape_functions()
-        node_points = np.array([
-            [nodes[element[0]][0], nodes[element[1]][0], nodes[element[2]][0]],
-            [nodes[element[0]][1], nodes[element[1]][1], nodes[element[2]][1]]
-        ])
-        jacobian = np.dot(node_points, dN.T)
-        jacobian_inverted_T = np.linalg.inv(jacobian).T
-        b_opt = b_operator_global(node_points, 1/3, 1/3, jacobian_inverted_T)
-        dN = gradient_local_shape_functions()
-        global_dN = np.dot(jacobian_inverted_T, dN)
-        u_e = np.array([u[2*element[0]],
-                        u[2*element[0]+1],
-                        u[2*element[1]],
-                        u[2*element[1]+1],
-                        u[2*element[2]],
-                        u[2*element[2]+1]])
-        Ve_e = np.array([u[element[0]+2*number_of_nodes],
-                         u[element[1]+2*number_of_nodes],
-                         u[element[2]+2*number_of_nodes]])
-
-        S_e = np.dot(b_opt, u_e)
-        E_e = -np.dot(global_dN, Ve_e)
-
-        S[index] = S_e
-        E[index] = E_e
-
-    return E
-
 def solve_time(M, C, K, mesh_data, material_data, simulation_data, dirichlet_nodes, dirichlet_values, electrode_elements):
     """Effective stiffness implementation"""
-    number_of_nodes = len(mesh_data.nodes)
     number_of_time_steps = simulation_data.number_of_time_steps
     beta = simulation_data.beta
     gamma = simulation_data.gamma
     delta_t = simulation_data.delta_t
+    elements = mesh_data.elements
+    nodes = mesh_data.nodes
+    number_of_elements = len(elements)
+    number_of_nodes = len(nodes)
 
     # Init arrays
     u = np.zeros((M.shape[0], number_of_time_steps), dtype=np.float64) # Displacement u which is calculated
@@ -343,10 +304,14 @@ def solve_time(M, C, K, mesh_data, material_data, simulation_data, dirichlet_nod
 
     q = np.zeros(number_of_time_steps, dtype=np.float64) # Charge calculated during simulation
     power_loss = np.zeros((len(mesh_data.elements), number_of_time_steps), dtype=np.float64)
+    e = np.zeros((len(mesh_data.elements), number_of_time_steps, 3), dtype=np.float64)
 
     M, C, K = apply_dirichlet_bc(M, C, K, dirichlet_nodes[0], dirichlet_nodes[1], number_of_nodes)
 
     K_star = (K+gamma/(beta*delta_t)*C+1/(beta*delta_t**2)*M).tocsr()
+
+    I = np.zeros((number_of_elements, number_of_time_steps), dtype=np.float64)
+    J = np.zeros((number_of_elements, number_of_time_steps), dtype=np.float64)
 
     print("Starting simulation")
     for time_index in range(number_of_time_steps-1):
@@ -381,17 +346,52 @@ def solve_time(M, C, K, mesh_data, material_data, simulation_data, dirichlet_nod
             mesh_data.nodes
         )
 
-        #power_loss[:, time_index+1] = calculate_loss(
-        #    u[:, time_index+1],
-         #   mesh_data
-        #)
+        # Calculate power_loss
+        for index, element in enumerate(elements):
+            if time_index < 2:
+                break
+            node_points = np.array([
+                [nodes[element[0]][0], nodes[element[1]][0], nodes[element[2]][0]],
+                [nodes[element[0]][1], nodes[element[1]][1], nodes[element[2]][1]]
+            ])
+
+            dN = gradient_local_shape_functions()
+            node_points = np.array([
+                [nodes[element[0]][0], nodes[element[1]][0], nodes[element[2]][0]],
+                [nodes[element[0]][1], nodes[element[1]][1], nodes[element[2]][1]]
+            ])
+            jacobian = np.dot(node_points, dN.T)
+            jacobian_inverted_T = np.linalg.inv(jacobian).T
+            b_opt = b_operator_global(node_points, 1/3, 1/3, jacobian_inverted_T)
+            dN = gradient_local_shape_functions()
+            global_dN = np.dot(jacobian_inverted_T, dN)
+            u_e = np.array([u[2*element[0], time_index],
+                            u[2*element[0]+1, time_index],
+                            u[2*element[1], time_index],
+                            u[2*element[1]+1, time_index],
+                            u[2*element[2], time_index],
+                            u[2*element[2]+1, time_index]])
+            Ve_e = np.array([u[element[0]+2*number_of_nodes, time_index],
+                            u[element[1]+2*number_of_nodes, time_index],
+                            u[element[2]+2*number_of_nodes, time_index]])
+
+            
+            S_e = np.dot(b_opt, u_e)
+            E_e = -np.dot(global_dN, Ve_e)
+            tau = 1.99e-11
+
+            I[index, time_index+1] = np.dot(S_e.T, np.dot(material_data.elasticity_matrix.T, S_e))
+            J[index, time_index+1] = np.dot(E_e.T, np.dot(material_data.piezo_matrix, S_e))
+
+            #power_loss[index, time_index+1] = tau*(I[index, time_index]-2*I[index, time_index-1]+I[index, time_index-2])/delta_t**2 + \
+            #    (I[index, time_index]-I[index, time_index-1])/delta_t - \
+            #        (J[index, time_index]-J[index, time_index-1])/delta_t
+            power_loss[index, time_index+1] = tau*(I[index, time_index]-2*I[index, time_index-1]+I[index, time_index-2])/delta_t**2
 
         if (time_index + 1) % 100 == 0:
             print(f"Finished time step {time_index+1}")
 
-     
-
-    return u, q
+    return u, q, power_loss
 
 def get_load_vector(nodes_u, values_u, nodes_v, values_v, mesh_data, materia_data, power_loss):
     # For u and v the load vector is set to the corresponding dirichlet values given by values_u and values_v
@@ -418,25 +418,25 @@ def get_load_vector(nodes_u, values_u, nodes_v, values_v, mesh_data, materia_dat
     # It needs to be assembled every step since the power is position-dependend
     f_theta = np.zeros(number_of_nodes)
 
-    for element in mesh_data.elements:
+    for index, element in enumerate(mesh_data.elements):
         dN = gradient_local_shape_functions()
         node_points = np.array([
             [nodes[element[0]][0], nodes[element[1]][0], nodes[element[2]][0]],
             [nodes[element[0]][1], nodes[element[1]][1], nodes[element[2]][1]]
         ])
         jacobian = np.dot(node_points, dN.T)
-        jacobian_inverted_T = np.linalg.inv(jacobian).T
         jacobian_det = np.linalg.det(jacobian)
 
-        local_power_loss = np.array([
-            power_loss[element[0]], power_loss[element[1]], power_loss[element[2]]
-        ])
+        #local_power_loss = np.array([
+        #    power_loss[element[0]], power_loss[element[1]], power_loss[element[2]]
+        #])
 
         f_theta_e = integral_theta_load(
             node_points,
-            local_power_loss,
+            power_loss[index],
             materia_data.density,
-            materia_data.heat_capacity)
+            materia_data.heat_capacity,
+            materia_data.thermal_diffusivity)*2*np.pi*jacobian_det
 
         for local_p, global_p in enumerate(element):
                 f_theta[global_p] += f_theta_e[local_p]
@@ -475,12 +475,9 @@ def apply_dirichlet_bc(M, C, K, nodes_u, nodes_v, number_of_nodes):
 
     return M, C, K
 
-def create_node_excitation(parser, excitation, number_of_time_steps):
+def create_node_excitation(electrode_nodes, symaxis_nodes, ground_nodes, excitation, number_of_time_steps):
     # For "Electrode" set excitation function
     # "Symaxis" and "Ground" are set to 0
-    electrode_nodes = parser.getNodesInPhysicalGroup("Electrode")
-    symaxis_nodes = parser.getNodesInPhysicalGroup("Symaxis")
-    ground_nodes = parser.getNodesInPhysicalGroup("Ground")
 
     # For displacement u set symaxis values to 0
     dirichlet_nodes_u = symaxis_nodes

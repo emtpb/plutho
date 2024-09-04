@@ -2,29 +2,14 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
+import gmsh
 import piezo_fem as pfem
 
-def get_electrode_triangles(electrode_elements, all_elements):
-    triangle_elements = []
-    for element in electrode_elements:
-        for check_element in all_elements:
-            if element[0] in check_element and element[1] in check_element:
-                triangle_elements.append(check_element)
-                break
-
-    return triangle_elements
-
-def simulate(data_directory, time_step_count, delta_t, excitation):
-    # Create mesh and load it
-    mesh_file_path = os.path.join(data_directory, "mesh.msh")
-    pfem.mesh.generate_rectangular_mesh(mesh_file_path)
-    parser = pfem.mesh.GmshParser(mesh_file_path)
-
-    # Get nodes and elements from parser
-    nodes = parser.nodes.copy()
-    elements = parser.getTriangleElements()
-    electrode_elements = parser.getElementsInPhysicalGroup("Electrode")
-    electrode_triangles = get_electrode_triangles(electrode_elements, elements)
+def simulate(gmsh_handler, time_step_count, delta_t, excitation):
+    # Get nodes and elements from mesh
+    nodes, elements = gmsh_handler.get_mesh_nodes_and_elements()
+    pg_elements = gmsh_handler.get_elements_by_physical_groups(["Electrode"])
+    electrode_triangles = pg_elements["Electrode"]
 
     print("Number of nodes:", len(nodes))
     print("Number of elements:", len(elements))
@@ -73,11 +58,12 @@ def simulate(data_directory, time_step_count, delta_t, excitation):
     )
 
     # Excitation
-    excitation_nodes, excitation_values = pfem.create_node_excitation(parser, excitation, time_step_count)
+    pg_nodes = gmsh_handler.get_nodes_by_physical_groups(["Electrode", "Symaxis", "Ground"])
+    excitation_nodes, excitation_values = pfem.create_node_excitation(pg_nodes["Electrode"], pg_nodes["Symaxis"], pg_nodes["Ground"], excitation, time_step_count)
 
     # Solve
     M, C, K = pfem.assemble(mesh_data, material_data)
-    u, q = pfem.solve_time(
+    u, q, power_loss = pfem.solve_time(
         M, C, K,
         mesh_data,
         material_data,
@@ -87,30 +73,39 @@ def simulate(data_directory, time_step_count, delta_t, excitation):
         electrode_triangles
     )
 
-    pfem.create_vector_field_as_csv(u, nodes, os.path.join(data_directory, "field"))
+    # pfem.create_vector_field_as_csv(u, nodes, os.path.join(data_directory, "field"))
 
-    return u, q
+    return u, q, power_loss
 
 if __name__ == "__main__":
     data_directory = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
+    mesh_file_path = os.path.join(data_directory, "mesh.msh")
 
     if not os.path.exists(data_directory):
         os.mkdir(data_directory)
 
     # Simulation parameters
-    TIME_STEP_COUNT = 100
+    TIME_STEP_COUNT = 1000
     DELTA_T = 1e-8
 
     # Excitation
     excitation = np.zeros(TIME_STEP_COUNT)
     excitation[1:10] = np.array([0.2, 0.4, 0.6, 0.8, 1, 0.8, 0.6, 0.4, 0.2])
 
+    # Create mesh
+    gmsh_handler = pfem.mesh.GmshHandler(mesh_file_path)
+    gmsh_handler.generate_rectangular_mesh()
+
     # Run simulation and save results
-    u, q = simulate(data_directory, TIME_STEP_COUNT, DELTA_T, excitation)
+    u, q, power_loss = simulate(gmsh_handler, TIME_STEP_COUNT, DELTA_T, excitation)
+
+    print("Creating post processing views")
+    gmsh_handler.create_post_processing_views(u, TIME_STEP_COUNT, DELTA_T)
+    gmsh_handler.create_power_loss_post_processing_view(power_loss, TIME_STEP_COUNT, DELTA_T)
 
     #np.save(os.path.join(data_directory, "displacement"), u)
     #np.save(os.path.join(data_directory, "charge"), q)
-
+    
     exit(0)
 
     # Load simulation

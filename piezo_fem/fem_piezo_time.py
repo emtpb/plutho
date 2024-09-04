@@ -8,8 +8,7 @@ import scipy.sparse as sparse
 import scipy.sparse.linalg as slin
 from dataclasses import dataclass
 
-# Local libraries
-from piezo_fem.mesh.mesh_parser import GmshParser
+import piezo_fem
 
 @dataclass
 class MaterialData:
@@ -335,6 +334,7 @@ def apply_dirichlet_rb(M, C, K, nodes_u, nodes_v, number_of_nodes):
         
     # Set bc for v
     # Offset because the V values are set in the latter part of the matrix
+    #The values to which they are set are set in get_load_vector
     offset = 2*number_of_nodes
 
     for node in nodes_v:
@@ -348,12 +348,13 @@ def apply_dirichlet_rb(M, C, K, nodes_u, nodes_v, number_of_nodes):
 
     return M, C, K
 
-def create_node_excitation(parser, excitation, number_of_time_steps):
+def create_node_excitation(mesh_file, excitation, number_of_time_steps):
     # For "Electrode" set excitation function
     # "Symaxis" and "Ground" are set to 0
-    electrode_nodes = parser.getNodesInPhysicalGroup("Electrode")
-    symaxis_nodes = parser.getNodesInPhysicalGroup("Symaxis")
-    ground_nodes = parser.getNodesInPhysicalGroup("Ground")
+    physical_groups = piezo_fem.mesh.get_nodes_by_physical_groups(mesh_file, ["Electrode", "Symaxis", "Ground"])
+    electrode_nodes = physical_groups["Electrode"]
+    symaxis_nodes = physical_groups["Symaxis"]
+    ground_nodes = physical_groups["Ground"]
 
     # For displacement u set symaxis values to 0
     dirichlet_nodes_u = symaxis_nodes
