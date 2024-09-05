@@ -34,6 +34,7 @@ def simulate(gmsh_handler, time_step_count, delta_t, excitation):
         [0, 0, 12.09, 0],
         [-6.03, 15.49, 0, -6.03]
     ])
+    tau = 1.99e-11 # TODO What is the name of this?
 
     thermal_conductivity = 1.1
     heat_capacity = 350
@@ -48,7 +49,8 @@ def simulate(gmsh_handler, time_step_count, delta_t, excitation):
         thermal_diffusivity,
         heat_capacity,
         alpha_M,
-        alpha_K
+        alpha_K,
+        tau
     )
     simulation_data = pfem.SimulationData(
         DELTA_T,
@@ -85,7 +87,7 @@ if __name__ == "__main__":
         os.mkdir(data_directory)
 
     # Simulation parameters
-    TIME_STEP_COUNT = 1000
+    TIME_STEP_COUNT = 50
     DELTA_T = 1e-8
 
     # Excitation
@@ -98,10 +100,11 @@ if __name__ == "__main__":
 
     # Run simulation and save results
     u, q, power_loss = simulate(gmsh_handler, TIME_STEP_COUNT, DELTA_T, excitation)
-
-    print("Creating post processing views")
+    #print("Creating post processing views")
     gmsh_handler.create_post_processing_views(u, TIME_STEP_COUNT, DELTA_T)
     gmsh_handler.create_power_loss_post_processing_view(power_loss, TIME_STEP_COUNT, DELTA_T)
+
+    gmsh.fltk.run()
 
     #np.save(os.path.join(data_directory, "displacement"), u)
     #np.save(os.path.join(data_directory, "charge"), q)

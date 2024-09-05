@@ -14,10 +14,10 @@ class GmshHandler:
 
     @staticmethod
     def _get_nodes(node_tags, node_coords, _ = None):
-        # Get all nodes
-        nodes = np.zeros(shape=(len(node_tags), 3))
+        # Returns a list of node coords: [[x1, y1], [x2, y2], ..]
+        nodes = np.zeros(shape=(len(node_tags), 2))
         for i, _ in enumerate(node_tags):
-            nodes[i] = (node_coords[3*i], node_coords[3*i+1], node_coords[3*i+2])
+            nodes[i] = (node_coords[3*i], node_coords[3*i+1])
 
         return nodes
 
