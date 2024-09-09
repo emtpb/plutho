@@ -1,4 +1,5 @@
-"""Main module for the simulation of piezoelectric systems with thermal field."""
+"""Main module for the simulation of piezoelectric systems with
+thermal field."""
 
 # Python standard libraries
 import numpy as np
@@ -8,11 +9,10 @@ import scipy.sparse as sparse
 import scipy.sparse.linalg as slin
 from dataclasses import dataclass
 
-import piezo_fem
-from piezo_fem import mesh
 
 @dataclass
 class MaterialData:
+    """Contains material data used for the simulation."""
     elasticity_matrix: npt.NDArray
     permittivity_matrix: npt.NDArray
     piezo_matrix: npt.NDArray
@@ -23,30 +23,84 @@ class MaterialData:
     alpha_k: float
     tau: float
 
+
 @dataclass
 class SimulationData:
+    """Contains data for the simulation itself."""
     delta_t: float
     number_of_time_steps: float
     gamma: float
     beta: float
+
 
 @dataclass
 class MeshData:
     nodes: npt.NDArray
     elements: npt.NDArray
 
-def local_shape_functions(s, t):
+
+def local_shape_functions(s: float, t: float) -> npt.NDArray:
+    """Returns the local linear shape functions for the reference triangle.
+
+    Parameters:
+        s: Lcoal coordinate.
+        t: Local coordinate.
+
+    Returns:
+        npt.NDArray: Shape functions depending on s and t for every point
+            of the triangle.
+    """
     return np.array([1-s-t, s, t])
 
+
 def gradient_local_shape_functions():
+    """Returns the gradient of the local shape functions.
+
+    Returns:
+        npt.NDArray: Gradient of each of the shape functions where first list
+            is erived by s and second by t
+    """
     return np.array([[-1, 1, 0],
                      [-1, 0, 1]])
 
-def local_to_global_coordinates(node_points, s, t):
-    # Transforms local s, t coordinates to global r, z coordinates
+
+def local_to_global_coordinates(
+        node_points: npt.NDArray,
+        s: float,
+        t: float) -> npt.NDArray:
+    """Transforms the local coordinates s, t using the node points to
+    the global coordinates r, z.
+
+    Parameters:
+        node_points: List of node points [[x1, x2, ..], [y1, y2, ..]]
+        s: Local coordinate
+        t: Local coordinate
+
+    Returns:
+        npt.NDArray: Global coordinates [r, z]
+    """
     return np.dot(node_points, local_shape_functions(s, t))
 
-def b_operator_global(node_points, s, t, jacobian_inverted_T):
+
+def b_operator_global(
+        node_points: npt.NDArray,
+        s: float,
+        t: float,
+        jacobian_inverted_T: npt.NDArray) -> npt.NDArray:
+    """Calculates the B operator for the local coordinantes which is needed
+    for voigt-notation.
+    The derivates are with respect to the global coordinates r and z.
+
+    Parameters:
+        node_points: List of node points [[x1, x2, ..], [y1, y2, ..]]
+        s: Local coordinate
+        t: Local coordinate
+        jacobian_inverted_T: Jacobian matrix inverted and transposed, needed
+            for calculation of global derivatives
+
+    Returns:
+        B operator 6x4, for a u aligned like [u1_r, u1_z, u2_r, u2_z, ..]
+    """
     # Get local shape functions and r (because of theta component)
     N = local_shape_functions(s, t)
     r = local_to_global_coordinates(node_points, s, t)[0]
@@ -58,18 +112,37 @@ def b_operator_global(node_points, s, t, jacobian_inverted_T):
     global_dN = np.dot(jacobian_inverted_T, dN)
 
     return np.array([
-        [global_dN[0][0],               0, global_dN[0][1],               0, global_dN[0][2],               0],
-        [              0, global_dN[1][0],               0, global_dN[1][1],               0, global_dN[1][2]],
-        [global_dN[1][0], global_dN[0][0], global_dN[1][1], global_dN[0][1], global_dN[1][2], global_dN[0][2]],
-        [         N[0]/r,               0,          N[1]/r,               0,          N[2]/r,               0],
+        [
+            global_dN[0][0], 0, global_dN[0][1], 0, global_dN[0][2], 0
+        ],
+        [
+            0, global_dN[1][0], 0, global_dN[1][1], 0, global_dN[1][2]
+        ],
+        [
+            global_dN[1][0], global_dN[0][0], global_dN[1][1],
+            global_dN[0][1], global_dN[1][2], global_dN[0][2]
+        ],
+        [
+            N[0]/r, 0, N[1]/r, 0, N[2]/r, 0
+        ],
     ])
 
-def integral_M(node_points):
+
+def integral_M(node_points: npt.NDArray) -> npt.NDArray:
+    """Calculates the M integral.
+
+    Parameters:
+        node_points: List of node points [[x1, x2, ..], [y1, y2, ..]]
+
+    Returns:
+        npt.NDArray: 3x3 M matrix for the given element.
+    """
     def inner(s, t):
         N = local_shape_functions(s, t)
-        
+
         # Since the simulation is axisymmetric it is necessary
-        # to multiply with the radius in the integral (for the theta component (azimuth))
+        # to multiply with the radius in the integral
+        # (for the theta component (azimuth))
         r = local_to_global_coordinates(node_points, s, t)[0]
 
         # Get all combinations of shape function multiplied with each other
@@ -77,7 +150,22 @@ def integral_M(node_points):
 
     return quadratic_quadrature(inner)
 
-def integral_Ku(node_points, jacobian_inverted_T, elasticity_matrix):
+
+def integral_Ku(
+        node_points: npt.NDArray,
+        jacobian_inverted_T: npt.NDArray,
+        elasticity_matrix: npt.NDArray) -> npt.NDArray:
+    """Calculates the Ku integral
+
+    Parameters:
+        node_points: List of node points [[x1, x2, ..], [y1, y2, ..]]
+        jacobian_inverted_T: Jacobian matrix inverted and transposed, needed
+            for calculation of global derivatives
+        elasticity_matrix: Elasticity matrix for the current element (c matrix)
+
+    Returns:
+        npt.NDArray: 6x6 Ku matrix for the given element.
+    """
     def inner(s, t):
         b_op = b_operator_global(node_points, s, t, jacobian_inverted_T)
         r = local_to_global_coordinates(node_points, s, t)[0]
@@ -86,7 +174,22 @@ def integral_Ku(node_points, jacobian_inverted_T, elasticity_matrix):
 
     return quadratic_quadrature(inner)
 
-def integral_KuV(node_points, jacobian_inverted_T, piezo_matrix):
+
+def integral_KuV(
+        node_points: npt.NDArray,
+        jacobian_inverted_T: npt.NDArray,
+        piezo_matrix: npt.NDArray) -> npt.NDArray:
+    """Calculates the KuV integral.
+
+    Parameters:
+        node_points: List of node points [[x1, x2, ..], [y1, y2, ..]]
+        jacobian_inverted_T: Jacobian matrix inverted and transposed, needed
+            for calculation of global derivatives
+        piezo_matrix: Piezo matrix for the current element (e matrix)
+
+    Returns:
+        npt.NDArray: 6x3 KuV matrix for the given element.
+    """
     def inner(s, t):
         b_op = b_operator_global(node_points, s, t, jacobian_inverted_T)
         dN = gradient_local_shape_functions()
@@ -94,20 +197,49 @@ def integral_KuV(node_points, jacobian_inverted_T, piezo_matrix):
         r = local_to_global_coordinates(node_points, s, t)[0]
 
         return np.dot(np.dot(b_op.T, piezo_matrix.T), global_dN)*r
-    
+
     return quadratic_quadrature(inner)
 
-def integral_KVe(node_points, jacobian_inverted_T, permittivity_matrix):
+
+def integral_KVe(
+        node_points: npt.NDArray,
+        jacobian_inverted_T: npt.NDArray,
+        permittivity_matrix: npt.NDArray) -> npt.NDArray:
+    """Calculates the KVe integral.
+
+    Parameters:
+        node_points: List of node points [[x1, x2, ..], [y1, y2, ..]]
+        jacobian_inverted_T: Jacobian matrix inverted and transposed, needed
+            for calculation of global derivatives
+        permittivity_matrix: Permittivity matrix for the
+            current element (epsilon matrix)
+
+    Returns:
+        npt.NDArray: 3x3 KVe matrix for the given element.
+    """
     def inner(s, t):
         dN = gradient_local_shape_functions()
         global_dN = np.dot(jacobian_inverted_T, dN)
         r = local_to_global_coordinates(node_points, s, t)[0]
-        
+
         return np.dot(np.dot(global_dN.T, permittivity_matrix), global_dN)*r
-    
+
     return quadratic_quadrature(inner)
 
-def integral_Ktheta(node_points, jacobian_inverted_T):
+
+def integral_Ktheta(
+        node_points: npt.NDArray,
+        jacobian_inverted_T: npt.NDArray) -> npt.NDArray:
+    """Calculates the Ktheta integral.
+
+    Parameters:
+        node_points: List of node points [[x1, x2, ..], [y1, y2, ..]]
+        jacobian_inverted_T: Jacobian matrix inverted and transposed, needed
+            for calculation of global derivatives
+
+    Returns:
+        npt.NDArray: 3x3 Ktheta matrix for the given element.
+    """
     def inner(s, t):
         dN = gradient_local_shape_functions()
         global_dN = np.dot(jacobian_inverted_T, dN)
@@ -117,7 +249,23 @@ def integral_Ktheta(node_points, jacobian_inverted_T):
 
     return quadratic_quadrature(inner)
 
-def integral_theta_load(node_points, point_loss, density, heat_capacity):
+def integral_theta_load(
+        node_points: npt.NDArray,
+        point_loss: npt.NDArray,
+        density: float,
+        heat_capacity: float) -> npt.NDArray:
+    """Returns the load value for the temperature field (f) for the specific
+    element.
+
+    Parameters:
+        node_points: List of node points [[x1, x2, ..], [y1, y2, ..]]
+        point_loss: Loss power on each node (heat source)
+        density: Density at this element
+        heat_capacity: Heat capacity at this element
+
+    Returns:
+        npt.NDArray: f vector value at the specific ndoe
+    """
     def inner(s, t):
         N = local_shape_functions(s, t)
         r = local_to_global_coordinates(node_points, s, t)[0]
@@ -126,7 +274,12 @@ def integral_theta_load(node_points, point_loss, density, heat_capacity):
 
     return quadratic_quadrature(inner)
 
-def loss_integral_ScS(node_points, u_e, jacobian_inverted_T, elasticity_matrix):
+def loss_integral_ScS(
+        node_points: npt.NDArray,
+        u_e: npt.NDArray,
+        jacobian_inverted_T: npt.NDArray,
+        elasticity_matrix: npt.NDArray):
+    """Calculates the """
     def inner(s, t):
         b_opt = b_operator_global(node_points, s, t, jacobian_inverted_T)
         S = np.dot(b_opt, u_e)

@@ -1,16 +1,19 @@
+"""Module for für a basic example on how to use piezo_fem."""
+
+# Python standard libraries
 import os
 import numpy as np
 import matplotlib.pyplot as plt
 import gmsh
+
+# Local libraries
 import piezo_fem as pfem
 
-def simulate(mesh_file_path, time_step_count, delta_t, excitation):
-    # Create mesh and load it
-    pfem.mesh.generate_rectangular_mesh(mesh_file_path)
 
-    # Get nodes and elements from parser
-    nodes, elements = pfem.mesh.get_mesh_nodes_and_elements(mesh_file_path)
-    pg_elements = pfem.mesh.get_elements_by_physical_groups(mesh_file_path, ["Electrode"])
+def simulate(gmsh_handler, time_step_count, delta_t, excitation):
+    # Get nodes and elements from mesh
+    nodes, elements = gmsh_handler.get_mesh_nodes_and_elements()
+    pg_elements = gmsh_handler.get_elements_by_physical_groups(["Electrode"])
     electrode_triangles = pg_elements["Electrode"]
 
     print("Number of nodes:", len(nodes))
@@ -42,7 +45,14 @@ def simulate(mesh_file_path, time_step_count, delta_t, excitation):
     thermal_diffusivity = thermal_conductivity/(rho*heat_capacity)
 
     # Excitation
-    excitation_nodes, excitation_values = pfem.create_node_excitation(mesh_file_path, excitation, time_step_count)
+    pg_nodes = gmsh_handler.get_nodes_by_physical_groups(
+        ["Electrode", "Symaxis", "Ground"])
+    excitation_nodes, excitation_values = pfem.create_node_excitation(
+        pg_nodes["Electrode"],
+        pg_nodes["Symaxis"],
+        pg_nodes["Ground"],
+        excitation,
+        time_step_count)
 
     material_data = pfem.MaterialData(
         elasticity_matrix,
@@ -52,7 +62,8 @@ def simulate(mesh_file_path, time_step_count, delta_t, excitation):
         thermal_diffusivity,
         heat_capacity,
         alpha_M,
-        alpha_K
+        alpha_K,
+        0.0
     )
 
     mesh_data = pfem.MeshData(
@@ -69,7 +80,7 @@ def simulate(mesh_file_path, time_step_count, delta_t, excitation):
 
     # Solve
     M, C, K = pfem.assemble(mesh_data, material_data)
-    u, q = pfem.solve_time(
+    u, q, _ = pfem.solve_time(
         M,
         C,
         K,
@@ -80,11 +91,12 @@ def simulate(mesh_file_path, time_step_count, delta_t, excitation):
         excitation_values,
         electrode_triangles)
 
-
     return u, q
 
+
 if __name__ == "__main__":
-    data_directory = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
+    data_directory = os.path.join(os.path.abspath(os.path.dirname(__file__)),
+                                  "data")
     mesh_file_path = os.path.join(data_directory, "mesh.msh")
 
     if not os.path.exists(data_directory):
@@ -98,38 +110,41 @@ if __name__ == "__main__":
     excitation = np.zeros(TIME_STEP_COUNT)
     excitation[1:10] = np.array([0.2, 0.4, 0.6, 0.8, 1, 0.8, 0.6, 0.4, 0.2])
 
+    # Create mesh
+    gmsh_handler = pfem.mesh.GmshHandler(mesh_file_path)
+    gmsh_handler.generate_rectangular_mesh()
+
     # Run simulation and save results
     u, q = simulate(mesh_file_path, TIME_STEP_COUNT, DELTA_T, excitation)
-
 
     print(u.shape)
     np.save(os.path.join(data_directory, "displacement"), u)
     np.save(os.path.join(data_directory, "charge"), q)
 
     # Load simulation
-    #u = np.load(os.path.join(data_directory, "displacement.npy"))
-    #q = np.load(os.path.join(data_directory, "charge.npy"))
-    
+    # u = np.load(os.path.join(data_directory, "displacement.npy"))
+    # q = np.load(os.path.join(data_directory, "charge.npy"))
+
     print("Creating post processing views")
     pfem.mesh.create_post_processing_views(mesh_file_path, u, 1000, DELTA_T)
-    
-    frequencies_fem, impedence_fem = pfem.calculate_impedance(q, excitation, DELTA_T)
+
+    frequencies_fem, impedence_fem = pfem.calculate_impedance(q,
+                                                              excitation,
+                                                              DELTA_T)
 
     # Get OpenCFS data
-    #time_list_cfs, charge_cfs = pfem.read_charge_open_cfs(os.path.join(data_directory, "charge_opencfs.hist"))
-    #frequencies_cfs, impedence_cfs = pfem.calculate_impedance(charge_cfs, excitation, DELTA_T)
+    # time_list_cfs, charge_cfs = pfem.read_charge_open_cfs(os.path.join(data_directory, "charge_opencfs.hist"))
+    # frequencies_cfs, impedence_cfs = pfem.calculate_impedance(charge_cfs, excitation, DELTA_T)
 
     # Plot FEM and OpenCfs
     plt.plot(frequencies_fem, np.abs(impedence_fem), label="MyFEM")
-    #plt.plot(frequencies_cfs, np.abs(impedence_cfs), "+", label="OpenCFS")
+    # plt.plot(frequencies_cfs, np.abs(impedence_cfs), "+", label="OpenCFS")
     plt.xlabel("Frequency f / Hz")
     plt.ylabel("Impedence |Z| / $\\Omega$")
     plt.yscale("log")
     plt.legend()
     plt.grid()
     plt.show()
-    
+
     gmsh.open(os.path.join(data_directory, "mesh_results.msh"))
     gmsh.fltk.run()
-
-
