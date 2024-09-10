@@ -17,7 +17,7 @@ class MaterialData:
     permittivity_matrix: npt.NDArray
     piezo_matrix: npt.NDArray
     density: float
-    thermal_diffusivity: float
+    thermal_conductivity: float
     heat_capacity: float
     alpha_m: float
     alpha_k: float
@@ -290,23 +290,16 @@ def charge_integral_v(node_points, v_e, permittivity_matrix, jacobian_inverted_T
 
 def loss_integral_ScS(
         node_points: npt.NDArray,
-        u_e: npt.NDArray,
+        u_e_t: npt.NDArray,
+        u_e_t_minus_1: npt.NDArray,
+        u_e_t_minus_2: npt.NDArray,
+        delta_t: float,
         jacobian_inverted_T: npt.NDArray,
         elasticity_matrix: npt.NDArray):
     def inner(s, t):
         b_opt = b_operator_global(node_points, s, t, jacobian_inverted_T)
-        S = np.dot(b_opt, u_e)
-        return np.dot(S.T, np.dot(elasticity_matrix.T, S))
-    
-    return quadratic_quadrature(inner)
-
-def loss_integral_EeS(node_points, u_e, Ve_e, jacobian_inverted_T, piezo_matrix):
-    def inner(s, t):
-        dN = gradient_local_shape_functions()
-        b_opt = b_operator_global(node_points, s, t, jacobian_inverted_T)
-        S = np.dot(b_opt, u_e)
-        E = -np.dot(dN, Ve_e)
-        return np.dot(E.T, np.dot(piezo_matrix, S))
+        dt_S = np.dot(b_opt, (3*u_e_t-4*u_e_t_minus_1+u_e_t_minus_2)/(2*delta_t))
+        return np.dot(dt_S.T, np.dot(elasticity_matrix.T, dt_S))
     
     return quadratic_quadrature(inner)
 
@@ -332,7 +325,7 @@ def assemble(mesh_data, material_data):
     Ku = sparse.lil_matrix((2*number_of_nodes, 2*number_of_nodes), dtype=np.float64)
     KuV = sparse.lil_matrix((2*number_of_nodes, number_of_nodes), dtype=np.float64)
     KVe = sparse.lil_matrix((number_of_nodes, number_of_nodes), dtype=np.float64)
-    Mtheta = sparse.lil_matrix((number_of_nodes, number_of_nodes), dtype=np.float64)
+    Ctheta = sparse.lil_matrix((number_of_nodes, number_of_nodes), dtype=np.float64)
     Ktheta = sparse.lil_matrix((number_of_nodes, number_of_nodes), dtype=np.float64)
 
     for element in mesh_data.elements:
@@ -356,29 +349,29 @@ def assemble(mesh_data, material_data):
         Ku_e = integral_Ku(node_points, jacobian_inverted_T, material_data.elasticity_matrix)*jacobian_det*2*np.pi
         KuV_e = integral_KuV(node_points, jacobian_inverted_T, material_data.piezo_matrix)*jacobian_det*2*np.pi
         KVe_e = integral_KVe(node_points, jacobian_inverted_T, material_data.permittivity_matrix)*jacobian_det*2*np.pi
-        Mtheta_e = material_data.density*material_data.heat_capacity*integral_M(node_points)*jacobian_det*2*np.pi
+        Ctheta_e = material_data.density*material_data.heat_capacity*integral_M(node_points)*jacobian_det*2*np.pi
         Ktheta_e = material_data.thermal_conductivity*integral_Ktheta(node_points, jacobian_inverted_T)*jacobian_det*2*np.pi
 
         # Now assemble all element matrices
         for local_p, global_p in enumerate(element):
             for local_q, global_q in enumerate(element):
-                # M is returned as a 3x3 matrix (should be 6x6) because the values are the same
+                # Mu_e is returned as a 3x3 matrix (should be 6x6) because the values are the same
                 # Only the diagonal elements have values
                 Mu[2*global_p, 2*global_q] += Mu_e[local_p][local_q]
                 Mu[2*global_p+1, 2*global_q+1] += Mu_e[local_p][local_q]
 
-                # Ku is a 6x6 matrix and 2x2 matrices are sliced out of it
+                # Ku_e is a 6x6 matrix and 2x2 matrices are sliced out of it
                 Ku[2*global_p:2*global_p+2, 2*global_q:2*global_q+2] += Ku_e[2*local_p:2*local_p+2, 2*local_q:2*local_q+2]
 
-                # KuV is a 6x3 matrix and 2x1 vectors are sliced out
+                # KuV_e is a 6x3 matrix and 2x1 vectors are sliced out
                 # [:, None] converts to a column vector
                 KuV[2*global_p:2*global_p+2, global_q] += KuV_e[2*local_p:2*local_p+2, local_q][:, None] 
 
-                # KVe is a 3x3 matrix and therefore the values can be set directly
+                # KVe_e is a 3x3 matrix and therefore the values can be set directly
                 KVe[global_p, global_q] += KVe_e[local_p, local_q]
 
-                # Mtheta and Ktheta are 3x3 matrices too
-                Mtheta[global_p, global_q] += Mtheta_e[local_p, local_q]
+                # Mtheta_e and Ktheta_e are 3x3 matrices too
+                Ctheta[global_p, global_q] += Ctheta_e[local_p, local_q]
                 Ktheta[global_p, global_q] += Ktheta_e[local_p, local_q]
 
     # Calculate damping matrix
@@ -398,7 +391,7 @@ def assemble(mesh_data, material_data):
     C = sparse.bmat([
         [Cu, zeros2x1, zeros2x1],
         [zeros1x2, zeros1x1, zeros1x1],
-        [zeros1x2, zeros1x1, Mtheta]
+        [zeros1x2, zeros1x1, Ctheta]
     ])
     K = sparse.bmat([
         [Ku, KuV, zeros2x1],
@@ -470,8 +463,6 @@ def solve_time(M, C, K, mesh_data, material_data, simulation_data, dirichlet_nod
     K_star = (K+gamma/(beta*delta_t)*C+1/(beta*delta_t**2)*M).tocsr()
 
     power_loss = np.zeros((number_of_elements, number_of_time_steps), dtype=np.float64) # Power loss calculated during simulation (for thermal field)
-    ScS = np.zeros((number_of_elements, number_of_time_steps), dtype=np.float64) # Used to calculate power loss
-    EeS = np.zeros((number_of_elements, number_of_time_steps), dtype=np.float64) # Used to calculate power loss
     
     print("Starting simulation")
     for time_index in range(number_of_time_steps-1):
@@ -481,7 +472,6 @@ def solve_time(M, C, K, mesh_data, material_data, simulation_data, dirichlet_nod
                             dirichlet_nodes[1],
                             dirichlet_values[1][time_index+1],
                             mesh_data,
-                            material_data,
                             power_loss[:, time_index]
         )
 
@@ -508,58 +498,52 @@ def solve_time(M, C, K, mesh_data, material_data, simulation_data, dirichlet_nod
 
         # Calculate power_loss
         # TODO Calculate charge and power loss together (one loop)
-        for element_index, element in enumerate(elements):
-            node_points = np.array([
-                [nodes[element[0]][0], nodes[element[1]][0], nodes[element[2]][0]],
-                [nodes[element[0]][1], nodes[element[1]][1], nodes[element[2]][1]]
-            ])
+        if time_index > 1:
+            for element_index, element in enumerate(elements):
+                node_points = np.array([
+                    [nodes[element[0]][0], nodes[element[1]][0], nodes[element[2]][0]],
+                    [nodes[element[0]][1], nodes[element[1]][1], nodes[element[2]][1]]
+                ])
 
-            dN = gradient_local_shape_functions()
-            node_points = np.array([
-                [nodes[element[0]][0], nodes[element[1]][0], nodes[element[2]][0]],
-                [nodes[element[0]][1], nodes[element[1]][1], nodes[element[2]][1]]
-            ])
-            jacobian = np.dot(node_points, dN.T)
-            jacobian_inverted_T = np.linalg.inv(jacobian).T
-            jacobian_det = np.linalg.det(jacobian)
-            dN = gradient_local_shape_functions()
-            u_e = np.array([u[2*element[0], time_index],
-                            u[2*element[0]+1, time_index],
-                            u[2*element[1], time_index],
-                            u[2*element[1]+1, time_index],
-                            u[2*element[2], time_index],
-                            u[2*element[2]+1, time_index]])
-            Ve_e = np.array([u[element[0]+2*number_of_nodes, time_index],
-                            u[element[1]+2*number_of_nodes, time_index],
-                            u[element[2]+2*number_of_nodes, time_index]])
+                dN = gradient_local_shape_functions()
+                node_points = np.array([
+                    [nodes[element[0]][0], nodes[element[1]][0], nodes[element[2]][0]],
+                    [nodes[element[0]][1], nodes[element[1]][1], nodes[element[2]][1]]
+                ])
+                jacobian = np.dot(node_points, dN.T)
+                jacobian_inverted_T = np.linalg.inv(jacobian).T
+                jacobian_det = np.linalg.det(jacobian)
+                dN = gradient_local_shape_functions()
+                u_e = np.array([u[2*element[0], time_index],
+                                u[2*element[0]+1, time_index],
+                                u[2*element[1], time_index],
+                                u[2*element[1]+1, time_index],
+                                u[2*element[2], time_index],
+                                u[2*element[2]+1, time_index]])
+                u_e_t_minus_1 = np.array([
+                                u[2*element[0], time_index-1],
+                                u[2*element[0]+1, time_index-1],
+                                u[2*element[1], time_index-1],
+                                u[2*element[1]+1, time_index-1],
+                                u[2*element[2], time_index-1],
+                                u[2*element[2]+1, time_index-1]])
+                u_e_t_minus_2 = np.array([
+                                u[2*element[0], time_index-2],
+                                u[2*element[0]+1, time_index-2],
+                                u[2*element[1], time_index-2],
+                                u[2*element[1]+1, time_index-2],
+                                u[2*element[2], time_index-2],
+                                u[2*element[2]+1, time_index-2]])
 
-            ScS[element_index, time_index] = loss_integral_ScS(node_points, u_e, jacobian_inverted_T, material_data.elasticity_matrix)*2*np.pi*jacobian_det
-            EeS[element_index, time_index] = loss_integral_EeS(node_points, u_e, Ve_e, jacobian_inverted_T, material_data.piezo_matrix)*2*np.pi*jacobian_det
-
-            if time_index > 2:
-                
-                #dttScS = (ScS[element_index, time_index]-2*ScS[element_index, time_index-1]+ScS[element_index, time_index-2])/delta_t**2
-                #dtScS = (ScS[element_index, time_index] - ScS[element_index, time_index-1])/delta_t
-                #dtEeS = (EeS[element_index, time_index] - EeS[element_index, time_index-1])/delta_t
-                dttScS = (2*ScS[element_index, time_index]-5*ScS[element_index, time_index-1]+4*ScS[element_index, time_index-2]-ScS[element_index, time_index-3])/delta_t**2
-                dtScS = (3*ScS[element_index, time_index]-4*ScS[element_index, time_index-1]+ScS[element_index, time_index-2])/2*delta_t
-                dtEeS = (3*EeS[element_index, time_index]-4*EeS[element_index, time_index-1]+EeS[element_index, time_index-2])/2*delta_t
-
-                # TODO Check which variant
-                power_loss[element_index, time_index+1] = material_data.tau*dttScS
-                #power_loss[element_index, time_index+1] = material_data.tau*dttScS+dtScS-dtEeS
+                loss_value = loss_integral_ScS(node_points, u_e, u_e_t_minus_1, u_e_t_minus_2, delta_t, jacobian_inverted_T, material_data.elasticity_matrix)*2*np.pi*jacobian_det
+                power_loss[element_index, time_index+1] = material_data.tau*loss_value
 
         if (time_index + 1) % 100 == 0:
             print(f"Finished time step {time_index+1}")
 
-    np.save("power_loss", np.gradient(np.gradient(ScS, axis=1), axis=1))
-
-    np.save("ScS", ScS)
-    np.save("EeS", EeS)
-
     return u, q, power_loss
 
-def get_load_vector(nodes_u, values_u, nodes_v, values_v, mesh_data, materia_data, power_loss):
+def get_load_vector(nodes_u, values_u, nodes_v, values_v, mesh_data, power_loss):
     # For u and v the load vector is set to the corresponding dirichlet values given by values_u and values_v
     # at the nodes nodes_u and nodes_v since there is no inner charge and no forces given.
     # For the temperature field the load vector represents the temperature sources given by the mechanical losses.

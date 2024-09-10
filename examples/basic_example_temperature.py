@@ -46,7 +46,6 @@ def simulate(gmsh_handler, time_step_count, delta_t, excitation):
 
     thermal_conductivity = 1.1
     heat_capacity = 350
-    thermal_diffusivity = thermal_conductivity/(rho*heat_capacity)
 
     mesh_data = pfem.MeshData(nodes, elements)
     material_data = pfem.MaterialData(
@@ -54,7 +53,7 @@ def simulate(gmsh_handler, time_step_count, delta_t, excitation):
         permittivity_matrix,
         piezo_matrix,
         rho,
-        thermal_diffusivity,
+        thermal_conductivity,
         heat_capacity,
         alpha_M,
         alpha_K,
@@ -113,13 +112,14 @@ if __name__ == "__main__":
 
     # Create mesh
     gmsh_handler = pfem.mesh.GmshHandler(mesh_file_path)
-    gmsh_handler.generate_rectangular_mesh()
+    gmsh_handler.generate_rectangular_mesh(mesh_size=0.0001)
 
     # Run simulation and save results
     u, q, power_loss = simulate(gmsh_handler,
                                 TIME_STEP_COUNT,
                                 DELTA_T,
                                 excitation)
+
     # print("Creating post processing views")
     gmsh_handler.create_post_processing_views(u, TIME_STEP_COUNT, DELTA_T)
     gmsh_handler.create_power_loss_post_processing_view(power_loss,
