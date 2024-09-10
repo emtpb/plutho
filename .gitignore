@@ -176,5 +176,7 @@ cython_debug/
 
 .idea/
 
+.vscode/
+
 # Ignore data
 examples/data/*
