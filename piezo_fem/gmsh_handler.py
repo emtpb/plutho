@@ -86,7 +86,7 @@ class GmshHandler:
         number_of_elements = len(element_tags)
         view_tag = gmsh.view.add("Power Loss in W")
 
-        for time_index in range(number_of_time_steps):
+        for time_index in range(number_of_time_steps//10):
             current_power_loss = power_loss[:, time_index].reshape(number_of_elements, 1)
             gmsh.view.addModelData(view_tag, time_index, "", "ElementData", element_tags, current_power_loss, time_index*delta_t, 1)
 

@@ -251,18 +251,13 @@ def integral_Ktheta(
 
 def integral_theta_load(
         node_points: npt.NDArray,
-        point_loss: npt.NDArray,
-        density: float,
-        heat_capacity: float) -> npt.NDArray:
+        point_loss: npt.NDArray) -> npt.NDArray:
     """Returns the load value for the temperature field (f) for the specific
     element.
 
     Parameters:
         node_points: List of node points [[x1, x2, ..], [y1, y2, ..]]
         point_loss: Loss power on each node (heat source)
-        density: Density at this element
-        heat_capacity: Heat capacity at this element
-
     Returns:
         npt.NDArray: f vector value at the specific ndoe
     """
@@ -270,16 +265,34 @@ def integral_theta_load(
         N = local_shape_functions(s, t)
         r = local_to_global_coordinates(node_points, s, t)[0]
 
-        return N*point_loss/(density*heat_capacity)*r
+        return N*point_loss*r
 
     return quadratic_quadrature(inner)
+
+def charge_integral_u(node_points, u_e, piezo_matrix, jacobian_inverted_T):
+    def inner(s, t):
+        r = local_to_global_coordinates(node_points, s, t)[0]
+        b_opt_global = b_operator_global(node_points, s, t, jacobian_inverted_T)
+        # [1] commponent is taken because the normal of the boundary line is in z-direction
+        return np.dot(np.dot(piezo_matrix, b_opt_global), u_e)[1]*r
+
+    return line_quadrature(inner)
+
+def charge_integral_v(node_points, v_e, permittivity_matrix, jacobian_inverted_T):
+    def inner(s, t):
+        r = local_to_global_coordinates(node_points, s, t)[0]
+        dN = gradient_local_shape_functions()
+        global_dN = np.dot(jacobian_inverted_T, dN)
+
+        return np.dot(np.dot(permittivity_matrix, global_dN), v_e)[1]*r
+
+    return line_quadrature(inner)
 
 def loss_integral_ScS(
         node_points: npt.NDArray,
         u_e: npt.NDArray,
         jacobian_inverted_T: npt.NDArray,
         elasticity_matrix: npt.NDArray):
-    """Calculates the """
     def inner(s, t):
         b_opt = b_operator_global(node_points, s, t, jacobian_inverted_T)
         S = np.dot(b_opt, u_e)
@@ -343,8 +356,8 @@ def assemble(mesh_data, material_data):
         Ku_e = integral_Ku(node_points, jacobian_inverted_T, material_data.elasticity_matrix)*jacobian_det*2*np.pi
         KuV_e = integral_KuV(node_points, jacobian_inverted_T, material_data.piezo_matrix)*jacobian_det*2*np.pi
         KVe_e = integral_KVe(node_points, jacobian_inverted_T, material_data.permittivity_matrix)*jacobian_det*2*np.pi
-        Mtheta_e = integral_M(node_points)*jacobian_det*2*np.pi
-        Ktheta_e = material_data.thermal_diffusivity*integral_Ktheta(node_points, jacobian_inverted_T)*jacobian_det*2*np.pi
+        Mtheta_e = material_data.density*material_data.heat_capacity*integral_M(node_points)*jacobian_det*2*np.pi
+        Ktheta_e = material_data.thermal_conductivity*integral_Ktheta(node_points, jacobian_inverted_T)*jacobian_det*2*np.pi
 
         # Now assemble all element matrices
         for local_p, global_p in enumerate(element):
@@ -394,25 +407,6 @@ def assemble(mesh_data, material_data):
     ])
 
     return M.tolil(), C.tolil(), K.tolil()
-
-def charge_integral_u(node_points, u_e, piezo_matrix, jacobian_inverted_T):
-    def inner(s, t):
-        r = local_to_global_coordinates(node_points, s, t)[0]
-        b_opt_global = b_operator_global(node_points, s, t, jacobian_inverted_T)
-        # [1] commponent is taken because the normal of the boundary line is in z-direction
-        return np.dot(np.dot(piezo_matrix, b_opt_global), u_e)[1]*r
-
-    return line_quadrature(inner)
-
-def charge_integral_v(node_points, v_e, permittivity_matrix, jacobian_inverted_T):
-    def inner(s, t):
-        r = local_to_global_coordinates(node_points, s, t)[0]
-        dN = gradient_local_shape_functions()
-        global_dN = np.dot(jacobian_inverted_T, dN)
-
-        return np.dot(np.dot(permittivity_matrix, global_dN), v_e)[1]*r
-
-    return line_quadrature(inner)
 
 def calculate_charge(u, permittivity_matrix, piezo_matrix, elements, nodes):
     number_of_nodes = len(nodes)
@@ -513,6 +507,7 @@ def solve_time(M, C, K, mesh_data, material_data, simulation_data, dirichlet_nod
         )
 
         # Calculate power_loss
+        # TODO Calculate charge and power loss together (one loop)
         for element_index, element in enumerate(elements):
             node_points = np.array([
                 [nodes[element[0]][0], nodes[element[1]][0], nodes[element[2]][0]],
@@ -541,18 +536,26 @@ def solve_time(M, C, K, mesh_data, material_data, simulation_data, dirichlet_nod
             ScS[element_index, time_index] = loss_integral_ScS(node_points, u_e, jacobian_inverted_T, material_data.elasticity_matrix)*2*np.pi*jacobian_det
             EeS[element_index, time_index] = loss_integral_EeS(node_points, u_e, Ve_e, jacobian_inverted_T, material_data.piezo_matrix)*2*np.pi*jacobian_det
 
-            if time_index > 1:
+            if time_index > 2:
                 
-                dttScS = (ScS[element_index, time_index]-2*ScS[element_index, time_index-1]+ScS[element_index, time_index-2])/delta_t**2
-                dtScS = (ScS[element_index, time_index] - ScS[element_index, time_index-1])/delta_t
-                dtEeS = (EeS[element_index, time_index] - EeS[element_index, time_index-1])/delta_t
+                #dttScS = (ScS[element_index, time_index]-2*ScS[element_index, time_index-1]+ScS[element_index, time_index-2])/delta_t**2
+                #dtScS = (ScS[element_index, time_index] - ScS[element_index, time_index-1])/delta_t
+                #dtEeS = (EeS[element_index, time_index] - EeS[element_index, time_index-1])/delta_t
+                dttScS = (2*ScS[element_index, time_index]-5*ScS[element_index, time_index-1]+4*ScS[element_index, time_index-2]-ScS[element_index, time_index-3])/delta_t**2
+                dtScS = (3*ScS[element_index, time_index]-4*ScS[element_index, time_index-1]+ScS[element_index, time_index-2])/2*delta_t
+                dtEeS = (3*EeS[element_index, time_index]-4*EeS[element_index, time_index-1]+EeS[element_index, time_index-2])/2*delta_t
 
                 # TODO Check which variant
-                #power_loss[element_index, time_index+1] = tau*dttScS
-                power_loss[element_index, time_index+1] = material_data.tau*dttScS+dtScS-dtEeS
+                power_loss[element_index, time_index+1] = material_data.tau*dttScS
+                #power_loss[element_index, time_index+1] = material_data.tau*dttScS+dtScS-dtEeS
 
         if (time_index + 1) % 100 == 0:
             print(f"Finished time step {time_index+1}")
+
+    np.save("power_loss", np.gradient(np.gradient(ScS, axis=1), axis=1))
+
+    np.save("ScS", ScS)
+    np.save("EeS", EeS)
 
     return u, q, power_loss
 
@@ -594,9 +597,7 @@ def get_load_vector(nodes_u, values_u, nodes_v, values_v, mesh_data, materia_dat
 
         f_theta_e = integral_theta_load(
             node_points,
-            point_loss,
-            materia_data.density,
-            materia_data.heat_capacity)*2*np.pi*jacobian_det
+            point_loss)*2*np.pi*jacobian_det
 
         for local_p, global_p in enumerate(element):
                 f_theta[global_p] += f_theta_e[local_p]

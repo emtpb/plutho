@@ -29,6 +29,7 @@ def simulate(gmsh_handler, time_step_count, delta_t, excitation):
     # TODO Use emt package for materials
     rho = 7800
     alpha_M = 1.267e5
+    alpha_M = 0
     alpha_K = 6.259e-10
     elasticity_matrix = np.array([
         [1.19e11, 0.83e11,       0, 0.84e11],
