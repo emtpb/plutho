@@ -57,7 +57,7 @@ def simulate(gmsh_handler, time_step_count, delta_t, excitation):
         heat_capacity,
         alpha_M,
         alpha_K,
-        tau
+        tau # TODO Remove tau
     )
     simulation_data = pfem.SimulationData(
         delta_t,
@@ -78,7 +78,7 @@ def simulate(gmsh_handler, time_step_count, delta_t, excitation):
 
     # Solve
     M, C, K = pfem.assemble(mesh_data, material_data)
-    u, q, power_loss = pfem.solve_time(
+    u, q, power_loss = pfem.solve_time_thermo(
         M, C, K,
         mesh_data,
         material_data,
@@ -91,8 +91,33 @@ def simulate(gmsh_handler, time_step_count, delta_t, excitation):
     # pfem.create_vector_field_as_csv(u, nodes, os.path.join(data_directory, 
     # "field"))
 
+    #create_power_loss_field_for_ocfs(power_loss, mesh_data, simulation_data, "q.csv")
+
     return u, q, power_loss
 
+
+def create_power_loss_field_for_ocfs(field_values, mesh_data, simulation_data, output_path):
+    print(field_values.shape)
+    nodes = mesh_data.nodes
+    elements = mesh_data.elements
+    number_of_nodes = len(nodes)
+    number_of_time_steps = simulation_data.number_of_time_steps
+
+    resulting_field = np.zeros(shape=(number_of_time_steps, number_of_nodes))
+    for time_index in range(number_of_time_steps):
+        for element_index, element in enumerate(elements):
+            field_value = field_values[element_index][time_index]
+            for node_index in element:
+                resulting_field[time_index][node_index] += 1/3*field_value
+
+    output_text = "time,r,z,heat_density\n"
+    for time_index, node_values in enumerate(resulting_field):
+        for node_index, node_value in enumerate(node_values):
+            r, z = nodes[node_index]
+            output_text += f"{time_index},{r},{z},{node_value}\n"
+
+    with open(output_path, "w", encoding="UTF-8") as fd:
+        fd.write(output_text)
 
 if __name__ == "__main__":
     data_directory = os.path.join(os.path.abspath(os.path.dirname(__file__)),
@@ -103,7 +128,7 @@ if __name__ == "__main__":
         os.mkdir(data_directory)
 
     # Simulation parameters
-    TIME_STEP_COUNT = 50
+    TIME_STEP_COUNT = 500
     DELTA_T = 1e-8
 
     # Excitation
@@ -112,7 +137,7 @@ if __name__ == "__main__":
 
     # Create mesh
     gmsh_handler = pfem.mesh.GmshHandler(mesh_file_path)
-    gmsh_handler.generate_rectangular_mesh(mesh_size=0.0001)
+    gmsh_handler.generate_rectangular_mesh()
 
     # Run simulation and save results
     u, q, power_loss = simulate(gmsh_handler,

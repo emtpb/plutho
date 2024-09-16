@@ -39,6 +39,7 @@ def create_vector_field_as_csv(u, nodes, folder_path):
     number_of_nodes = len(nodes)
     number_of_time_steps = u.shape[1]
 
+    # TODO Useless loop
     vector_field = np.zeros((number_of_time_steps, number_of_nodes, 6))
     for time_step in range(number_of_time_steps):
         for node_index, node in enumerate(nodes):

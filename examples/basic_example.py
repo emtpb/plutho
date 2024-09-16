@@ -80,7 +80,7 @@ def simulate(gmsh_handler, time_step_count, delta_t, excitation):
 
     # Solve
     M, C, K = pfem.assemble(mesh_data, material_data)
-    u, q, _ = pfem.solve_time(
+    u, q, _ = pfem.solve_time_thermo(
         M,
         C,
         K,
