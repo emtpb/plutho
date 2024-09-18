@@ -2,7 +2,6 @@
 thermal field."""
 
 # Python standard libraries
-from typing import Tuple
 import numpy as np
 import numpy.typing as npt
 import scipy.sparse as sparse
@@ -13,7 +12,8 @@ from .base import MaterialData, SimulationData, MeshData, \
     local_shape_functions, gradient_local_shape_functions, \
     local_to_global_coordinates, b_operator_global, integral_m, \
     integral_ku, integral_kuv, integral_kve, apply_dirichlet_bc, \
-    quadratic_quadrature, line_quadrature
+    quadratic_quadrature
+from .fem_piezo_time import calculate_charge
 
 
 def integral_ktheta(
@@ -61,69 +61,6 @@ def integral_theta_load(
     return quadratic_quadrature(inner)
 
 
-def charge_integral_u(
-        node_points: npt.NDArray,
-        u_e: npt.NDArray,
-        piezo_matrix: npt.NDArray,
-        jacobian_inverted_t: npt.NDArray) -> float:
-    """Calculates the integral of eBu of the given element.
-
-    Parameters:
-        node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
-            one triangle.
-        u_e: List of u values at the nodes of the triangle
-            [u1_r, u1_z, u2_r, u2_z, u3_r, u3_z].
-        piezo_matrix: Piezo matrix for the current element (e matrix).
-        jacobian_inverted_t: Jacobian matrix inverted and transposed, needed
-            for calculation of global derivatives.
-
-    Returns:
-        Integral of eBu of the current triangle.
-    """
-    def inner(s, t):
-        r = local_to_global_coordinates(node_points, s, t)[0]
-        b_opt_global = b_operator_global(
-            node_points,
-            s,
-            t,
-            jacobian_inverted_t)
-        # [1] commponent is taken because the normal of the
-        # boundary line is in z-direction
-        return np.dot(np.dot(piezo_matrix, b_opt_global), u_e)[1]*r
-
-    return line_quadrature(inner)
-
-
-def charge_integral_v(
-        node_points: npt.NDArray,
-        v_e: npt.NDArray,
-        permittivity_matrix: npt.NDArray,
-        jacobian_inverted_t: npt.NDArray) -> float:
-    """Calculates the integral of epsilonBVe of the given element.
-
-    Parameters:
-        node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
-            one triangle.
-        v_e: List of u values at the nodes of the triangle
-            [v1, v2, v3].
-        permittivity_matrix: Permittivity matrix for the current
-            element (e matrix).
-        jacobian_inverted_t: Jacobian matrix inverted and transposed, needed
-            for calculation of global derivatives.
-
-    Returns:
-        Integral of epsilonBVe of the current triangle.
-    """
-    def inner(s, t):
-        r = local_to_global_coordinates(node_points, s, t)[0]
-        dn = gradient_local_shape_functions()
-        global_dn = np.dot(jacobian_inverted_t, dn)
-
-        return np.dot(np.dot(permittivity_matrix, global_dn), v_e)[1]*r
-
-    return line_quadrature(inner)
-
-
 def loss_integral_scs(
         node_points: npt.NDArray,
         u_e_t: npt.NDArray,
@@ -162,73 +99,7 @@ def loss_integral_scs(
     return quadratic_quadrature(inner)
 
 
-def calculate_charge(
-        u: npt.NDArray,
-        permittivity_matrix: npt.NDArray,
-        piezo_matrix: npt.NDArray,
-        elements: npt.NDArray,
-        nodes) -> float:
-    """Calculates the charge of the given elements.
-
-    Parameters:
-        u: List of u values for every node.
-        permittivity_matrix: Permittivity matrix for the
-            current element (epsilon matrix).
-        piezo_matrix: Piezo matrix for the current element (e matrix).
-        elements: Elements for which the charge shall be calculated.
-        nodes: All nodes used in the simulation.
-    """
-    number_of_nodes = len(nodes)
-    q = 0
-
-    for element in elements:
-        dn = gradient_local_shape_functions()
-        node_points = np.array([
-            [nodes[element[0]][0], nodes[element[1]][0], nodes[element[2]][0]],
-            [nodes[element[0]][1], nodes[element[1]][1], nodes[element[2]][1]]
-        ])
-
-        # TODO Check why the jacobian_det did not work
-        # It should work with line elements instead of triangle elements
-        jacobian = np.dot(node_points, dn.T)
-        jacobian_inverted_t = np.linalg.inv(jacobian).T
-        # jacobian_det = np.linalg.det(jacobian)
-
-        # Since its a line integral along the top edge of the model where the
-        # triangles are aligned in a line.
-        # it is necessarry to use a different determinant. In this case the
-        # determinant is the difference between the.
-        # first 2 points of the triangle (which are always on the boundary
-        # line in gmsh).
-        jacobian_det = nodes[element[0]][0]-nodes[element[1]][0]
-
-        u_e = np.array([u[2*element[0]],
-                        u[2*element[0]+1],
-                        u[2*element[1]],
-                        u[2*element[1]+1],
-                        u[2*element[2]],
-                        u[2*element[2]+1]])
-        ve_e = np.array([u[element[0]+2*number_of_nodes],
-                         u[element[1]+2*number_of_nodes],
-                         u[element[2]+2*number_of_nodes]])
-
-        q_u = charge_integral_u(
-            node_points,
-            u_e,
-            piezo_matrix,
-            jacobian_inverted_t)*2*np.pi*jacobian_det
-        q_v = charge_integral_v(
-            node_points,
-            ve_e,
-            permittivity_matrix,
-            jacobian_inverted_t)*2*np.pi*jacobian_det
-
-        q += q_u - q_v
-
-    return q
-
-
-class PiezoThermoSim:
+class PiezoSimTherm:
     """Class for the coupled simulation of mechanical-electric and
     thermal field.
 
@@ -239,21 +110,46 @@ class PiezoThermoSim:
         dirichlet_nodes: List of nodes for which dirichlet values are set.
         dirichlet_values: List of values of the corresponding dirichlet nodes
             per time step.
+        m: Mass matrix.
+        c: Damping matrix.
+        k: Stiffness matrix.
+        u: Resulting vector of size 4*number_of_nodes containing u_r, u_z, v
+            and theta. u[node_index, time_index]. An offset needs to be
+            added to the node_index in order to access the different field
+            paramteters:
+                u_r: 0,
+                u_z: 1*number_of_nodes,
+                v: 2*number_of_nodes,
+                theta: 3*number_of_nodes
+        q: Resulting charges for each time step q[time_index].
+        mech_loss: Mechanical loss for each element per time step
+            mech_loss[element_index, time_index].
     """
-
+    # Simulation parameters
     mesh_data: MeshData
     material_data: MaterialData
     simulation_data: SimulationData
 
+    # Dirichlet boundary condition
     dirichlet_nodes: npt.NDArray
     dirichlet_values: npt.NDArray
+
+    # FEM matrices
+    m: npt.NDArray
+    c: npt.NDArray
+    k: npt.NDArray
+
+    # Resulting fields
+    u: npt.NDArray
+    q: npt.NDArray
+    mech_loss: npt.NDArray
 
     def __init__(
             self,
             mesh_data: MeshData,
             material_data: MaterialData,
             simulation_data: SimulationData):
-        """Constructor of PiezoThermo.
+        """Constructor of PiezoSimTherm.
 
         Parameters:
             mesh_data: MeshData format.
@@ -264,10 +160,53 @@ class PiezoThermoSim:
         self.material_data = material_data
         self.simulation_data = simulation_data
 
-    def assemble(self) \
-            -> Tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
-        """Assembles the FEM matrices based on the data classes set in this
-        class (mesh_data, material_data).
+    def set_dirichlet_boundary_conditions(
+            self,
+            electrode_nodes: npt.NDArray,
+            symaxis_nodes: npt.NDArray,
+            ground_nodes: npt.NDArray,
+            electrode_excitation: npt.NDArray,
+            number_of_time_steps: float):
+        """Sets the dirichlet boundary condition for the simulation
+        given the nodes of electrode, symaxis and ground. The electrode
+        nodes are set to the given electrode_excitation.
+        The symaxis nodes are the due to the axisymmetric model
+        and the ground nodes are set to 0.
+
+        Parameters:
+            electrode_nodes: Nodes in the electrode region.
+            symaxis_nodes: Nodes on the symmetrical axis (r=0).
+            ground_nodes: Nodes in the ground region.
+            electrode_excitation: Excitation values for each time step.
+            number_of_time_steps: Total number of time steps of the simulation.
+        """
+        # TODO Right now this funcion is also in PiezoSim. Maybe check to use
+        # inheritance or a static function.
+        # For "Electrode" set excitation function
+        # "Symaxis" and "Ground" are set to 0
+        # For displacement u set symaxis values to 0.
+        # Zeros are set for u_r and u_z but the u_z component is not used.
+        dirichlet_nodes_u = symaxis_nodes
+        dirichlet_values_u = np.zeros(
+            (number_of_time_steps, len(dirichlet_nodes_u), 2))
+
+        # For potential v set electrode to excitation and ground to 0
+        dirichlet_nodes_v = np.concatenate((electrode_nodes, ground_nodes))
+        dirichlet_values_v = np.zeros(
+            (number_of_time_steps, len(dirichlet_nodes_v)))
+
+        # Set excitation value for electrode nodes points
+        for time_index, excitation_value in enumerate(electrode_excitation):
+            dirichlet_values_v[time_index, :len(electrode_nodes)] = \
+                excitation_value
+
+        self.dirichlet_nodes = [dirichlet_nodes_u, dirichlet_nodes_v]
+        self.dirichlet_values = [dirichlet_values_u, dirichlet_values_v]
+
+    def assemble(self):
+        """Assembles the FEM matrices based on the set mesh_data and
+        material_data.
+        The matrices are stored in self.m, self.c, self.k.
         """
         # TODO Assembly takes to long rework this algorithm
         # Maybe the 2x2 matrix slicing is not very fast
@@ -406,98 +345,92 @@ class PiezoThermoSim:
             [zeros1x2, zeros1x1, ktheta]
         ])
 
-        return m.tolil(), c.tolil(), k.tolil()
+        self.m = m.tolil()
+        self.c = c.tolil()
+        self.k = k.tolil()
 
-    def set_dirichlet_boundary_conditions(
-            self,
-            electrode_nodes: npt.NDArray,
-            symaxis_nodes: npt.NDArray,
-            ground_nodes: npt.NDArray,
-            electrode_excitation: npt.NDArray):
-        """Sets the dirichelt boundary condition for the simulation
-        given the nodes of electrode, symaxis and ground. The electrode
-        nodes are set to the given electrode_excitation.
-        The symaxis nodes are the due to the axisymmetric model 
-        and the ground nodes are set to 0."""
-        number_of_time_steps = self.simulation_data.number_of_time_steps
-        # For "Electrode" set excitation function
-        # "Symaxis" and "Ground" are set to 0
-
-        # For displacement u set symaxis values to 0.
-        # Zeros are set for u_r and u_z but the u_z component is not used.
-        dirichlet_nodes_u = symaxis_nodes
-        dirichlet_values_u = np.zeros(
-            (number_of_time_steps, len(dirichlet_nodes_u), 2))
-
-        # For potential v set electrode to excitation and ground to 0
-        dirichlet_nodes_v = np.concatenate((electrode_nodes, ground_nodes))
-        dirichlet_values_v = np.zeros(
-            (number_of_time_steps, len(dirichlet_nodes_v)))
-
-        # Set excitation value for electrode nodes points
-        for time_index, excitation_value in enumerate(electrode_excitation):
-            dirichlet_values_v[time_index, :len(electrode_nodes)] = \
-                excitation_value
-
-        self.dirichlet_nodes = [dirichlet_nodes_u, dirichlet_nodes_v]
-        self.dirichlet_values = [dirichlet_values_u, dirichlet_values_v]
-
-    def solve_time(
-            self,
-            dirichlet_nodes: npt.NDArray,
-            dirichlet_values: npt.NDArray,
-            electrode_elements: npt.NDArray) -> Tuple[npt.NDArray, npt.NDArray]:
-        """Runs the simulation using the given m, c and k matrices as well as the
-        excitation. Calculates the displacement field, potential field and
-        the thermal field of the given model.
+    def solve_time(self, electrode_elements: npt.NDArray):
+        """Runs the simulation using the assembled m, c and k matrices as well
+        as the set excitation.
+        Calculates the displacement field, potential field and the thermal
+        field of the given model (all saved in u).
+        Calculates the electric charge in the elctrode and the
+        mechanical losses of the whole body.
+        Saves u[node_index, time_index], q[time_index] and
+        mechanical_losses[element_index, time_index].
 
         Parameters:
-            m: Mass matrix
-            c: Damping matrix
-            k: Stiffness matrix
-            mesh_data: Used for"""
-        """Effective stiffness implementation"""
-        number_of_time_steps = simulation_data.number_of_time_steps
-        beta = simulation_data.beta
-        gamma = simulation_data.gamma
-        delta_t = simulation_data.delta_t
-        elements = mesh_data.elements
-        nodes = mesh_data.nodes
+            electrode_elements: List of all elements which are in
+                the electrode.
+        """
+        number_of_time_steps = self.simulation_data.number_of_time_steps
+        beta = self.simulation_data.beta
+        gamma = self.simulation_data.gamma
+        delta_t = self.simulation_data.delta_t
+        elements = self.mesh_data.elements
+        nodes = self.mesh_data.nodes
         number_of_elements = len(elements)
         number_of_nodes = len(nodes)
 
+        m = self.m
+        c = self.c
+        k = self.k
+
         # Init arrays
-        u = np.zeros((m.shape[0], number_of_time_steps), dtype=np.float64) # Displacement u which is calculated
-        v = np.zeros((m.shape[0], number_of_time_steps), dtype=np.float64) # Displacement u derived after t (du/dt)
-        a = np.zeros((m.shape[0], number_of_time_steps), dtype=np.float64) # v derived after u (d^2u/dt^2)
+        # Displacement u which is calculated
+        u = np.zeros((m.shape[0], number_of_time_steps), dtype=np.float64)
+        # Displacement u derived after t (du/dt)
+        v = np.zeros((m.shape[0], number_of_time_steps), dtype=np.float64)
+        # v derived after u (d^2u/dt^2)
+        a = np.zeros((m.shape[0], number_of_time_steps), dtype=np.float64)
 
-        q = np.zeros(number_of_time_steps, dtype=np.float64) # Charge calculated during simulation (for impedance)
+        # Charge calculated during simulation (for impedance)
+        q = np.zeros(number_of_time_steps, dtype=np.float64)
 
-        m, c, k = apply_dirichlet_bc(m, c, k, dirichlet_nodes[0], dirichlet_nodes[1], number_of_nodes)
+        m, c, k = apply_dirichlet_bc(
+            m,
+            c,
+            k,
+            self.dirichlet_nodes[0],
+            self.dirichlet_nodes[1],
+            number_of_nodes)
 
-        K_star = (k+gamma/(beta*delta_t)*c+1/(beta*delta_t**2)*m).tocsr()
+        k_star = (k+gamma/(beta*delta_t)*c+1/(beta*delta_t**2)*m).tocsr()
 
-        power_loss = np.zeros((number_of_elements, number_of_time_steps), dtype=np.float64) # Power loss calculated during simulation (for thermal field)
-        
+        # Mechanical loss calculated during simulation (for thermal field)
+        mech_loss = np.zeros(
+            shape=(number_of_elements, number_of_time_steps),
+            dtype=np.float64)
+
         print("Starting simulation")
         for time_index in range(number_of_time_steps-1):
             # Calculate load vector and add dirichlet boundary conditions
-            f = get_load_vector(dirichlet_nodes[0], 
-                                dirichlet_values[0][time_index+1], 
-                                dirichlet_nodes[1],
-                                dirichlet_values[1][time_index+1],
-                                mesh_data,
-                                power_loss[:, time_index]
-            )
+            f = self.get_load_vector(
+                    self.dirichlet_nodes[0],
+                    self.dirichlet_values[0][time_index+1],
+                    self.dirichlet_nodes[1],
+                    self.dirichlet_values[1][time_index+1],
+                    mech_loss[:, time_index])
 
             # Perform Newmark method
             # Predictor step
-            u_tilde = u[:, time_index] + delta_t*v[:, time_index] + delta_t**2/2*(1-2*beta)*a[:, time_index]
-            v_tilde = v[:, time_index] + (1-gamma)*delta_t*a[:, time_index]
+            u_tilde = (
+                u[:, time_index]
+                + delta_t*v[:, time_index]
+                + delta_t**2/2*(1-2*beta)*a[:, time_index]
+            )
+            v_tilde = (
+                v[:, time_index]
+                + (1-gamma)*delta_t*a[:, time_index]
+            )
 
             # Solve for next time step
-            u[:, time_index+1] = slin.spsolve(K_star, f-c*v_tilde+(1/(beta*delta_t**2)*m+gamma/(beta*delta_t)*c)*u_tilde)
-
+            u[:, time_index+1] = slin.spsolve(
+                k_star, (
+                    f
+                    - c*v_tilde
+                    + (1/(beta*delta_t**2)*m
+                       + gamma/(beta*delta_t)*c)*u_tilde))
             # Perform corrector step
             a[:, time_index+1] = (u[:, time_index+1]-u_tilde)/(beta*delta_t**2)
             v[:, time_index+1] = v_tilde + gamma*delta_t*a[:, time_index+1]
@@ -505,10 +438,10 @@ class PiezoThermoSim:
             # Calculate charge
             q[time_index+1] = calculate_charge(
                 u[:, time_index+1],
-                material_data.permittivity_matrix,
-                material_data.piezo_matrix,
+                self.material_data.permittivity_matrix,
+                self.material_data.piezo_matrix,
                 electrode_elements,
-                mesh_data.nodes
+                self.mesh_data.nodes
             )
 
             # Calculate power_loss
@@ -516,19 +449,27 @@ class PiezoThermoSim:
             if time_index > 1:
                 for element_index, element in enumerate(elements):
                     node_points = np.array([
-                        [nodes[element[0]][0], nodes[element[1]][0], nodes[element[2]][0]],
-                        [nodes[element[0]][1], nodes[element[1]][1], nodes[element[2]][1]]
+                        [nodes[element[0]][0],
+                         nodes[element[1]][0],
+                         nodes[element[2]][0]],
+                        [nodes[element[0]][1],
+                         nodes[element[1]][1],
+                         nodes[element[2]][1]]
                     ])
 
-                    dN = gradient_local_shape_functions()
+                    dn = gradient_local_shape_functions()
                     node_points = np.array([
-                        [nodes[element[0]][0], nodes[element[1]][0], nodes[element[2]][0]],
-                        [nodes[element[0]][1], nodes[element[1]][1], nodes[element[2]][1]]
+                        [nodes[element[0]][0],
+                         nodes[element[1]][0],
+                         nodes[element[2]][0]],
+                        [nodes[element[0]][1],
+                         nodes[element[1]][1],
+                         nodes[element[2]][1]]
                     ])
-                    jacobian = np.dot(node_points, dN.T)
-                    jacobian_inverted_T = np.linalg.inv(jacobian).T
+                    jacobian = np.dot(node_points, dn.T)
+                    jacobian_inverted_t = np.linalg.inv(jacobian).T
                     jacobian_det = np.linalg.det(jacobian)
-                    dN = gradient_local_shape_functions()
+                    dn = gradient_local_shape_functions()
                     u_e = np.array([u[2*element[0], time_index],
                                     u[2*element[0]+1, time_index],
                                     u[2*element[1], time_index],
@@ -550,24 +491,62 @@ class PiezoThermoSim:
                                     u[2*element[2], time_index-2],
                                     u[2*element[2]+1, time_index-2]])
 
-                    loss_value = loss_integral_scs(node_points, u_e, u_e_t_minus_1, u_e_t_minus_2, delta_t, jacobian_inverted_T, material_data.elasticity_matrix)*2*np.pi*jacobian_det
-                    power_loss[element_index, time_index+1] = material_data.tau*loss_value
+                    loss_value = (
+                        loss_integral_scs(
+                            node_points,
+                            u_e,
+                            u_e_t_minus_1,
+                            u_e_t_minus_2,
+                            delta_t,
+                            jacobian_inverted_t,
+                            self.material_data.elasticity_matrix)
+                        * 2*np.pi*jacobian_det
+                    )
+
+                    mech_loss[element_index, time_index+1] = \
+                        self.material_data.alpha_k*loss_value
 
             if (time_index + 1) % 100 == 0:
                 print(f"Finished time step {time_index+1}")
 
-        return u, q, power_loss
+        self.q = q
+        self.u = u
+        self.mech_loss = mech_loss
 
-    def get_load_vector(nodes_u, values_u, nodes_v, values_v, mesh_data, power_loss):
-        # For u and v the load vector is set to the corresponding dirichlet values given by values_u and values_v
-        # at the nodes nodes_u and nodes_v since there is no inner charge and no forces given.
-        # For the temperature field the load vector represents the temperature sources given by the mechanical losses.
-        nodes = mesh_data.nodes
+    def get_load_vector(
+            self,
+            nodes_u: npt.NDArray,
+            values_u: npt.NDArray,
+            nodes_v: npt.NDArray,
+            values_v: npt.NDArray,
+            mech_loss: npt.NDArray) -> npt.NDArray:
+        """Calculates the load vector (right hand side) vector for the
+        simulation.
+
+        Parameters:
+            nodes_u: Nodes where the dirichlet bc for u is set.
+            values_u: Values of the u boundary condition for the nodes.
+                Contains a tuple of values [u_r, u_z].
+            nodes_v: Nodes where the dirichlet bc for v is set.
+            values_v: Value of the v boundary condition for the nodes.
+            mech_loss: Power loss of every element of the current time step.
+
+        Returns:
+            Right hand side vector for the simulation.
+        """
+        # For u and v the load vector is set to the corresponding dirichlet
+        # values given by values_u and values_v
+        # at the nodes nodes_u and nodes_v since there is no inner charge and
+        # no forces given.
+        # For the temperature field the load vector represents the temperature
+        # sources given by the mechanical losses.
+        nodes = self.mesh_data.nodes
         number_of_nodes = len(nodes)
 
-        # Can be initialized to 0 because external load and volume charge density is 0.
+        # Can be initialized to 0 because external load and volume charge
+        # density is 0.
         f = np.zeros(4*number_of_nodes, dtype=np.float64)
-        
+
         # Set dirichlet values for u_r only
         for node, value in zip(nodes_u, values_u):
             f[2*node] = value[0]
@@ -579,27 +558,32 @@ class PiezoThermoSim:
         for node, value in zip(nodes_v, values_v):
             f[node+offset] = value
 
-        # Calculate for theta load
-        # It needs to be assembled every step and every element since the power is time- and position-dependent
+        # Calculation for theta load.
+        # It needs to be assembled every step and every element since the
+        # power is time- and position-dependent
         f_theta = np.zeros(number_of_nodes)
 
-        for element_index, element in enumerate(mesh_data.elements):
-            dN = gradient_local_shape_functions()
+        for element_index, element in enumerate(self.mesh_data.elements):
+            dn = gradient_local_shape_functions()
             node_points = np.array([
-                [nodes[element[0]][0], nodes[element[1]][0], nodes[element[2]][0]],
-                [nodes[element[0]][1], nodes[element[1]][1], nodes[element[2]][1]]
+                [nodes[element[0]][0],
+                 nodes[element[1]][0],
+                 nodes[element[2]][0]],
+                [nodes[element[0]][1],
+                 nodes[element[1]][1],
+                 nodes[element[2]][1]]
             ])
-            jacobian = np.dot(node_points, dN.T)
+            jacobian = np.dot(node_points, dn.T)
             jacobian_det = np.linalg.det(jacobian)
 
-            point_loss = np.ones(3) * power_loss[element_index]/3
+            point_loss = np.ones(3) * mech_loss[element_index]/3
 
             f_theta_e = integral_theta_load(
                 node_points,
                 point_loss)*2*np.pi*jacobian_det
 
             for local_p, global_p in enumerate(element):
-                    f_theta[global_p] += f_theta_e[local_p]
+                f_theta[global_p] += f_theta_e[local_p]
 
         f[3*number_of_nodes:] = f_theta
 

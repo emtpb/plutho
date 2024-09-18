@@ -1,6 +1,7 @@
 """Module for base functionalities needed for the simulations."""
 
 # Python standard libraries
+from typing import Tuple
 from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
@@ -18,7 +19,6 @@ class MaterialData:
     heat_capacity: float
     alpha_m: float
     alpha_k: float
-    tau: float
 
 
 @dataclass
@@ -271,7 +271,7 @@ def apply_dirichlet_bc(
         k: npt.NDArray,
         nodes_u: npt.NDArray,
         nodes_v: npt.NDArray,
-        number_of_nodes: int):
+        number_of_nodes: int) -> Tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     """Prepares the given matrices m, c and k for the dirichlet boundary
     conditions. This is done by setting the corresponding rows to 0
     excepct for the node which will contain the specific value (this is set
@@ -286,7 +286,9 @@ def apply_dirichlet_bc(
         nodes_v: List of node indices of the dirichlet nodes of the electric
             field (electric potential).
         number_of_nodes: Total number of nodes of the simulation.
-        """
+    Returns:
+        Modified mass, damping and stiffness matrix.
+    """
     # Set rows of matrices to 0 and diagonal of K to 1 (at node points)
 
     # Matrices for u_r component

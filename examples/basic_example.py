@@ -2,6 +2,7 @@
 
 # Python standard libraries
 import os
+import numpy.typing as npt
 import numpy as np
 import matplotlib.pyplot as plt
 import gmsh
@@ -10,7 +11,20 @@ import gmsh
 import piezo_fem as pfem
 
 
-def simulate(gmsh_handler, time_step_count, delta_t, excitation):
+def simulate(
+        gmsh_handler: pfem.GmshHandler,
+        time_step_count: float,
+        delta_t: float,
+        excitation: npt.NDArray):
+    """Setup and runs the simulation with the given mesh and simulation
+    parameters.
+
+    Parameters:
+        gmsh_handler: Contains the mesh information.
+        time_step_count: Total number of time steps.
+        delta_t: Time difference between time steps.
+        excitation: Excitation values for each time step.
+    """
     # Get nodes and elements from mesh
     nodes, elements = gmsh_handler.get_mesh_nodes_and_elements()
     pg_elements = gmsh_handler.get_elements_by_physical_groups(["Electrode"])
@@ -20,14 +34,14 @@ def simulate(gmsh_handler, time_step_count, delta_t, excitation):
     print("Number of elements:", len(elements))
 
     # Time integration parameters
-    GAMMA = 0.5
-    BETA = 0.25
+    gamma = 0.5
+    beta = 0.25
 
     # Material parameters
     # TODO Use emt package for materials
     rho = 7800
-    alpha_M = 1.267e5
-    alpha_K = 6.259e-10
+    alpha_m = 1.267e5
+    alpha_k = 6.259e-10
     elasticity_matrix = np.array([
         [1.19e11, 0.83e11,       0, 0.84e11],
         [0.83e11, 1.17e11,       0, 0.83e11],
@@ -40,30 +54,20 @@ def simulate(gmsh_handler, time_step_count, delta_t, excitation):
         [-6.03, 15.49, 0, -6.03]
     ])
 
+    # Actually not neeeded for this simulation.
+    # TODO Maybe add different material classes for different models?
     thermal_conductivity = 1.1
     heat_capacity = 350
-    thermal_diffusivity = thermal_conductivity/(rho*heat_capacity)
-
-    # Excitation
-    pg_nodes = gmsh_handler.get_nodes_by_physical_groups(
-        ["Electrode", "Symaxis", "Ground"])
-    excitation_nodes, excitation_values = pfem.create_node_excitation(
-        pg_nodes["Electrode"],
-        pg_nodes["Symaxis"],
-        pg_nodes["Ground"],
-        excitation,
-        time_step_count)
 
     material_data = pfem.MaterialData(
         elasticity_matrix,
         permittivity_matrix,
         piezo_matrix,
         rho,
-        thermal_diffusivity,
+        thermal_conductivity,
         heat_capacity,
-        alpha_M,
-        alpha_K,
-        0.0
+        alpha_m,
+        alpha_k
     )
 
     mesh_data = pfem.MeshData(
@@ -74,24 +78,31 @@ def simulate(gmsh_handler, time_step_count, delta_t, excitation):
     simulation_data = pfem.SimulationData(
         delta_t,
         time_step_count,
-        GAMMA,
-        BETA
+        gamma,
+        beta
     )
 
-    # Solve
-    M, C, K = pfem.assemble(mesh_data, material_data)
-    u, q, _ = pfem.solve_time_thermo(
-        M,
-        C,
-        K,
+    solver = pfem.PiezoSim(
         mesh_data,
         material_data,
-        simulation_data,
-        excitation_nodes,
-        excitation_values,
-        electrode_triangles)
+        simulation_data
+    )
 
-    return u, q
+    # Excitation
+    pg_nodes = gmsh_handler.get_nodes_by_physical_groups(
+        ["Electrode", "Symaxis", "Ground"])
+    solver.set_dirichlet_boundary_conditions(
+        pg_nodes["Electrode"],
+        pg_nodes["Symaxis"],
+        pg_nodes["Ground"],
+        excitation,
+        time_step_count
+    )
+
+    solver.assemble()
+    solver.solve_time(electrode_triangles)
+
+    return solver.u, solver.q
 
 
 if __name__ == "__main__":
@@ -103,7 +114,7 @@ if __name__ == "__main__":
         os.mkdir(data_directory)
 
     # Simulation parameters
-    TIME_STEP_COUNT = 8192
+    TIME_STEP_COUNT = 50
     DELTA_T = 1e-8
 
     # Excitation
@@ -111,30 +122,36 @@ if __name__ == "__main__":
     excitation[1:10] = np.array([0.2, 0.4, 0.6, 0.8, 1, 0.8, 0.6, 0.4, 0.2])
 
     # Create mesh
-    gmsh_handler = pfem.mesh.GmshHandler(mesh_file_path)
+    gmsh_handler = pfem.GmshHandler(mesh_file_path)
     gmsh_handler.generate_rectangular_mesh()
 
     # Run simulation and save results
-    u, q = simulate(mesh_file_path, TIME_STEP_COUNT, DELTA_T, excitation)
+    u, q = simulate(gmsh_handler,
+                    TIME_STEP_COUNT,
+                    DELTA_T,
+                    excitation)
 
-    print(u.shape)
-    np.save(os.path.join(data_directory, "displacement"), u)
-    np.save(os.path.join(data_directory, "charge"), q)
+    # print("Creating post processing views")
+    gmsh_handler.create_post_processing_views(u, TIME_STEP_COUNT, DELTA_T)
+
+    # Open gmsh to show the fields
+    gmsh.fltk.run()
+
+    # Save results as npz files
+    # np.save(os.path.join(data_directory, "displacement"), u)
+    # np.save(os.path.join(data_directory, "charge"), q)
 
     # Load simulation
     # u = np.load(os.path.join(data_directory, "displacement.npy"))
     # q = np.load(os.path.join(data_directory, "charge.npy"))
-
-    print("Creating post processing views")
-    pfem.mesh.create_post_processing_views(mesh_file_path, u, 1000, DELTA_T)
-
-    frequencies_fem, impedence_fem = pfem.calculate_impedance(q,
-                                                              excitation,
-                                                              DELTA_T)
+    frequencies_fem, impedence_fem = pfem.calculate_impedance(
+        q, excitation, DELTA_T)
 
     # Get OpenCFS data
-    # time_list_cfs, charge_cfs = pfem.read_charge_open_cfs(os.path.join(data_directory, "charge_opencfs.hist"))
-    # frequencies_cfs, impedence_cfs = pfem.calculate_impedance(charge_cfs, excitation, DELTA_T)
+    # time_list_cfs, charge_cfs = pfem.read_charge_open_cfs(
+    #     os.path.join(data_directory, "charge_opencfs.hist"))
+    # frequencies_cfs, impedence_cfs = pfem.calculate_impedance(
+    #     charge_cfs, excitation, DELTA_T)
 
     # Plot FEM and OpenCfs
     plt.plot(frequencies_fem, np.abs(impedence_fem), label="MyFEM")
@@ -145,6 +162,3 @@ if __name__ == "__main__":
     plt.legend()
     plt.grid()
     plt.show()
-
-    gmsh.open(os.path.join(data_directory, "mesh_results.msh"))
-    gmsh.fltk.run()

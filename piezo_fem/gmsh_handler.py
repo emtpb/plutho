@@ -92,7 +92,9 @@ class GmshHandler:
 
         gmsh.view.write(view_tag, self.output_file_path, True)
 
-    def create_post_processing_views(self, field, number_of_time_steps, delta_t):
+    def create_post_processing_views(self, field, number_of_time_steps, delta_t, temperature_field: bool = False):
+        # TODO Rework with multiple functions for the views with u, v, and theta
+        # TODO Make possibility to choose if u is drawn as vector field or u_r and u_z
         node_tags, _, _ = gmsh.model.mesh.getNodes() 
         number_of_nodes = len(node_tags)
 
@@ -101,27 +103,31 @@ class GmshHandler:
         #u_r_view_tag = gmsh.view.add(f"u_r")
         #u_z_view_tag = gmsh.view.add(f"u_z")
         v_view_tag = gmsh.view.add(f"Voltage in V")
-        theta_view_tag = gmsh.view.add(f"Temperature in °C")
+        if temperature_field:
+            theta_view_tag = gmsh.view.add(f"Temperature in °C")
 
         for time_index in range(number_of_time_steps):
             current_u = [[field[2*i, time_index], field[2*i+1, time_index], 0] for i in range(number_of_nodes)]
             #current_u_r = field[:2*number_of_nodes:2, time_index].reshape(number_of_nodes, 1)
             #current_u_z = field[1:2*number_of_nodes:2, time_index].reshape(number_of_nodes, 1)t
             current_v = field[2*number_of_nodes:3*number_of_nodes, time_index].reshape(number_of_nodes, 1)
-            current_theta = field[3*number_of_nodes:, time_index].reshape(number_of_nodes, 1)
+            if temperature_field:
+                current_theta = field[3*number_of_nodes:, time_index].reshape(number_of_nodes, 1)
 
             gmsh.view.addModelData(u_view_tag, time_index, "", "NodeData", node_tags, current_u, time_index*delta_t, 3)
             #gmsh.view.addModelData(u_r_view_tag, time_index, "", "NodeData", node_tags, current_u_r, time_index*delta_t, 1)
             #gmsh.view.addModelData(u_z_view_tag, time_index, "", "NodeData", node_tags, current_u_z, time_index*delta_t, 1)
             gmsh.view.addModelData(v_view_tag, time_index, "", "NodeData", node_tags, current_v, time_index*delta_t, 1)
-            gmsh.view.addModelData(theta_view_tag, time_index, "", "NodeData", node_tags, current_theta, time_index*delta_t, 1)
+            if temperature_field:
+                gmsh.view.addModelData(theta_view_tag, time_index, "", "NodeData", node_tags, current_theta, time_index*delta_t, 1)
 
         gmsh.write(self.output_file_path)
         gmsh.view.write(u_view_tag, self.output_file_path, True)
         #gmsh.view.write(u_r_view_tag, self.output_file_path, True)
         #gmsh.view.write(u_z_view_tag, self.output_file_path, True)
         gmsh.view.write(v_view_tag, self.output_file_path, True)
-        gmsh.view.write(theta_view_tag, self.output_file_path, True)    
+        if temperature_field:
+            gmsh.view.write(theta_view_tag, self.output_file_path, True)    
 
     @staticmethod
     def get_electrode_triangles(electrode_elements, all_elements):
