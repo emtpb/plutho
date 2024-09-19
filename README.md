@@ -6,10 +6,10 @@ Gmsh is internally used to create the mesh.
 Currently only validated for 1 single parameter set and compared with OpenCFS. 
 
 ## Features
-
 - Automatic mesh generation with gmsh
-- Resulting fields automatically can be saved to *.msh files to be viewed in gmsh
+- Resulting fields automatically saved to *.msh files to be viewed in gmsh
 - Calculation of charge and impedence curve and mechanical losses
+- Simulation with or without temperature field
 
 ## TODO
 - Add tests for the solvers

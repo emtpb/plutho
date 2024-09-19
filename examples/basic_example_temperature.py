@@ -156,14 +156,14 @@ if __name__ == "__main__":
                                 excitation)
 
     # print("Creating post processing views")
-    gmsh_handler.create_post_processing_views(
-        u,
+    gmsh_handler.create_u_default_post_processing_view(
+        u, TIME_STEP_COUNT, DELTA_T, True)
+    gmsh_handler.create_element_post_processing_view(
+        power_loss,
         TIME_STEP_COUNT,
         DELTA_T,
-        True)
-    gmsh_handler.create_power_loss_post_processing_view(power_loss,
-                                                        TIME_STEP_COUNT,
-                                                        DELTA_T)
+        1,
+        "Mechanical loss")
 
     # Open gmsh to show the fields
     gmsh.fltk.run()

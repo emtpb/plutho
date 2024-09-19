@@ -1,4 +1,4 @@
-"""Module for für a basic example on how to use piezo_fem."""
+"""Module for a basic example on how to use piezo_fem."""
 
 # Python standard libraries
 import os
@@ -132,7 +132,8 @@ if __name__ == "__main__":
                     excitation)
 
     # print("Creating post processing views")
-    gmsh_handler.create_post_processing_views(u, TIME_STEP_COUNT, DELTA_T)
+    gmsh_handler.create_u_default_post_processing_view(
+        u, TIME_STEP_COUNT, DELTA_T, False)
 
     # Open gmsh to show the fields
     gmsh.fltk.run()
