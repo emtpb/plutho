@@ -1,11 +1,21 @@
 """Module for io functions for the resulting fields and values."""
 
 # Python standard libraries
+from typing import Tuple
 import numpy as np
-import os
+import numpy.typing as npt
 
-# TODO Maybe write general opencfs parser
-def read_charge_open_cfs(file_path):
+
+def parse_charge_hist_file(file_path: str) -> Tuple[npt.NDArray, npt.NDArray]:
+    """Reads the charge file from an OpenCFS simulation.
+
+    Parameters:
+        file_path: Path to the charge (*.hist) file.
+
+    Returns:
+        Tuple containing the time list and charge list read from the
+        given file.
+    """
     lines = []
     with open(file_path, "r", encoding="UTF-8") as fd:
         lines = fd.readlines()[3:]
@@ -19,22 +29,43 @@ def read_charge_open_cfs(file_path):
 
     return time, charge
 
-def parse_hist_file(file_path):
+
+def parse_displacement_hist_file(
+        file_path: str) -> Tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    """Reads the displacement file from and OpenCFS simulation.
+
+    Parameters:
+        file_path: Path to the displacement (*.hist) file.
+
+    Returns:
+        Tuple containg the time steps, u_r and u_z.
+    """
     lines = []
     with open(file_path, "r", encoding="UTF-8") as fd:
         lines = fd.readlines()
     time_steps = []
     u_r = []
     u_z = []
-    for time_index, line in enumerate(lines[3:]):
-        current_time_step, current_u_r, current_u_z = line.split() 
+    for _, line in enumerate(lines[3:]):
+        current_time_step, current_u_r, current_u_z = line.split()
         time_steps.append(float(current_time_step))
         u_r.append(float(current_u_r))
         u_z.append(float(current_u_z))
 
     return time_steps, u_r, u_z
 
-def create_vector_field_as_csv(u, nodes, folder_path):
+
+def create_vector_field_as_csv(
+        u: npt.NDArray,
+        nodes: npt.NDArray,
+        folder_path: str):
+    """Creates a new *.csv for each time step containing the data from u.
+
+    Parameters:
+        u: Contains the data (simulation output) u[time_index, node_index].
+        nodes: List of nodes used in the simulation.
+        folder_path: Path to the folder where the *.csv files are stored.
+    """
     # TODO Add check if folder exists
     number_of_nodes = len(nodes)
     number_of_time_steps = u.shape[1]
@@ -53,7 +84,7 @@ def create_vector_field_as_csv(u, nodes, folder_path):
             vector_field[time_step, node_index, 3] = current_u_z
             vector_field[time_step, node_index, 4] = current_v
             vector_field[time_step, node_index, 4] = current_theta
-        
+
     for time_step in range(number_of_time_steps):
         current_file_path = os.path.join(folder_path, f"u_{time_step}.csv")
         field = vector_field[time_step]
@@ -67,6 +98,6 @@ def create_vector_field_as_csv(u, nodes, folder_path):
             v = field[node_index][4]
             theta = field[node_index][5]
             text += f"{r},{z},{u_r},{u_z},{v},{theta}\n"
-            
+
         with open(current_file_path, "w", encoding="UTF-8") as fd:
-            fd.write(text)  
+            fd.write(text)
