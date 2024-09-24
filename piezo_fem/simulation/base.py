@@ -3,9 +3,21 @@
 # Python standard libraries
 from typing import Tuple
 from dataclasses import dataclass
+from enum import Enum
 import numpy as np
 import numpy.typing as npt
 import scipy.integrate as integrate
+
+
+class ModelType(Enum):
+    """Containts the model type. Since for different model types
+    different boundary conditions are needed it is necessary to make a
+    distinction.
+    Additionaly the Ring model type needs an appropiate mesh set separately
+    (using x_offset in the mesh generation).
+    """
+    DISC = "Disc"
+    RING = "Ring"
 
 
 @dataclass
@@ -28,6 +40,7 @@ class SimulationData:
     number_of_time_steps: float
     gamma: float
     beta: float
+    model_type: ModelType = ModelType.DISC
 
 
 @dataclass

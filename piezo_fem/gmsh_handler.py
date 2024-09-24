@@ -280,18 +280,24 @@ class GmshHandler:
             self,
             width: float = 0.005,
             height: float = 0.001,
-            mesh_size: float = 0.00015):
-        """Creates a gmsh rectangular mesh givn the width, height and the mesh
-        size.
+            mesh_size: float = 0.00015,
+            x_offset: float = 0):
+        """Creates a gmsh rectangular mesh given the width, height, the mesh
+        size and the x_offset.
 
         Parameters:
             width: With of the rect in m.
             height: Height of the rect in m.
             mesh_size: Mesh size of the mesh. Equal to the maximum distance
                 between two point in the mesh.
+            x_offset: Moves the rect anlong the x-direction. Default value is
+                0. For 0 the left side of the rect is on the y-axis.
         """
         gmsh.clear()
-        corner_points = [[0, 0], [width, 0], [width, height], [0, height]]
+        corner_points = [[x_offset, 0],
+                         [width+x_offset, 0],
+                         [width+x_offset, height],
+                         [0+x_offset, height]]
 
         gmsh_point_indices = []
         for point in corner_points:

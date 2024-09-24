@@ -79,7 +79,8 @@ def simulate(
         delta_t,
         time_step_count,
         gamma,
-        beta
+        beta,
+        pfem.ModelType.RING
     )
 
     solver = pfem.PiezoSim(
@@ -93,7 +94,8 @@ def simulate(
         ["Electrode", "Symaxis", "Ground"])
     solver.set_dirichlet_boundary_conditions(
         pg_nodes["Electrode"],
-        pg_nodes["Symaxis"],
+        # pg_nodes["Symaxis"],
+        None,  # Can be set to none if symmetrical boundary condition
         pg_nodes["Ground"],
         excitation,
         time_step_count
@@ -114,7 +116,7 @@ if __name__ == "__main__":
         os.mkdir(data_directory)
 
     # Simulation parameters
-    TIME_STEP_COUNT = 50
+    TIME_STEP_COUNT = 100
     DELTA_T = 1e-8
 
     # Excitation
@@ -123,7 +125,10 @@ if __name__ == "__main__":
 
     # Create mesh
     gmsh_handler = pfem.GmshHandler(mesh_file_path)
-    gmsh_handler.generate_rectangular_mesh()
+    # For a disc use:
+    # gmsh_handler.generate_rectangular_mesh()
+    # For a ring add the x_offset parameter:
+    gmsh_handler.generate_rectangular_mesh(x_offset=0.0005)
 
     # Run simulation and save results
     u, q = simulate(gmsh_handler,
