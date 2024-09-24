@@ -5,6 +5,10 @@ import os
 import numpy as np
 import numpy.typing as npt
 import matplotlib.pyplot as plt
+from scipy import integrate
+
+# Third party libraries
+import gmsh
 
 # Local libraries
 import piezo_fem as pfem
@@ -36,45 +40,15 @@ def simulate(
     gamma = 0.5
     beta = 0.25
 
-    # Material parameters
-    # TODO Use emt package for materials
-    rho = 7800
-    alpha_m = 1.267e5
-    alpha_m = 0
-    alpha_k = 6.259e-10
-    elasticity_matrix = np.array([
-        [1.19e11, 0.83e11,       0, 0.84e11],
-        [0.83e11, 1.17e11,       0, 0.83e11],
-        [0, 0, 0.21e11, 0],
-        [0.84e11, 0.83e11,       0, 1.19e11]
-    ])
-    permittivity_matrix = np.diag([8.15e-9, 6.58e-9])
-    piezo_matrix = np.array([
-        [0, 0, 12.09, 0],
-        [-6.03, 15.49, 0, -6.03]
-    ])
-
-    thermal_conductivity = 1.1
-    heat_capacity = 350
-
     mesh_data = pfem.MeshData(nodes, elements)
-    material_data = pfem.MaterialData(
-        elasticity_matrix,
-        permittivity_matrix,
-        piezo_matrix,
-        rho,
-        thermal_conductivity,
-        heat_capacity,
-        alpha_m,
-        alpha_k
-    )
+    material_data = pfem.pic255
 
     simulation_data = pfem.SimulationData(
-        delta_t,
-        time_step_count,
-        gamma,
-        beta,
-        pfem.ModelType.RING
+        delta_t=delta_t,
+        number_of_time_steps=time_step_count,
+        gamma=0.5,
+        beta=0.25,
+        model_type=pfem.ModelType.RING
     )
 
     # Create solver object and run simulation
@@ -84,12 +58,8 @@ def simulate(
         simulation_data)
 
     # Excitation
-    pg_nodes = gmsh_handler.get_nodes_by_physical_groups(
-        ["Electrode", "Symaxis", "Ground"])
     solver.set_dirichlet_boundary_conditions(
-        pg_nodes["Electrode"],
-        pg_nodes["Symaxis"],
-        pg_nodes["Ground"],
+        gmsh_handler,
         excitation,
         time_step_count
     )
@@ -97,15 +67,7 @@ def simulate(
     solver.assemble()
     solver.solve_time(electrode_triangles)
 
-    return solver.u, solver.q, solver.mech_loss
-
-
-def sinusodial_excitation(frequency, time_step_count, delta_t):
-    def sin(t): return np.sin(2*np.pi*t*frequency)
-    times = np.arange(time_step_count)*delta_t
-
-    return sin(times)
-
+    return solver.u, solver.q, solver.mech_loss, solver.temp_field_energy
 
 def create_power_loss_field_for_open_cfs(
         field_values,
@@ -134,35 +96,20 @@ def create_power_loss_field_for_open_cfs(
         fd.write(output_text)
 
 
-def calculate_electrical_input_energy(voltage_excitation, charge, delta_t, number_time_steps):
-    current = np.gradient(charge)
-
-    def integrate(x, delta_t):
-        return np.sum(x*delta_t)
-
-    times = np.arange(number_time_steps)*delta_t
-    print(voltage_excitation*current)
-    print("integral ", integrate(voltage_excitation*current, delta_t))
-    #plt.plot(times, voltage_excitation, label="V")
-    plt.plot(times, voltage_excitation*current, label="V*I")
-    plt.plot(times, current, label="I")
-    plt.plot(times, charge, label="Q")
-    plt.legend()
-    plt.grid()
-    plt.show()
-    return integrate(voltage_excitation*current, delta_t)
-
 
 if __name__ == "__main__":
     data_directory = os.path.join(os.path.abspath(os.path.dirname(__file__)),
                                   "data")
-    mesh_file_path = os.path.join(data_directory, "mesh.msh")
+
+    simulation_directory = os.path.join(
+        data_directory, "..", "simulations", "energy_check_big")
+    mesh_file_path = os.path.join(simulation_directory, "mesh.msh")
 
     if not os.path.exists(data_directory):
         os.mkdir(data_directory)
 
     # Simulation parameters
-    TIME_STEP_COUNT = 50
+    TIME_STEP_COUNT = 100000
     DELTA_T = 1e-8
 
     # Excitation
@@ -175,14 +122,17 @@ if __name__ == "__main__":
 
     # Create mesh
     gmsh_handler = pfem.GmshHandler(mesh_file_path)
-    gmsh_handler.generate_rectangular_mesh()#mesh_size=0.000075)
+    gmsh_handler.generate_rectangular_mesh(mesh_size=0.000075)
 
     # Run simulation and save results
-    u, q, power_loss = simulate(gmsh_handler,
+    u, q, power_loss, temp_field_energy = simulate(gmsh_handler,
                                 TIME_STEP_COUNT,
                                 DELTA_T,
                                 excitation)
 
+    np.savetxt(
+        os.path.join(simulation_directory, "temp_field_energy.txt"),
+        temp_field_energy)
     # print("Creating post processing views")
     #gmsh_handler.create_u_default_post_processing_view(
     #    u, TIME_STEP_COUNT, DELTA_T, True)
@@ -196,23 +146,24 @@ if __name__ == "__main__":
     # Open gmsh to show the fields
     #gmsh.fltk.run()
 
-    print(
-        "Electrical input energy:",
-        calculate_electrical_input_energy(
-            excitation,
-            q,
-            DELTA_T,
-            TIME_STEP_COUNT))
+    eie = calculate_electrical_input_energy(excitation, q, DELTA_T)
+    with open(
+            os.path.join(simulation_directory, "excitation_energy.txt"),
+            "w",
+            encoding="UTF-8") as fd:
+        fd.write(str(eie))
+    # print("Electrical input energy:", eie)
 
     # Save results as npz files
-    #np.save(os.path.join(data_directory, "displacement"), u)
-    #np.save(os.path.join(data_directory, "charge"), q)
+    # np.save(os.path.join(simulation_directory, "displacement"), u)
+    np.save(os.path.join(simulation_directory, "charge"), q)
 
+    print("Script finished.")
     # Load simulation
     # u = np.load(os.path.join(data_directory, "displacement.npy"))
     # q = np.load(os.path.join(data_directory, "charge.npy"))
-    frequencies_fem, impedence_fem = pfem.calculate_impedance(
-        q, excitation, DELTA_T)
+    # frequencies_fem, impedence_fem = pfem.calculate_impedance(
+    #     q, excitation, DELTA_T)
 
     # Get OpenCFS data
     # time_list_cfs, charge_cfs = pfem.read_charge_open_cfs(
@@ -222,11 +173,11 @@ if __name__ == "__main__":
 
 
     # Plot FEM and OpenCfs
-    plt.plot(frequencies_fem, np.abs(impedence_fem), label="MyFEM")
+    # plt.plot(frequencies_fem, np.abs(impedence_fem), label="MyFEM")
     # plt.plot(frequencies_cfs, np.abs(impedence_cfs), "+", label="OpenCFS")
-    plt.xlabel("Frequency f / Hz")
-    plt.ylabel("Impedence |Z| / $\\Omega$")
-    plt.yscale("log")
-    plt.legend()
-    plt.grid()
+    # plt.xlabel("Frequency f / Hz")
+    # plt.ylabel("Impedence |Z| / $\\Omega$")
+    # plt.yscale("log")
+    # plt.legend()
+    # plt.grid()
     # plt.show()

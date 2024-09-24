@@ -8,6 +8,9 @@ import numpy as np
 import numpy.typing as npt
 import scipy.integrate as integrate
 
+# Local libraries
+from ..gmsh_handler import GmshHandler
+
 
 class ModelType(Enum):
     """Containts the model type. Since for different model types
@@ -16,8 +19,15 @@ class ModelType(Enum):
     Additionaly the Ring model type needs an appropiate mesh set separately
     (using x_offset in the mesh generation).
     """
-    DISC = "Disc"
-    RING = "Ring"
+    DISC = "Disc model"
+    RING = "Ring model"
+
+
+class SimulationType(Enum):
+    """Contains the simulation type. Currently it is possible to have
+    a simulation with or without thermal field."""
+    PIEZOELECTRIC = "Piezoelectric"
+    THERMOPIEZOELECTRIC = "Thermo-piezoelectric"
 
 
 @dataclass
@@ -330,3 +340,57 @@ def apply_dirichlet_bc(
     # Currently no dirichlet bc for the temperature field -> TODO Instable?
 
     return m, c, k
+
+
+def get_dirichlet_boundary_conditions(
+        gmsh_handler: GmshHandler,
+        electrode_excitation: npt.NDArray,
+        number_of_time_steps: float,
+        set_symmetric_bc: bool = True):
+    """Sets the dirichlet boundary condition for the simulation
+    given the nodes of electrode, symaxis and ground. The electrode
+    nodes are set to the given electrode_excitation.
+    The symaxis nodes are the due to the axisymmetric model
+    and the ground nodes are set to 0.
+
+    Parameters:
+        electrode_nodes: Nodes in the electrode region.
+        symaxis_nodes: Nodes on the symmetrical axis (r=0).
+        ground_nodes: Nodes in the ground region.
+        electrode_excitation: Excitation values for each time step.
+        number_of_time_steps: Total number of time steps of the simulation.
+    """
+    # Get nodes from gmsh handler
+    pg_nodes = gmsh_handler.get_nodes_by_physical_groups(
+        ["Electrode", "Symaxis", "Ground"])
+
+    electrode_nodes = pg_nodes["Electrode"]
+    symaxis_nodes = pg_nodes["Symaxis"]
+    ground_nodes = pg_nodes["Ground"]
+
+    # TODO Right now this funcion is also in PiezoSim. Maybe check to use
+    # inheritance or a static function.
+    # For "Electrode" set excitation function
+    # "Symaxis" and "Ground" are set to 0
+    # For displacement u set symaxis values to 0.
+    # Zeros are set for u_r and u_z but the u_z component is not used.
+    if set_symmetric_bc:
+        dirichlet_nodes_u = symaxis_nodes
+        dirichlet_values_u = np.zeros(
+            (number_of_time_steps, len(dirichlet_nodes_u), 2))
+    else:
+        dirichlet_nodes_u = np.array([])
+        dirichlet_values_u = np.array([])
+
+    # For potential v set electrode to excitation and ground to 0
+    dirichlet_nodes_v = np.concatenate((electrode_nodes, ground_nodes))
+    dirichlet_values_v = np.zeros(
+        (number_of_time_steps, len(dirichlet_nodes_v)))
+
+    # Set excitation value for electrode nodes points
+    for time_index, excitation_value in enumerate(electrode_excitation):
+        dirichlet_values_v[time_index, :len(electrode_nodes)] = \
+            excitation_value
+
+    return [dirichlet_nodes_u, dirichlet_nodes_v], \
+        [dirichlet_values_u, dirichlet_values_v]

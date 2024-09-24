@@ -80,7 +80,7 @@ def simulate(
         time_step_count,
         gamma,
         beta,
-        pfem.ModelType.RING
+        pfem.SimulationType.RING
     )
 
     solver = pfem.PiezoSim(
@@ -116,7 +116,7 @@ if __name__ == "__main__":
         os.mkdir(data_directory)
 
     # Simulation parameters
-    TIME_STEP_COUNT = 100
+    TIME_STEP_COUNT = 8192
     DELTA_T = 1e-8
 
     # Excitation
@@ -131,40 +131,41 @@ if __name__ == "__main__":
     gmsh_handler.generate_rectangular_mesh(x_offset=0.0005)
 
     # Run simulation and save results
-    u, q = simulate(gmsh_handler,
-                    TIME_STEP_COUNT,
-                    DELTA_T,
-                    excitation)
+    # u, q = simulate(gmsh_handler,
+    #                 TIME_STEP_COUNT,
+    #                 DELTA_T,
+    #                 excitation)
 
     # print("Creating post processing views")
-    gmsh_handler.create_u_default_post_processing_view(
-        u, TIME_STEP_COUNT, DELTA_T, False)
+    # gmsh_handler.create_u_default_post_processing_view(
+    #     u, TIME_STEP_COUNT, DELTA_T, False)
 
     # Open gmsh to show the fields
-    gmsh.fltk.run()
+    # gmsh.fltk.run()
 
     # Save results as npz files
     # np.save(os.path.join(data_directory, "displacement"), u)
     # np.save(os.path.join(data_directory, "charge"), q)
 
     # Load simulation
-    # u = np.load(os.path.join(data_directory, "displacement.npy"))
-    # q = np.load(os.path.join(data_directory, "charge.npy"))
+    u = np.load(os.path.join(data_directory, "displacement.npy"))
+    q = np.load(os.path.join(data_directory, "charge.npy"))
     frequencies_fem, impedence_fem = pfem.calculate_impedance(
         q, excitation, DELTA_T)
 
     # Get OpenCFS data
-    # time_list_cfs, charge_cfs = pfem.read_charge_open_cfs(
-    #     os.path.join(data_directory, "charge_opencfs.hist"))
-    # frequencies_cfs, impedence_cfs = pfem.calculate_impedance(
-    #     charge_cfs, excitation, DELTA_T)
+    time_list_cfs, charge_cfs = pfem.parse_charge_hist_file(
+        os.path.join(data_directory, "charge_opencfs.hist"))
+    frequencies_cfs, impedence_cfs = pfem.calculate_impedance(
+        charge_cfs, excitation, DELTA_T)
 
     # Plot FEM and OpenCfs
-    plt.plot(frequencies_fem, np.abs(impedence_fem), label="MyFEM")
-    # plt.plot(frequencies_cfs, np.abs(impedence_cfs), "+", label="OpenCFS")
+    plt.plot(frequencies_fem, np.angle(impedence_fem), "b+", label="MyFEM")
+    plt.plot(frequencies_cfs, np.angle(impedence_cfs), "r+", label="OpenCFS")
     plt.xlabel("Frequency f / Hz")
-    plt.ylabel("Impedence |Z| / $\\Omega$")
-    plt.yscale("log")
+    #plt.ylabel("Impedence |Z| / $\\Omega$")
+    plt.ylabel("Phase arg(Z)")
+    #plt.yscale("log")
     plt.legend()
     plt.grid()
     plt.show()

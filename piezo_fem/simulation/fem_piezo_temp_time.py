@@ -14,6 +14,7 @@ from .base import MaterialData, SimulationData, MeshData, \
     integral_ku, integral_kuv, integral_kve, apply_dirichlet_bc, \
     quadratic_quadrature, ModelType
 from .fem_piezo_time import calculate_charge
+from piezo_fem import GmshHandler
 
 
 def integral_ktheta(
@@ -99,6 +100,16 @@ def loss_integral_scs(
     return quadratic_quadrature(inner)
 
 
+def energy_integral_theta(node_points, theta):
+    def inner(s, t):
+        n = local_shape_functions(s, t)
+        r = local_to_global_coordinates(node_points, s, t)[0]
+
+        return np.dot(n.T, theta)*r
+
+    return quadratic_quadrature(inner)
+
+
 class PiezoSimTherm:
     """Class for the coupled simulation of mechanical-electric and
     thermal field.
@@ -159,53 +170,6 @@ class PiezoSimTherm:
         self.mesh_data = mesh_data
         self.material_data = material_data
         self.simulation_data = simulation_data
-
-    def set_dirichlet_boundary_conditions(
-            self,
-            electrode_nodes: npt.NDArray,
-            symaxis_nodes: npt.NDArray,
-            ground_nodes: npt.NDArray,
-            electrode_excitation: npt.NDArray,
-            number_of_time_steps: float):
-        """Sets the dirichlet boundary condition for the simulation
-        given the nodes of electrode, symaxis and ground. The electrode
-        nodes are set to the given electrode_excitation.
-        The symaxis nodes are the due to the axisymmetric model
-        and the ground nodes are set to 0.
-
-        Parameters:
-            electrode_nodes: Nodes in the electrode region.
-            symaxis_nodes: Nodes on the symmetrical axis (r=0).
-            ground_nodes: Nodes in the ground region.
-            electrode_excitation: Excitation values for each time step.
-            number_of_time_steps: Total number of time steps of the simulation.
-        """
-        # TODO Right now this funcion is also in PiezoSim. Maybe check to use
-        # inheritance or a static function.
-        # For "Electrode" set excitation function
-        # "Symaxis" and "Ground" are set to 0
-        # For displacement u set symaxis values to 0.
-        # Zeros are set for u_r and u_z but the u_z component is not used.
-        if self.simulation_data.model_type is ModelType.DISC:
-            dirichlet_nodes_u = symaxis_nodes
-            dirichlet_values_u = np.zeros(
-                (number_of_time_steps, len(dirichlet_nodes_u), 2))
-        else:
-            dirichlet_nodes_u = np.array([])
-            dirichlet_values_u = np.array([])
-
-        # For potential v set electrode to excitation and ground to 0
-        dirichlet_nodes_v = np.concatenate((electrode_nodes, ground_nodes))
-        dirichlet_values_v = np.zeros(
-            (number_of_time_steps, len(dirichlet_nodes_v)))
-
-        # Set excitation value for electrode nodes points
-        for time_index, excitation_value in enumerate(electrode_excitation):
-            dirichlet_values_v[time_index, :len(electrode_nodes)] = \
-                excitation_value
-
-        self.dirichlet_nodes = [dirichlet_nodes_u, dirichlet_nodes_v]
-        self.dirichlet_values = [dirichlet_values_u, dirichlet_values_v]
 
     def assemble(self):
         """Assembles the FEM matrices based on the set mesh_data and
@@ -353,7 +317,9 @@ class PiezoSimTherm:
         self.c = c.tolil()
         self.k = k.tolil()
 
-    def solve_time(self, electrode_elements: npt.NDArray):
+    def solve_time(self,
+                   electrode_elements: npt.NDArray,
+                   set_symmetric_bc: bool = False):
         """Runs the simulation using the assembled m, c and k matrices as well
         as the set excitation.
         Calculates the displacement field, potential field and the thermal
@@ -366,6 +332,8 @@ class PiezoSimTherm:
         Parameters:
             electrode_elements: List of all elements which are in
                 the electrode.
+            set_symmetric_bc: True if the symmetric boundary condition for u
+                shall be set. False otherwise.
         """
         number_of_time_steps = self.simulation_data.number_of_time_steps
         beta = self.simulation_data.beta
@@ -405,23 +373,26 @@ class PiezoSimTherm:
         mech_loss = np.zeros(
             shape=(number_of_elements, number_of_time_steps),
             dtype=np.float64)
+        temp_field_energy = np.zeros(
+            shape=(number_of_time_steps),
+            dtype=np.float64)
 
         print("Starting simulation")
         for time_index in range(number_of_time_steps-1):
             # Calculate load vector and add dirichlet boundary conditions
-            if self.simulation_data.model_type is ModelType.RING:
+            if set_symmetric_bc:
+                f = self.get_load_vector(
+                        self.dirichlet_nodes[0],
+                        self.dirichlet_values[0][time_index+1],
+                        self.dirichlet_nodes[1],
+                        self.dirichlet_values[1][time_index+1],
+                        mech_loss[:, time_index])
+            else:
                 # If it is a ring there are no boundary conditions for u_r
                 # or u_z.
                 f = self.get_load_vector(
                         [],
                         [],
-                        self.dirichlet_nodes[1],
-                        self.dirichlet_values[1][time_index+1],
-                        mech_loss[:, time_index])
-            else:
-                f = self.get_load_vector(
-                        self.dirichlet_nodes[0],
-                        self.dirichlet_values[0][time_index+1],
                         self.dirichlet_nodes[1],
                         self.dirichlet_values[1][time_index+1],
                         mech_loss[:, time_index])
@@ -504,7 +475,10 @@ class PiezoSimTherm:
                                     u[2*element[1]+1, time_index-2],
                                     u[2*element[2], time_index-2],
                                     u[2*element[2]+1, time_index-2]])
-
+                    theta_e = np.array([
+                        u[element[0]+3*number_of_nodes, time_index],
+                        u[element[1]+3*number_of_nodes, time_index],
+                        u[element[2]+3*number_of_nodes, time_index]])
                     loss_value = (
                         loss_integral_scs(
                             node_points,
@@ -516,7 +490,14 @@ class PiezoSimTherm:
                             self.material_data.elasticity_matrix)
                         * 2*np.pi*jacobian_det
                     )
-
+                    temp_field_energy[time_index] += (
+                        energy_integral_theta(
+                            node_points,
+                            theta_e)
+                        * self.material_data.heat_capacity
+                        * self.material_data.density
+                        * 2*np.pi*jacobian_det
+                    )
                     mech_loss[element_index, time_index+1] = \
                         self.material_data.alpha_k*loss_value
 
@@ -526,6 +507,7 @@ class PiezoSimTherm:
         self.q = q
         self.u = u
         self.mech_loss = mech_loss
+        self.temp_field_energy = temp_field_energy
 
     def get_load_vector(
             self,

@@ -27,3 +27,9 @@ def calculate_impedance(
     impedance = excitation_fft/(2*np.pi*1j*frequencies*q_fft)
 
     return frequencies, impedance
+
+
+def calculate_electrical_input_energy(voltage_excitation, charge, delta_t):
+    current = np.gradient(charge)
+
+    return np.trapezoid(current*voltage_excitation, None, delta_t)

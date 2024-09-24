@@ -199,52 +199,6 @@ class PiezoSim:
         self.material_data = material_data
         self.simulation_data = simulation_data
 
-    def set_dirichlet_boundary_conditions(
-            self,
-            electrode_nodes: npt.NDArray,
-            symaxis_nodes: npt.NDArray,
-            ground_nodes: npt.NDArray,
-            electrode_excitation: npt.NDArray,
-            number_of_time_steps: float):
-        """Sets the dirichlet boundary condition for the simulation
-        given the nodes of electrode, symaxis and ground. The electrode
-        nodes are set to the given electrode_excitation.
-        The symaxis nodes are set due to the axisymmetric model
-        and the ground nodes are set to 0.
-
-        Parameters:
-            electrode_nodes: Nodes in the electrode region.
-            symaxis_nodes: Nodes on the symmetrical axis (r=0). Can be set to
-                none if the ModelType is RING.
-            ground_nodes: Nodes in the ground region.
-            electrode_excitation: Excitation values for each time step.
-            number_of_time_steps: Total number of time steps of the simulation.
-        """
-        # For "Electrode" set excitation function
-        # "Symaxis" and "Ground" are set to 0
-        # For displacement u set symaxis values to 0.
-        # Zeros are set for u_r and u_z but the u_z component is not used.
-        if self.simulation_data.model_type is ModelType.DISC:
-            dirichlet_nodes_u = symaxis_nodes
-            dirichlet_values_u = np.zeros(
-                (number_of_time_steps, len(dirichlet_nodes_u), 2))
-        else:
-            dirichlet_nodes_u = np.array([])
-            dirichlet_values_u = np.array([])
-
-        # For potential v set electrode to excitation and ground to 0
-        dirichlet_nodes_v = np.concatenate((electrode_nodes, ground_nodes))
-        dirichlet_values_v = np.zeros(
-            (number_of_time_steps, len(dirichlet_nodes_v)))
-
-        # Set excitation value for electrode nodes points
-        for time_index, excitation_value in enumerate(electrode_excitation):
-            dirichlet_values_v[time_index, :len(electrode_nodes)] = \
-                excitation_value
-
-        self.dirichlet_nodes = [dirichlet_nodes_u, dirichlet_nodes_v]
-        self.dirichlet_values = [dirichlet_values_u, dirichlet_values_v]
-
     def assemble(self):
         """Assembles the FEM matrices based on the set mesh_data and
         material_data.
