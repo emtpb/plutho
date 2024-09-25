@@ -14,7 +14,6 @@ from .base import MaterialData, SimulationData, MeshData, \
     integral_ku, integral_kuv, integral_kve, apply_dirichlet_bc, \
     quadratic_quadrature, ModelType
 from .fem_piezo_time import calculate_charge
-from piezo_fem import GmshHandler
 
 
 def integral_ktheta(

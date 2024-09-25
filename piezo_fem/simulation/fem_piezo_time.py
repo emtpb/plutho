@@ -319,7 +319,9 @@ class PiezoSim:
         self.c = c.tolil()
         self.k = k.tolil()
 
-    def solve_time(self, electrode_elements: npt.NDArray):
+    def solve_time(self,
+                   electrode_elements: npt.NDArray,
+                   set_symmetric_bc: bool = False):
         """Runs the simulation using the assembled m, c and k matrices as well
         as the set excitation.
         Calculates the displacement field and potential field of the given
@@ -358,27 +360,30 @@ class PiezoSim:
             k,
             self.dirichlet_nodes[0],
             self.dirichlet_nodes[1],
-            number_of_nodes)
+            number_of_nodes
+        )
 
         k_star = (k+gamma/(beta*delta_t)*c+1/(beta*delta_t**2)*m).tocsr()
 
         print("Starting simulation")
         for time_index in range(number_of_time_steps-1):
             # Calculate load vector and add dirichlet boundary conditions
-            if self.simulation_data.model_type is ModelType.RING:
+            if set_symmetric_bc:
+                f = self.get_load_vector(
+                        self.dirichlet_nodes[0],
+                        self.dirichlet_values[0][time_index+1],
+                        self.dirichlet_nodes[1],
+                        self.dirichlet_values[1][time_index+1]
+                )
+            else:
                 # If it is a ring there are no boundary conditions for u_r
                 # or u_z.
                 f = self.get_load_vector(
                         [],
                         [],
                         self.dirichlet_nodes[1],
-                        self.dirichlet_values[1][time_index+1])
-            else:
-                f = self.get_load_vector(
-                        self.dirichlet_nodes[0],
-                        self.dirichlet_values[0][time_index+1],
-                        self.dirichlet_nodes[1],
-                        self.dirichlet_values[1][time_index+1])
+                        self.dirichlet_values[1][time_index+1]
+                )
 
             # Perform Newmark method
             # Predictor step

@@ -8,9 +8,6 @@ import numpy as np
 import numpy.typing as npt
 import scipy.integrate as integrate
 
-# Local libraries
-from ..gmsh_handler import GmshHandler
-
 
 class ModelType(Enum):
     """Containts the model type. Since for different model types
@@ -19,15 +16,15 @@ class ModelType(Enum):
     Additionaly the Ring model type needs an appropiate mesh set separately
     (using x_offset in the mesh generation).
     """
-    DISC = "Disc model"
-    RING = "Ring model"
+    DISC = "disc"
+    RING = "ring"
 
 
 class SimulationType(Enum):
     """Contains the simulation type. Currently it is possible to have
     a simulation with or without thermal field."""
-    PIEZOELECTRIC = "Piezoelectric"
-    THERMOPIEZOELECTRIC = "Thermo-piezoelectric"
+    PIEZOELECTRIC = "piezoelectric"
+    THERMOPIEZOELECTRIC = "thermo-piezoelectric"
 
 
 @dataclass
@@ -50,7 +47,6 @@ class SimulationData:
     number_of_time_steps: float
     gamma: float
     beta: float
-    model_type: ModelType = ModelType.DISC
 
 
 @dataclass
@@ -58,6 +54,25 @@ class MeshData:
     """Contains the mesh data is used in the simulation."""
     nodes: npt.NDArray
     elements: npt.NDArray
+
+
+class ExcitationType(Enum):
+    SINUSOIDAL = "sinusoidal"
+    TRIANGULAR_PULSE = "triangular_pulse"
+
+
+@dataclass
+class ExcitationInfo:
+    amplitude: float
+    frequency: float
+    excitation_type: ExcitationType
+
+    def asdict(self):
+        content = self.__dict__
+        if self.frequency is None:
+            del content["frequency"]
+        content["excitation_type"] = self.excitation_type.value
+        return content
 
 
 def local_shape_functions(s: float, t: float) -> npt.NDArray:
@@ -343,7 +358,7 @@ def apply_dirichlet_bc(
 
 
 def get_dirichlet_boundary_conditions(
-        gmsh_handler: GmshHandler,
+        gmsh_handler,
         electrode_excitation: npt.NDArray,
         number_of_time_steps: float,
         set_symmetric_bc: bool = True):

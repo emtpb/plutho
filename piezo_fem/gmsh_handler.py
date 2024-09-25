@@ -7,10 +7,25 @@ import gmsh
 import numpy as np
 import numpy.typing as npt
 
+from .simulation.base import ModelType
+
 
 class GmshHandler:
     """Class to handle the mesh generation and the accessing of the nodes
-    and elements of the mesh."""
+    and elements of the mesh.
+
+    Attributs:
+        width: Width of the model.
+        height: Height of the model.
+        mesh_size: Mesh size of the mesh.
+        x_offset: Also called inner radius of the model. How far the model
+            is offset along the x direction."""
+
+    width: float
+    height: float
+    mesh_size: float
+    x_offset: float
+    model_type: ModelType
 
     def __init__(self, mesh_file_path: str):
         """Constructor for the GmshHandler. Given the mesh file path a *.msh
@@ -293,6 +308,12 @@ class GmshHandler:
             x_offset: Moves the rect anlong the x-direction. Default value is
                 0. For 0 the left side of the rect is on the y-axis.
         """
+        # Saves values for serialization and deserialization
+        self.width = width
+        self.height = height
+        self.mesh_size = mesh_size
+        self.x_offset = x_offset
+
         gmsh.clear()
         corner_points = [[x_offset, 0],
                          [width+x_offset, 0],
@@ -334,3 +355,17 @@ class GmshHandler:
         gmsh.model.geo.synchronize()
         gmsh.model.mesh.generate(2)
         gmsh.write(self.mesh_file_path)
+
+    def as_dict(self) -> Dict[str, float]:
+        """Returns the important mesh parameters as dictionary in order
+        to save it to a file.
+
+        Returns:
+            The dictionary containing the values."""
+        return {
+            "width": self.width,
+            "height": self.height,
+            "mesh_size": self.mesh_size,
+            "x_offset": self.x_offset,
+            "model_type": self.model_type.value
+        }
