@@ -1,13 +1,12 @@
 """Module for setting up the simulations."""
 
 # Python standard libraries
-from dataclasses import dataclass
-from enum import Enum
+from __future__ import annotations
 from typing import Union
+import configparser
 import os
 import numpy as np
 import numpy.typing as npt
-import configparser
 
 # Local libraries
 from .simulation.base import MeshData, MaterialData, SimulationData, \
@@ -23,8 +22,37 @@ class SimulationException(Exception):
 
 
 class Simulation:
-    """Wrapper class to make the handlign of the different simulation
-    classes easier."""
+    """Wrapper class to make the handling of the different simulation
+    classes easier. In order to use this it is necessary to call certain
+    functions to setup the simulation. Those include:
+    1. Setting up a mesh -> Disc or ring
+    2. Setting simulation settings
+    3. Setting excitation -> Triangle pulse or sinusoidal
+    4. Settings boundary conditions
+    5. Solving
+    (6. Saving results)
+    Examples can be found in the exmaples folder.
+
+    Parameters:
+        workspace_directory: Directory where all the files are stored.
+        masterial_data: Contains information about the used material.
+        simulation_name: Name of the simulation.
+
+    Attributes:
+        workspace_directory: Directory where all the files are stored.
+        gmsh_handler: Handler to manage the gmsh meshes and files.
+        simulation_type: Simulation type.
+        simulation_name: Name of the simulation. Used for names of the
+            different files.
+        solver: Either PiezoSim or PiezoSimTherm depending on the
+            simulation_type.
+        mesh_data: Contains information about the used mesh.
+        material_data: Contains information about the used material.
+        simulation_data: Contains information about the simulation itself.
+        excitation: Excitation function.
+        excitation_info: Information about the edxcitation used to store in the
+            config file.
+    """
 
     # Basic parameters
     workspace_directory: str
@@ -40,7 +68,11 @@ class Simulation:
     excitation: npt.NDArray
     excitation_info: ExcitationInfo
 
-    def __init__(self, workspace_directory, material_data, simulation_name):
+    def __init__(self,
+                 workspace_directory: str,
+                 material_data: MaterialData,
+                 simulation_name: str):
+        """"""
         self.workspace_directory = workspace_directory
         self.material_data = material_data
         self.simulation_name = simulation_name
@@ -55,7 +87,17 @@ class Simulation:
         self.mesh_data = None
         self.excitation_info = None
 
-    def create_disc_mesh(self, radius, height, mesh_size):
+    def create_disc_mesh(self,
+                         radius: float,
+                         height: float,
+                         mesh_size: float):
+        """Creates a disc mesh for the simulation.
+
+        Parameters:
+            radius: Radius of the disc.
+            height: Height of the disc.
+            mesh_size: Maximum distance between mesh elements.
+        """
         if not self.gmsh_handler:
             self.gmsh_handler = GmshHandler(
                 os.path.join(
@@ -72,7 +114,19 @@ class Simulation:
         nodes, elements = self.gmsh_handler.get_mesh_nodes_and_elements()
         self.mesh_data = MeshData(nodes, elements)
 
-    def create_ring_mesh(self, inner_radius, outer_radius, height, mesh_size):
+    def create_ring_mesh(self,
+                         inner_radius: float,
+                         outer_radius: float,
+                         height: float,
+                         mesh_size: float):
+        """Creates a ring mesh for the simulation.
+
+        Parameters:
+            inner_radius: Inner radius of the ring.
+            outer_radius: Outer radius of the ring.
+            height: Height of the ring.
+            mesh_size: Maximum distance between mesh elements.
+        """
         if not self.gmsh_handler:
             self.gmsh_handler = GmshHandler(
                 os.path.join(self.workspace_directory, "ring.msh")
@@ -87,7 +141,13 @@ class Simulation:
         nodes, elements = self.gmsh_handler.get_mesh_nodes_and_elements()
         self.mesh_data = MeshData(nodes, elements)
 
-    def set_triangle_pulse_excitation(self, amplitude):
+    def set_triangle_pulse_excitation(self,
+                                      amplitude: float):
+        """Settings a single triangle pulse as excitation. The length of the
+        triangle pulse is dependent on the delta_t. It takes up 9 time steps.
+
+        Parameters:
+            amplitude: Sets the amplitude of the triangle pulse."""
         if not self.simulation_data:
             raise SimulationException("Please set simulation data first.")
 
@@ -104,7 +164,14 @@ class Simulation:
 
         self.excitation = excitation
 
-    def set_sinusoidal_excitation(self, amplitude, frequency):
+    def set_sinusoidal_excitation(self,
+                                  amplitude: float,
+                                  frequency: float):
+        """Sets a sin function as excitation.
+
+        Parameters:
+            amplitude: Amplitude of the sin function.
+            frequency: Frequency of the sin function in Hz."""
         if not self.simulation_data:
             raise SimulationException("Please set simulation data first.")
 
@@ -121,11 +188,20 @@ class Simulation:
 
     def set_simulation(
             self,
-            delta_t,
-            number_of_time_steps,
-            gamma,
-            beta, 
-            simulation_type):
+            delta_t: float,
+            number_of_time_steps: int,
+            gamma: float,
+            beta: float,
+            simulation_type: SimulationType):
+        """Sets the simulation settings.
+
+        Parameters:
+            delta_t: Difference between the time steps.
+            number_of_time_steps: Total time step count.
+            gamma: Time integration parameter.
+            beta: Time integration parameter.
+            simulation_type: Type of the simulation.
+        """
         # Check if everything is set up.
         if not self.mesh_data:
             raise SimulationException("Please set mesh data first.")
@@ -157,6 +233,7 @@ class Simulation:
         self.simulation_type = simulation_type
 
     def set_boundary_conditions(self):
+        """Sets boundary conditions for the simulation."""
         if not self.gmsh_handler:
             raise SimulationException("Please setup mesh first.")
         if not self.excitation_info:
@@ -172,7 +249,9 @@ class Simulation:
         self.solver.dirichlet_nodes = dirichlet_nodes
         self.solver.dirichlet_values = dirichlet_values
 
-    def solve(self):
+    def simulate(self):
+        """Executes the simulation. Results can be accessed using
+        self.solver."""
         if not self.gmsh_handler:
             raise SimulationException("Please setup mesh first.")
         if not self.solver:
@@ -189,7 +268,14 @@ class Simulation:
         )
         # TODO Values as attributes? Return values or make wrappers to solver?
 
-    def save_simulation_settings(self, description: str = ""):
+    def save_simulation_settings(self,
+                                 description: str = ""):
+        """Saves the current simulation setup in a config file in the
+        working directory.
+
+        Parameters:
+            description: Description which can be added to the config file.
+        """
         settings = configparser.ConfigParser()
         general_settings = {
                 "name": self.simulation_name
@@ -211,9 +297,89 @@ class Simulation:
                 encoding="UTF-8") as fd:
             settings.write(fd)
 
-    # TODO Make a function to read settings from a config file
+    @staticmethod
+    def load_simulation_settings(
+            config_file_path: str,
+            new_working_diretory: str = None) -> Simulation:
+        """Creates a simulation object from the given config.
+
+        Parameters:
+            config_file_path: Pathto the config file.
+            new_working_directory: Overrides the working directory of the
+                given file with a new one. The simulation files are then saved
+                in the new working_direcotry. If set to None the working
+                directory of the file is used.
+
+        Returns:
+            Simulation object created from the config file."""
+        if not os.path.exists(config_file_path):
+            raise IOError(f"Couldn_t find config file {config_file_path}.")
+
+        config = configparser.ConfigParser()
+        config.read(config_file_path)
+
+        simulation_name = config["general"]["simulation_name"]
+        simulation_type = config["general"]["simulation_type"]
+        material_data = MaterialData(**config["material"])
+        simulation_data = SimulationData(**config["simulation"])
+        excitation_info = ExcitationInfo(
+            amplitude=config["excitation"]["amplitude"],
+            frequency=config["excitation"]["frequency"],
+            excitation_type=ExcitationType(
+                config["excitation"]["excitationtype"])
+        )
+
+        working_directory = new_working_diretory if new_working_diretory \
+            is not None else os.path.dirname(os.path.abspath(config_file_path))
+
+        sim = Simulation(working_directory, material_data, simulation_name)
+
+        model_type = ModelType(config["model"]["model_type"])
+        if model_type is ModelType.DISC:
+            sim.create_disc_mesh(
+                radius=config["model"]["width"],
+                height=config["model"]["height"],
+                mesh_size=config["model"]["mesh_size"]
+            )
+        elif model_type is ModelType.RING:
+            sim.create_ring_mesh(
+                inner_radius=config["model"]["x_offset"],
+                outer_radius=config["model"]["width"],
+                height=config["model"]["height"],
+                mesh_size=config["model"]["mesh_size"]
+            )
+        else:
+            raise IOError(f"Cannot deserialize ModelType {model_type}")
+
+        sim.set_simulation(
+            delta_t=simulation_data.delta_t,
+            number_of_time_steps=simulation_data.number_of_time_steps,
+            gamma=simulation_data.gamma,
+            beta=simulation_data.beta,
+            simulation_type=simulation_type
+        )
+
+        if excitation_info.excitation_type is ExcitationType.SINUSOIDAL:
+            sim.set_sinusoidal_excitation(
+                amplitude=excitation_info.amplitude,
+                frequency=excitation_info.frequency
+            )
+        elif excitation_info.excitation_type is \
+                ExcitationType.TRIANGULAR_PULSE:
+            sim.set_triangle_pulse_excitation(excitation_info.amplitude)
+        else:
+            raise IOError(
+                "Cannot deserialize ExcitationType "
+                f"{excitation_info.excitation_type}")
+
+        sim.set_boundary_conditions()
+        return sim
 
     def save_simulation_results(self):
+        """Saves the simulation results u, q and the mechanical
+        loss if the simulation of thermo-piezoelectric.
+        The files are saved in the simulation working directory.
+        """
         u_file_path = os.path.join(
             self.workspace_directory, f"{self.simulation_name}_u")
         q_file_path = os.path.join(
@@ -227,9 +393,10 @@ class Simulation:
                 self.workspace_directory,
                 f"{self.simulation_name}_mech_loss")
             np.save(mech_loss_file_path, self.solver.mech_loss)
-            # TODO Add energy stored?
 
     def create_post_processing_views(self):
+        """Writes the calculated fields to a gmsh *.msh file which can be
+        opened in gmsh. The files are written in the working directory."""
         if self.simulation_type is SimulationType.PIEZOELECTRIC:
             self.gmsh_handler.create_u_default_post_processing_view(
                 self.solver.u,

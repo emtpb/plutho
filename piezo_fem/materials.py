@@ -1,8 +1,12 @@
+"""Contains different materials which can be used in the simulations."""
+
+# Python standard libraries
 import numpy as np
 
-import piezo_fem as pfem
+# Local libraries
+from .simulation.base import MaterialData
 
-pic255 = pfem.MaterialData(
+pic255 = MaterialData(
     elasticity_matrix=np.array([
         [1.19e11, 0.83e11, 0, 0.84e11],
         [0.83e11, 1.17e11, 0, 0.83e11],

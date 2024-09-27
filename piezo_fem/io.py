@@ -2,6 +2,7 @@
 
 # Python standard libraries
 from typing import Tuple
+import os
 import numpy as np
 import numpy.typing as npt
 
@@ -66,38 +67,34 @@ def create_vector_field_as_csv(
         nodes: List of nodes used in the simulation.
         folder_path: Path to the folder where the *.csv files are stored.
     """
-    # TODO Add check if folder exists
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+
     number_of_nodes = len(nodes)
     number_of_time_steps = u.shape[1]
+    add_theta = u.shape[0] == 4*number_of_nodes
 
-    # TODO Useless loop
-    vector_field = np.zeros((number_of_time_steps, number_of_nodes, 6))
     for time_step in range(number_of_time_steps):
+        current_file_path = os.path.join(folder_path, f"u_{time_step}.csv")
+
+        text = "r,z,u_r,u_z,v,theta\n"
         for node_index, node in enumerate(nodes):
             current_u_r = u[2*node_index, time_step]
             current_u_z = u[2*node_index+1, time_step]
             current_v = u[2*number_of_nodes+node_index, time_step]
-            current_theta = u[3*number_of_nodes+node_index, time_step]
-            vector_field[time_step, node_index, 0] = node[0]
-            vector_field[time_step, node_index, 1] = node[1]
-            vector_field[time_step, node_index, 2] = current_u_r
-            vector_field[time_step, node_index, 3] = current_u_z
-            vector_field[time_step, node_index, 4] = current_v
-            vector_field[time_step, node_index, 4] = current_theta
+            if add_theta:
+                current_theta = u[3*number_of_nodes+node_index, time_step]
+                theta = current_theta
 
-    for time_step in range(number_of_time_steps):
-        current_file_path = os.path.join(folder_path, f"u_{time_step}.csv")
-        field = vector_field[time_step]
-
-        text = f"r,z,u_r,u_z,v,theta\n"
-        for node_index in range(number_of_nodes):
-            r = field[node_index][0]
-            z = field[node_index][1]
-            u_r = field[node_index][2]
-            u_z = field[node_index][3]
-            v = field[node_index][4]
-            theta = field[node_index][5]
-            text += f"{r},{z},{u_r},{u_z},{v},{theta}\n"
+            r = node[0]
+            z = node[1]
+            u_r = current_u_r
+            u_z = current_u_z
+            v = current_v
+            if add_theta:
+                text += f"{r},{z},{u_r},{u_z},{v},{theta}\n"
+            else:
+                text += f"{r},{z},{u_r},{u_z},{v}\n"
 
         with open(current_file_path, "w", encoding="UTF-8") as fd:
             fd.write(text)

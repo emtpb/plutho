@@ -57,17 +57,21 @@ class MeshData:
 
 
 class ExcitationType(Enum):
+    """Sets the excitation type of the simulation."""
     SINUSOIDAL = "sinusoidal"
     TRIANGULAR_PULSE = "triangular_pulse"
 
 
 @dataclass
 class ExcitationInfo:
+    """Contains information about the excitation. Is used to save the
+    excitation data in the simulation config file."""
     amplitude: float
     frequency: float
     excitation_type: ExcitationType
 
     def asdict(self):
+        """Returns this object as a dictionary."""
         content = self.__dict__
         if self.frequency is None:
             del content["frequency"]
@@ -383,8 +387,6 @@ def get_dirichlet_boundary_conditions(
     symaxis_nodes = pg_nodes["Symaxis"]
     ground_nodes = pg_nodes["Ground"]
 
-    # TODO Right now this funcion is also in PiezoSim. Maybe check to use
-    # inheritance or a static function.
     # For "Electrode" set excitation function
     # "Symaxis" and "Ground" are set to 0
     # For displacement u set symaxis values to 0.

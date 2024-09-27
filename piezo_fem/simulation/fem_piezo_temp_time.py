@@ -12,7 +12,7 @@ from .base import MaterialData, SimulationData, MeshData, \
     local_shape_functions, gradient_local_shape_functions, \
     local_to_global_coordinates, b_operator_global, integral_m, \
     integral_ku, integral_kuv, integral_kve, apply_dirichlet_bc, \
-    quadratic_quadrature, ModelType
+    quadratic_quadrature
 from .fem_piezo_time import calculate_charge
 
 
@@ -99,7 +99,17 @@ def loss_integral_scs(
     return quadratic_quadrature(inner)
 
 
-def energy_integral_theta(node_points, theta):
+def energy_integral_theta(
+        node_points: npt.NDArray,
+        theta: npt.NDArray):
+    """Integrates the given element over the given theta field.
+
+    Parameters:
+        node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
+            one triangle.
+        theta: List of the temperature field values of the points
+            [theta1, theta2, theta3].
+    """
     def inner(s, t):
         n = local_shape_functions(s, t)
         r = local_to_global_coordinates(node_points, s, t)[0]
@@ -112,6 +122,11 @@ def energy_integral_theta(node_points, theta):
 class PiezoSimTherm:
     """Class for the coupled simulation of mechanical-electric and
     thermal field.
+
+    Parameters:
+        mesh_data: MeshData format.
+        material_data: MaterialData format.
+        simulation_data: SimulationData format.
 
     Attributes:
         mesh_data: Contains the mesh information.
@@ -134,6 +149,8 @@ class PiezoSimTherm:
         q: Resulting charges for each time step q[time_index].
         mech_loss: Mechanical loss for each element per time step
             mech_loss[element_index, time_index].
+        temp_field_energy: Energy stored in the temperature field for every
+            time step.
     """
     # Simulation parameters
     mesh_data: MeshData
@@ -153,19 +170,13 @@ class PiezoSimTherm:
     u: npt.NDArray
     q: npt.NDArray
     mech_loss: npt.NDArray
+    temp_field_energy: npt.NDArray
 
     def __init__(
             self,
             mesh_data: MeshData,
             material_data: MaterialData,
             simulation_data: SimulationData):
-        """Constructor of PiezoSimTherm.
-
-        Parameters:
-            mesh_data: MeshData format.
-            material_data: MaterialData format.
-            simulation_data: SimulationData format.
-        """
         self.mesh_data = mesh_data
         self.material_data = material_data
         self.simulation_data = simulation_data

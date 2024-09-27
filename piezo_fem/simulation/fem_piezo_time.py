@@ -11,7 +11,7 @@ from .base import MaterialData, SimulationData, MeshData, \
     gradient_local_shape_functions, \
     local_to_global_coordinates, b_operator_global, integral_m, \
     integral_ku, integral_kuv, integral_kve, apply_dirichlet_bc, \
-    line_quadrature, ModelType
+    line_quadrature
 
 
 def charge_integral_u(
@@ -146,6 +146,11 @@ def calculate_charge(
 class PiezoSim:
     """Class for the simulation of mechanical-electric fields.
 
+    Parameters:
+        mesh_data: MeshData format.
+        material_data: MaterialData format.
+        simulation_data: SimulationData format.
+
     Attributes:
         mesh_data: Contains the mesh information.
         material_data: Contains the information about the materials.
@@ -188,13 +193,6 @@ class PiezoSim:
             mesh_data: MeshData,
             material_data: MaterialData,
             simulation_data: SimulationData):
-        """Constructor of PiezoSim.
-
-        Parameters:
-            mesh_data: MeshData format.
-            material_data: MaterialData format.
-            simulation_data: SimulationData format.
-        """
         self.mesh_data = mesh_data
         self.material_data = material_data
         self.simulation_data = simulation_data

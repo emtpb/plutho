@@ -29,7 +29,20 @@ def calculate_impedance(
     return frequencies, impedance
 
 
-def calculate_electrical_input_energy(voltage_excitation, charge, delta_t):
+def calculate_electrical_input_energy(
+        voltage_excitation: npt.NDArray,
+        charge: npt.NDArray,
+        delta_t: float) -> float:
+    """Calculates the energy of the elctric input.
+
+    Parameters:
+        voltage_excitation: Voltage signal used as excitation.
+        charge: Charge calculated in the simulation using the same
+            excitation.
+        delta_t: Time difference also used in the simulation.
+
+    Returns:
+        Electric input energy."""
     current = np.gradient(charge)
 
     return np.trapezoid(current*voltage_excitation, None, delta_t)
