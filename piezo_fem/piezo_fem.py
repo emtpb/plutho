@@ -402,6 +402,7 @@ class Simulation:
                 self.solver.u,
                 self.simulation_data.number_of_time_steps,
                 self.simulation_data.delta_t,
+                False,
                 False
             )
         elif self.simulation_type is SimulationType.THERMOPIEZOELECTRIC:
@@ -409,14 +410,16 @@ class Simulation:
                 self.solver.u,
                 self.simulation_data.number_of_time_steps,
                 self.simulation_data.delta_t,
-                True
+                True,
+                False
             )
             self.gmsh_handler.create_element_post_processing_view(
                 self.solver.mech_loss,
                 self.simulation_data.number_of_time_steps,
                 self.simulation_data.delta_t,
                 1,
-                "Mechanical loss"
+                "Mechanical loss",
+                True
             )
 
         else:

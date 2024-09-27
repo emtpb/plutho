@@ -68,7 +68,7 @@ def run_thermal_simulation(base_directory):
         number_of_time_steps=100,
         gamma=0.5,
         beta=0.25,
-        simulation_type=pfem.SimulationType.PIEZOELECTRIC,
+        simulation_type=pfem.SimulationType.THERMOPIEZOELECTRIC,
     )
     sim.set_triangle_pulse_excitation(1)
     sim.set_boundary_conditions()
@@ -80,7 +80,8 @@ def run_thermal_simulation(base_directory):
 
 
 if __name__ == "__main__":
-    cwd = os.path.join(os.path.abspath(os.path.dirname(__file__)))
-    run_disc_simulation(cwd)
+    cwd = os.path.join(os.path.abspath(os.path.dirname(__file__)),
+                       "simulations")
+    # run_disc_simulation(cwd)
     # run_ring_simulation(cwd)
-    # run_thermal_simulation(cwd)
+    run_thermal_simulation(cwd)

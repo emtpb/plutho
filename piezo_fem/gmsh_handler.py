@@ -182,7 +182,8 @@ class GmshHandler:
             number_of_time_steps: int,
             delta_t: float,
             field_dimension: int,
-            field_name: str):
+            field_name: str,
+            append: bool):
         """Appends a post processing view to the output mesh file.
         The given field must be scalar and defined over the elements.
 
@@ -193,6 +194,7 @@ class GmshHandler:
             field_dimension: 1 for scalar fields and 2 for vector fields
                 with 2 components.
             field_name: Description of the field in gmsh.
+            append: Set to true if this field should be appended to the file.
         """
         element_tags = gmsh.model.mesh.getElements(2)[1][0]
         number_of_elements = len(element_tags)
@@ -219,14 +221,15 @@ class GmshHandler:
                 time_index*delta_t,
                 field_dimension if field_dimension != 2 else 3)
 
-        gmsh.view.write(view_tag, self.output_file_path, False)
+        gmsh.view.write(view_tag, self.output_file_path, append)
 
     def create_u_default_post_processing_view(
             self,
             u: npt.NDArray,
             number_of_time_steps: int,
             delta_t: float,
-            temperature_field: bool):
+            temperature_field: bool,
+            append: bool):
         """Appends a post processing view to the output mesh file.
         The given field must be scalar and defined over the nodes.
 
@@ -236,12 +239,13 @@ class GmshHandler:
             delta_t: Time difference between each time step.
             temperature_field: True of u contains temperature field,
                 else false.
+            append: Set to true if this field should be appended to the file.
         """
         node_tags, _, _ = gmsh.model.mesh.getNodes()
         number_of_nodes = len(node_tags)
 
         # Views
-        u_view_tag = gmsh.view.add("u")
+        u_view_tag = gmsh.view.add("Displacement")
         v_view_tag = gmsh.view.add("Potential")
         if temperature_field:
             theta_view_tag = gmsh.view.add("Temperature")
@@ -252,10 +256,6 @@ class GmshHandler:
                  u[2*i+1, time_index], 0] for i in range(number_of_nodes)]
             current_v = u[2*number_of_nodes:3*number_of_nodes, time_index] \
                 .reshape(number_of_nodes, 1)
-            if temperature_field:
-                current_theta = u[3*number_of_nodes:, time_index] \
-                    .reshape(number_of_nodes, 1)
-
             gmsh.view.addModelData(
                 u_view_tag,
                 time_index,
@@ -274,7 +274,10 @@ class GmshHandler:
                 current_v,
                 time_index*delta_t,
                 1)
+
             if temperature_field:
+                current_theta = u[3*number_of_nodes:, time_index] \
+                    .reshape(number_of_nodes, 1)
                 gmsh.view.addModelData(
                     theta_view_tag,
                     time_index,
@@ -285,10 +288,10 @@ class GmshHandler:
                     time_index*delta_t,
                     1)
 
-        gmsh.write(self.output_file_path)
-        gmsh.view.write(u_view_tag, self.output_file_path, True)
+        gmsh.view.write(u_view_tag, self.output_file_path, append)
         gmsh.view.write(v_view_tag, self.output_file_path, True)
         if temperature_field:
+            print("should work")
             gmsh.view.write(theta_view_tag, self.output_file_path, True)
 
     def generate_rectangular_mesh(
