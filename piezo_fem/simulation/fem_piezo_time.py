@@ -42,7 +42,8 @@ def charge_integral_u(
             jacobian_inverted_t)
         # [1] commponent is taken because the normal of the
         # boundary line is in z-direction
-        return np.dot(np.dot(piezo_matrix, b_opt_global), u_e)[1]*r
+        # -1 because the normal points inwards
+        return -np.dot(np.dot(piezo_matrix, b_opt_global), u_e)[1]*r
 
     return line_quadrature(inner)
 
@@ -72,7 +73,7 @@ def charge_integral_v(
         dn = gradient_local_shape_functions()
         global_dn = np.dot(jacobian_inverted_t, dn)
 
-        return np.dot(np.dot(permittivity_matrix, global_dn), v_e)[1]*r
+        return -np.dot(np.dot(permittivity_matrix, global_dn), v_e)[1]*r
 
     return line_quadrature(inner)
 

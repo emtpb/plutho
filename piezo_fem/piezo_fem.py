@@ -15,7 +15,7 @@ from .simulation.base import MeshData, MaterialData, SimulationData, \
 from .simulation.fem_piezo_temp_time import PiezoSimTherm
 from .simulation.fem_piezo_time import PiezoSim
 from .gmsh_handler import GmshHandler
-
+from .materials import pic255
 
 class SimulationException(Exception):
     """Custom exception to simplify errors."""
@@ -276,13 +276,13 @@ class Simulation:
         """
         settings = configparser.ConfigParser()
         general_settings = {
-                "name": self.simulation_name
+                "name": self.simulation_name,
+                "material_name": self.material_data.name
         }
         if description != "":
             general_settings["description"] = description
         general_settings["simulation_type"] = self.simulation_type.value
         settings["general"] = general_settings
-        settings["material"] = self.material_data.__dict__
         settings["simulation"] = self.simulation_data.__dict__
         settings["excitation"] = self.excitation_info.asdict()
         settings["model"] = self.gmsh_handler.as_dict()
@@ -316,16 +316,42 @@ class Simulation:
         config = configparser.ConfigParser()
         config.read(config_file_path)
 
-        simulation_name = config["general"]["simulation_name"]
-        simulation_type = config["general"]["simulation_type"]
-        material_data = MaterialData(**config["material"])
-        simulation_data = SimulationData(**config["simulation"])
-        excitation_info = ExcitationInfo(
-            amplitude=config["excitation"]["amplitude"],
-            frequency=config["excitation"]["frequency"],
-            excitation_type=ExcitationType(
-                config["excitation"]["excitationtype"])
+        simulation_name = config["general"]["name"]
+        simulation_type = SimulationType(
+            config["general"]["simulation_type"])
+        material_name = config["general"]["material_name"]
+        if material_name == "pic255":
+            material_data = pic255
+        else:
+            raise SimulationException(
+                f"Unknown material given {material_name}")
+
+        simulation_data = SimulationData(
+            delta_t=float(config["simulation"]["delta_t"]),
+            number_of_time_steps=int(
+                config["simulation"]["number_of_time_steps"]),
+            gamma=float(config["simulation"]["gamma"]),
+            beta=float(config["simulation"]["beta"])
         )
+        excitation_type = ExcitationType(
+            config["excitation"]["excitation_type"]
+        )
+        if excitation_type is ExcitationType.SINUSOIDAL:
+            excitation_info = ExcitationInfo(
+                amplitude=float(config["excitation"]["amplitude"]),
+                frequency=float(config["excitation"]["frequency"]),
+                excitation_type=excitation_type
+            )
+
+        elif excitation_type is ExcitationType.TRIANGULAR_PULSE:
+            excitation_info = ExcitationInfo(
+                amplitude=float(config["excitation"]["amplitude"]),
+                excitation_type=excitation_type,
+                frequency=0
+            )
+        else:
+            raise SimulationException(
+                f"Unknown excitation type given {excitation_type}")
 
         working_directory = new_working_diretory if new_working_diretory \
             is not None else os.path.dirname(os.path.abspath(config_file_path))
@@ -333,18 +359,20 @@ class Simulation:
         sim = Simulation(working_directory, material_data, simulation_name)
 
         model_type = ModelType(config["model"]["model_type"])
+        # TODO Is it necessary to always create the new mesh file? Most 
+        # likely the file is already there.
         if model_type is ModelType.DISC:
             sim.create_disc_mesh(
-                radius=config["model"]["width"],
-                height=config["model"]["height"],
-                mesh_size=config["model"]["mesh_size"]
+                radius=float(config["model"]["width"]),
+                height=float(config["model"]["height"]),
+                mesh_size=float(config["model"]["mesh_size"])
             )
         elif model_type is ModelType.RING:
             sim.create_ring_mesh(
-                inner_radius=config["model"]["x_offset"],
-                outer_radius=config["model"]["width"],
-                height=config["model"]["height"],
-                mesh_size=config["model"]["mesh_size"]
+                inner_radius=float(config["model"]["x_offset"]),
+                outer_radius=float(config["model"]["width"]),
+                height=float(config["model"]["height"]),
+                mesh_size=float(config["model"]["mesh_size"])
             )
         else:
             raise IOError(f"Cannot deserialize ModelType {model_type}")
@@ -391,6 +419,10 @@ class Simulation:
                 self.workspace_directory,
                 f"{self.simulation_name}_mech_loss")
             np.save(mech_loss_file_path, self.solver.mech_loss)
+            temp_field_energy_file_path = os.path.join(
+                self.workspace_directory,
+                f"{self.simulation_name}_temp_field_energy")
+            np.save(temp_field_energy_file_path, self.solver.temp_field_energy)
 
     def create_post_processing_views(self):
         """Writes the calculated fields to a gmsh *.msh file which can be

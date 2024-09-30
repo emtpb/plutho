@@ -14,7 +14,4 @@ Currently only validated for 1 single parameter set and compared with OpenCFS.
 ## TODO
 - Add tests for the solvers
 - Fix importing structure
-- Finish refactoring and polishing
-- Add saving and loading functionality for simulation class
 - Test simulation class
-- Abstract class for the piezo sim classes

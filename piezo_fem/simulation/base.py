@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from enum import Enum
 import numpy as np
 import numpy.typing as npt
-import scipy.integrate as integrate
 
 
 class ModelType(Enum):
@@ -38,6 +37,7 @@ class MaterialData:
     heat_capacity: float
     alpha_m: float
     alpha_k: float
+    name: str
 
 
 @dataclass
