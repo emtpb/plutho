@@ -72,7 +72,6 @@ class Simulation:
                  workspace_directory: str,
                  material_data: MaterialData,
                  simulation_name: str):
-        """"""
         self.workspace_directory = workspace_directory
         self.material_data = material_data
         self.simulation_name = simulation_name

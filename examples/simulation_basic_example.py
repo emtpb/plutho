@@ -1,7 +1,15 @@
 """Implements examples on how to use the simulation class of piezo_fem."""
+
+# Python standard libraries
 import os
-import piezo_fem as pfem
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Third party libraries
 import gmsh
+
+# Local libraries
+import piezo_fem as pfem
 
 
 def run_ring_simulation(base_directory):
@@ -75,8 +83,71 @@ def run_thermal_simulation(base_directory):
     sim.save_simulation_settings(
         "An example for a thermal piezo-electric simulation.")
     sim.simulate()
+
+
+def post_processing_temp(sim: pfem.Simulation):
+    """Runs post processing for the given simulation object.
+
+    Parameters:
+        sim: Simulation object where the simulation is already done.
+    """
+    if sim.simulation_type is not pfem.SimulationType.THERMOPIEZOELECTRIC:
+        raise TypeError("Need thermo-piezoelectric simulation for this post"
+                        "processing function")
     sim.create_post_processing_views()
+    # sim.save_simulation_results()
+
+    # Plot fields
     # gmsh.fltk.run()
+
+    compare_energies(sim)
+    # plot_impedance_with_opencfs(sim, os.path.)
+
+
+def compare_energies(sim: pfem.Simulation):
+    """Prints the input energy and the energy stored in the thermal field
+    at the end of the simulation.
+
+    Parameters:
+        sim: Simulation object where the simulation is already done.
+    """
+    input_energy = pfem.calculate_electrical_input_energy(
+        sim.excitation, sim.solver.qq, sim.simulation_data.delta_t)
+    thermal_energy = sim.solver.temp_field_energy
+
+    print("Input energy:", input_energy)
+    print("Energy in thermal field at last time step:", thermal_energy[-1])
+
+
+def plot_impedance_with_opencfs(sim: pfem.Simulation, open_cfs_hist_file: str):
+    """Calculates and plots the impedence curves of the given FEM simulation
+    together with OpenCFS results.
+
+    Parameters:
+        sim: Simulation object where the simulation was already done.
+        open_cfs_hist_file: Hist file cotaining the charge from opencfs
+            simulation.
+    """
+    delta_t = sim.simulation_data.delta_t
+    excitation = sim.excitation
+
+    frequencies_fem, impedence_fem = pfem.calculate_impedance(
+        sim.solver.q, excitation, delta_t)
+
+    # Get OpenCFS data
+    _, charge_cfs = pfem.parse_charge_hist_file(open_cfs_hist_file)
+    frequencies_cfs, impedence_cfs = pfem.calculate_impedance(
+        charge_cfs, excitation, delta_t)
+
+    # Plot FEM and OpenCfs
+    plt.plot(frequencies_fem, np.abs(impedence_fem), label="MyFEM")
+    plt.plot(frequencies_cfs, np.abs(impedence_cfs), "+", label="OpenCFS")
+    plt.xlabel("Frequency f / Hz")
+    plt.ylabel("Impedence |Z| / $\\Omega$")
+    plt.yscale("log")
+    plt.legend()
+    plt.grid()
+    plt.show()
 
 
 if __name__ == "__main__":
