@@ -265,7 +265,6 @@ class Simulation:
             electrode_triangles,
             self.gmsh_handler.model_type is ModelType.DISC
         )
-        # TODO Values as attributes? Return values or make wrappers to solver?
 
     def save_simulation_settings(self,
                                  description: str = ""):

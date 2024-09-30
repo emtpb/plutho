@@ -3,7 +3,6 @@
 # Python standard libraries
 from typing import Tuple
 import os
-import numpy as np
 import numpy.typing as npt
 
 

@@ -302,9 +302,7 @@ def line_quadrature(func):
 
     Returns:
         Integral of the given function along r-axis"""
-    # TODO Analyze difference
-    # return func(1/np.sqrt(3), 0) + func(-1/np.sqrt(3), 0)
-    return integrate.quad(lambda x: func(x, 0), 0, 1)[0]
+    return 0.5*(func(-1/2/np.sqrt(3)+1/2, 0) + func(1/2/np.sqrt(3)+1/2, 0))
 
 
 def apply_dirichlet_bc(

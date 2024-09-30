@@ -62,14 +62,14 @@ def run_disc_simulation(base_directory):
     # gmsh.fltk.run()
 
 
-def run_thermal_simulation(base_directory):
+def run_thermal_simulation(base_directory, name):
     """Example for a thermo piezoelectric simulation of a disc.
 
     Parameters:
         base_directory: Directory where the simulation directory is created.
     """
-    sim_directory = os.path.join(base_directory, "thermal_sim")
-    sim = pfem.Simulation(sim_directory, pfem.pic255, "Thermal sim")
+    sim_directory = os.path.join(base_directory, name)
+    sim = pfem.Simulation(sim_directory, pfem.pic255, name)
     sim.create_disc_mesh(0.005, 0.001, 0.00015)
     sim.set_simulation(
         delta_t=1e-8,
@@ -84,6 +84,8 @@ def run_thermal_simulation(base_directory):
         "An example for a thermal piezo-electric simulation.")
     sim.simulate()
 
+    post_processing_temp(sim)
+
 
 def post_processing_temp(sim: pfem.Simulation):
     """Runs post processing for the given simulation object.
@@ -95,12 +97,12 @@ def post_processing_temp(sim: pfem.Simulation):
         raise TypeError("Need thermo-piezoelectric simulation for this post"
                         "processing function")
     sim.create_post_processing_views()
-    # sim.save_simulation_results()
+    sim.save_simulation_results()
 
     # Plot fields
     # gmsh.fltk.run()
 
-    compare_energies(sim)
+    # compare_energies(sim)
     # plot_impedance_with_opencfs(sim, os.path.)
 
 
@@ -155,4 +157,4 @@ if __name__ == "__main__":
                        "simulations")
     # run_disc_simulation(cwd)
     # run_ring_simulation(cwd)
-    run_thermal_simulation(cwd)
+    run_thermal_simulation(cwd, "custom_int")

@@ -186,7 +186,7 @@ class PiezoSimTherm:
         material_data.
         The matrices are stored in self.m, self.c, self.k.
         """
-        # TODO Assembly takes to long rework this algorithm
+        # TODO Assembly takes long rework this algorithm?
         # Maybe the 2x2 matrix slicing is not very fast
         nodes = self.mesh_data.nodes
 
