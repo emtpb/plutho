@@ -93,17 +93,17 @@ def real_model(base_directory):
     Parameters:
         base_directory: Directory where the simulation directory is created.
     """
-    sim_directory = os.path.join(base_directory, "real_model_30k")
-    sim = pfem.Simulation(sim_directory, pfem.pic255, "real_model_30k")
-    sim.create_disc_mesh(0.005, 0.001, 0.00015)
+    sim_directory = os.path.join(base_directory, "real_model_10k")
+    sim = pfem.Simulation(sim_directory, pfem.pic255, "real_model_10k")
+    sim.create_disc_mesh(0.005, 0.001, 0.0001)
     sim.set_simulation(
         delta_t=1e-8,
-        number_of_time_steps=30000,
+        number_of_time_steps=10000,
         gamma=0.5,
         beta=0.25,
         simulation_type=pfem.SimulationType.THERMOPIEZOELECTRIC,
     )
-    sim.set_sinusoidal_excitation(20, 2e6)
+    sim.set_sinusoidal_excitation(1, 2e6)
     sim.set_boundary_conditions()
     sim.save_simulation_settings(
         "An example for a thermal piezo-electric simulation.")

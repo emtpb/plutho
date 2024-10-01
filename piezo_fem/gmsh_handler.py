@@ -221,6 +221,8 @@ class GmshHandler:
                 time_index*delta_t,
                 field_dimension if field_dimension != 2 else 3)
 
+        if not os.path.exists(self.output_file_path):
+            gmsh.write(self.output_file_path)
         gmsh.view.write(view_tag, self.output_file_path, append)
 
     def create_u_default_post_processing_view(
@@ -287,7 +289,8 @@ class GmshHandler:
                     current_theta,
                     time_index*delta_t,
                     1)
-
+        if not os.path.exists(self.output_file_path):
+            gmsh.write(self.output_file_path)
         gmsh.view.write(u_view_tag, self.output_file_path, append)
         gmsh.view.write(v_view_tag, self.output_file_path, True)
         if temperature_field:
