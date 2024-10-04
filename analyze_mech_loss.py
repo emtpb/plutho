@@ -7,60 +7,69 @@ import scipy.signal
 import piezo_fem as pfem
 
 
-def get_stationary_index(mech_loss, number_of_time_steps, delta_t, frequency):
+def get_stationary_mech_loss(
+        mech_loss,
+        number_of_time_steps,
+        delta_t,
+        frequency,
+        stationary_compare_distance = 1000,
+        consecutive_indices = 10):
+    # Find index of where the gradient of the average is stationary
     means = np.mean(mech_loss, axis=0)
-    hilbert = scipy.signal.hilbert(means).imag
-    #plt.plot(means, label="Averages")
-    plt.plot(np.gradient(means), label="d/dt")
-    #plt.plot(np.abs(hilbert), label="Hilbert")
-    plt.plot(np.abs(scipy.signal.hilbert(np.gradient(means))), label="d/dt Hilbert")
-    plt.grid()
-    plt.legend()
-    plt.show()
-    # return np.mean(means[-10:])
+    grad_means = np.gradient(np.mean(mech_loss, axis=0))
+    means_hilbert = np.abs(scipy.signal.hilbert(grad_means))
 
-
-def get_stationary_index_2(mech_loss, number_of_time_steps, delta_t, frequency):
-    # Check when the average is stationary
+    # Calculate running average (over time) over multiple periods
     time_steps_per_period = int(1/(frequency*delta_t))
-    print(time_steps_per_period)
-
-    threshold = 1.148e-6  # empirically estimated
-    threshold = 0.05
-
-    # Average over all points per time step
-    periods_per_box = 1
-    means = np.mean(mech_loss, axis=0)
-    avgs = np.zeros(int(len(means)/(periods_per_box*time_steps_per_period)))
-    # Running average over 3 periods
-    for avg_index in range(avgs.shape[0]):
-        current_box = means[avg_index*time_steps_per_period:periods_per_box*time_steps_per_period*(avg_index+1)]
-        avgs[avg_index] = np.mean(current_box)
-
-    plt.plot(means)
-    plt.show()
+    window_width = 5*time_steps_per_period
+    running_avg = np.convolve(
+        means_hilbert,
+        np.ones(window_width)/(5*time_steps_per_period),
+        mode="valid")
 
     stationary_indices = []
-    for index, _ in enumerate(avgs):
-        if index == 0:
+    for index, _ in enumerate(running_avg):
+        if index < stationary_compare_distance:
             continue
 
-        #if np.abs(avgs[index]-avgs[index-1]) < threshold:
-        #    stationary_indices.append(index)
-        if np.isclose(avgs[index], avgs[index-1]):
+        if np.isclose(
+                running_avg[index],
+                running_avg[index-stationary_compare_distance]):
             stationary_indices.append(index)
 
-    print(stationary_indices)
+    # In order to find a proper stationary index iterate backwards thorugh the
+    # list of possible indices and search for at least x consecutive indices
+    stationary_index = -1
+    for i in reversed(range(len(stationary_indices))):
+        for j in range(consecutive_indices):
+            if not np.isclose(stationary_indices[i], stationary_indices[i-j]):
+                break
 
-    plt.grid()
-    plt.legend()
-    #plt.show()
+        stationary_index = i
+        break
+
+    if stationary_index == -1:
+        raise ValueError("No proper stationary index found")
+
+    print(stationary_index)
+
+    stat_mech_loss_per_period = np.zeros(mech_loss.shape[0])
+    for node_index in range(mech_loss.shape[0]):
+        loss = 0
+        for time_index in range(
+                stationary_index,
+                stationary_index+time_steps_per_period):
+            loss += mech_loss[node_index, time_index]
+
+        stat_mech_loss_per_period[node_index] = loss
+
+    return stationary_index, stat_mech_loss_per_period
 
 
 if __name__ == "__main__":
     MODEL_NAME = "real_model_30k"
     WD = os.path.join(
-        "/upb/users/j/jonasho/scratch/piezo_fem/results/", MODEL_NAME)
+        "/home/jonash/uni/Masterarbeit/simulations", MODEL_NAME)
     LOSS_FILE = os.path.join(
         WD,
         f"{MODEL_NAME}_mech_loss.npy"
@@ -69,14 +78,42 @@ if __name__ == "__main__":
         WD,
         f"{MODEL_NAME}.cfg"
     )
-
+    DISPLACEMENT_FILE = os.path.join(
+        WD,
+        f"{MODEL_NAME}_u.npy"
+    )
     sim = pfem.Simulation.load_simulation_settings(CONFIG_FILE)
     frequency = sim.excitation_info.frequency
     mech_loss = np.load(LOSS_FILE)
+    u = np.load(DISPLACEMENT_FILE)
 
-    get_stationary_index(
+    stat_index, loss_per_period = get_stationary_mech_loss(
         mech_loss,
         sim.simulation_data.number_of_time_steps,
         sim.simulation_data.delta_t,
         sim.excitation_info.frequency
     )
+    time_steps_per_period = int(1/(
+        sim.excitation_info.frequency
+        * sim.simulation_data.delta_t
+    ))
+
+    # Get theta field at stat_index
+    number_of_periods = 10
+    number_of_nodes = len(sim.mesh_data.nodes)
+    theta_start = u[3*number_of_nodes:, stat_index]
+    theta_end = u[3*number_of_nodes:, stat_index+number_of_periods*time_steps_per_period]
+
+    stat_diff = theta_end-theta_start
+
+    # Simulate x seconds
+    SECONDS = 2
+    future_time_steps = int(SECONDS/(time_steps_per_period*number_of_periods*sim.simulation_data.delta_t))
+    print("Number of future time steps:", future_time_steps)
+    theta = np.zeros(shape=(number_of_nodes, future_time_steps))
+    theta[:, 0] = theta_start
+    theta[:, 1] = theta_end
+    for time_step in range(2, future_time_steps):
+        theta[:, time_step] = theta[:, time_step-1] + stat_diff
+
+    print(theta[:, -1])
