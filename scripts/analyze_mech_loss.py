@@ -8,23 +8,6 @@ import scipy.signal
 import piezo_fem as pfem
 
 
-def get_theta_delta(theta, stat_index, time_steps_per_period):
-    return get_diff(
-        theta[:, stat_index+time_steps_per_period],
-        theta[:, stat_index])
-
-
-def get_diff(first_theta, second_theta):
-    if first_theta.shape[0] != second_theta.shape[0]:
-        raise Exception("Lists must be equally long.")
-
-    diff = np.zeros(first_theta.shape[0])
-    for node_index, _ in enumerate(first_theta):
-        diff[node_index] = first_theta[node_index]-second_theta[node_index]
-
-    return diff
-
-
 def get_stationary_mech_loss(
         mech_loss,
         number_of_time_steps,
@@ -108,49 +91,28 @@ def interpolate(
 
     return fits
 
-def interpolate_node(
-        theta,
-        stat_index,
-        time_steps_per_period,
-        number_of_periods,
-        number_of_time_steps,
+
+def calculate_avg_losses_per_node(
+        mech_loss,
+        number_of_nodes,
+        frequency,
         delta_t):
-    time_values = np.arange(number_of_time_steps)*delta_t
-    return np.polyfit(
-        time_values[
-            stat_index:stat_index+number_of_periods*time_steps_per_period],
-        theta[
-            stat_index:stat_index+number_of_periods*time_steps_per_period],
-        deg=1
-    )
+    # TODO 2 because the power has double frequency??
+    time_steps_per_period = int(1/(2*frequency*delta_t))
 
-def interpolate_last(
-    theta,
-    time_steps_per_period,
-    number_of_periods,
-    number_of_time_steps,
-    delta_t):
-    time_values = np.arange(number_of_time_steps)*delta_t
-    fits = np.zeros(shape=(theta.shape[0], 2))
-    for node_index in range(theta.shape[0]):
-        current_theta = theta[
-            node_index,
-            -number_of_periods*time_steps_per_period:
-        ]
+    avg_losses = np.zeros(number_of_nodes)
+    for node_index in range(number_of_nodes):
+        avg_losses[node_index] = np.mean(
+            mech_loss[node_index, -time_steps_per_period:])
 
-        fits[node_index] = np.polyfit(
-            time_values[
-                -number_of_periods*time_steps_per_period:
-            ],
-            current_theta,
-            deg=1)
-
-    return fits
+    return avg_losses
 
 if __name__ == "__main__":
-    MODEL_NAME = "real_model_30k"
+    MODEL_NAME = "real_model_10k"
+    #WD = os.path.join(
+    #    "/upb/users/j/jonasho/scratch/piezo_fem/results", MODEL_NAME)
     WD = os.path.join(
-        "/upb/users/j/jonasho/scratch/piezo_fem/results", MODEL_NAME)
+        "/home/jonash/uni/Masterarbeit/simulations/", MODEL_NAME)
     LOSS_FILE = os.path.join(
         WD,
         f"{MODEL_NAME}_mech_loss.npy"
@@ -175,19 +137,9 @@ if __name__ == "__main__":
         sim.excitation_info.frequency
     )
 
-    number_of_nodes = len(sim.mesh_data.nodes)
-    number_of_time_steps = sim.simulation_data.number_of_time_steps
-    delta_t = sim.simulation_data.delta_t
-    theta = u[3*number_of_nodes:, :]
-    time_values = np.arange(number_of_time_steps)*delta_t
-
-    indices = [312, 311, 82, 26, 111]
-    # Take one period and repeat it
-    peaks, _ = scipy.signal.find_peaks(mech_loss[indices[0], stat_index:])
-
-    time_steps_per_period = peaks[1] - peaks[0]
-    print(peaks[0]+stat_index, peaks[1]+stat_index)
-    print("Supossed", time_steps_per_period)
-    print("Real", real_time_steps_per_period)
-    plt.plot(mech_loss[indices[0]])
-    plt.show()
+    avg_losses = calculate_avg_losses_per_node(
+        mech_loss,
+        len(sim.mesh_data.nodes),
+        frequency,
+        sim.simulation_data.delta_t
+    )

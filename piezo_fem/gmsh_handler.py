@@ -294,7 +294,6 @@ class GmshHandler:
         gmsh.view.write(u_view_tag, self.output_file_path, append)
         gmsh.view.write(v_view_tag, self.output_file_path, True)
         if temperature_field:
-            print("should work")
             gmsh.view.write(theta_view_tag, self.output_file_path, True)
 
     def generate_rectangular_mesh(

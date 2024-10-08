@@ -40,6 +40,17 @@ def integral_ktheta(
 
 
 def integral_volume(node_points: npt.NDArray) -> float:
+    """Calculates the volume of the triangle given by the node points.
+    HINT: Must be multiplied with 2*np.pi and the jacobian determinant in order
+    to give the correct volume of any rotationsymmetric triangle.
+
+    Parameters:
+        node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
+            one triangle.
+
+    Returns:
+        Volume of the triangle.
+    """
     def inner(s, t):
         r = local_to_global_coordinates(node_points, s, t)[0]
         return r
@@ -487,10 +498,22 @@ class PiezoSimTherm:
                         u[element[0]+3*number_of_nodes, time_index],
                         u[element[1]+3*number_of_nodes, time_index],
                         u[element[2]+3*number_of_nodes, time_index]])
-                    volume = integral_volume(node_points)*2*np.pi*jacobian_det
-                    print(f"Index: {element_index}, Volume: {volume}")
-                    print(f"Points: {node_points}")
-                    loss_value = (
+                    temp_field_energy[time_index] += (
+                        energy_integral_theta(
+                            node_points,
+                            theta_e)
+                        * self.material_data.heat_capacity
+                        * self.material_data.density
+                        * 2*np.pi*jacobian_det
+                    )
+                    # The mech loss of the element is divided by the volume
+                    # because it must be a power density.
+                    # TODO Is it possible to calculate the mech loss for the
+                    # points directly instead of calculating it for the
+                    # element and then splitting it later equally on the
+                    # points?
+                    volume = integral_volume(node_points)*jacobian_det*2*np.pi
+                    mech_loss[element_index, time_index+1] = (
                         loss_integral_scs(
                             node_points,
                             u_e,
@@ -501,17 +524,8 @@ class PiezoSimTherm:
                             self.material_data.elasticity_matrix)
                         * 2*np.pi*jacobian_det
                         * 1/volume
+                        * self.material_data.alpha_k
                     )
-                    temp_field_energy[time_index] += (
-                        energy_integral_theta(
-                            node_points,
-                            theta_e)
-                        * self.material_data.heat_capacity
-                        * self.material_data.density
-                        * 2*np.pi*jacobian_det
-                    )
-                    mech_loss[element_index, time_index+1] = \
-                        self.material_data.alpha_k*loss_value
 
             if (time_index + 1) % 100 == 0:
                 print(f"Finished time step {time_index+1}")

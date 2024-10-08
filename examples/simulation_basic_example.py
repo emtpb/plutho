@@ -70,7 +70,7 @@ def run_thermal_simulation(base_directory, name):
     """
     sim_directory = os.path.join(base_directory, name)
     sim = pfem.Simulation(sim_directory, pfem.pic255, name)
-    sim.create_disc_mesh(0.005, 0.001, 0.001)
+    sim.create_disc_mesh(0.005, 0.001, 0.00015)
     sim.set_simulation(
         delta_t=1e-8,
         number_of_time_steps=100,
@@ -93,12 +93,12 @@ def real_model(base_directory):
     Parameters:
         base_directory: Directory where the simulation directory is created.
     """
-    sim_directory = os.path.join(base_directory, "real_model_10k")
-    sim = pfem.Simulation(sim_directory, pfem.pic255, "real_model_10k")
+    sim_directory = os.path.join(base_directory, "real_model_30k")
+    sim = pfem.Simulation(sim_directory, pfem.pic255, "real_model_30k")
     sim.create_disc_mesh(0.005, 0.001, 0.0001)
     sim.set_simulation(
         delta_t=1e-8,
-        number_of_time_steps=10000,
+        number_of_time_steps=30000,
         gamma=0.5,
         beta=0.25,
         simulation_type=pfem.SimulationType.THERMOPIEZOELECTRIC,
@@ -180,8 +180,9 @@ def plot_impedance_with_opencfs(sim: pfem.Simulation, open_cfs_hist_file: str):
 if __name__ == "__main__":
     #cwd = os.path.join(os.path.abspath(os.path.dirname(__file__)),
     #                   "simulations")
-    cwd_scratch = "/upb/users/j/jonasho/scratch/piezo_fem/results/"
-    #real_model(cwd_scratch)
+    # cwd_scratch = "/upb/users/j/jonasho/scratch/piezo_fem/results/"
+    cwd_scratch = "/home/jonash/uni/Masterarbeit/simulations/"
+    real_model(cwd_scratch)
     # run_disc_simulation(cwd)
     # run_ring_simulation(cwd)
-    run_thermal_simulation(cwd_scratch, "test")
+    #run_thermal_simulation(cwd_scratch, "test")
