@@ -15,3 +15,4 @@ Currently only validated for 1 single parameter set and compared with OpenCFS.
 - Add tests for the solvers
 - Fix importing structure
 - Test simulation class
+- Add possibility to load simulation settings without creating a mesh

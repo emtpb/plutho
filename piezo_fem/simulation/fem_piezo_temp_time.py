@@ -39,6 +39,14 @@ def integral_ktheta(
     return quadratic_quadrature(inner)
 
 
+def integral_volume(node_points: npt.NDArray) -> float:
+    def inner(s, t):
+        r = local_to_global_coordinates(node_points, s, t)[0]
+        return r
+
+    return quadratic_quadrature(inner)
+
+
 def integral_theta_load(
         node_points: npt.NDArray,
         point_loss: npt.NDArray) -> npt.NDArray:
@@ -69,7 +77,7 @@ def loss_integral_scs(
         delta_t: float,
         jacobian_inverted_t: npt.NDArray,
         elasticity_matrix: npt.NDArray):
-    """Calculates the dS/dt*c*dS/dt integral. Since difference foward
+    """Calculates the integral of dS/dt*c*dS/dt over one triangle. Since foward
     difference quotient of second oder is used the last 2 values of e_u are
     needed.
 
@@ -443,15 +451,6 @@ class PiezoSimTherm:
             # TODO Calculate charge and power loss together (one loop)
             if time_index > 1:
                 for element_index, element in enumerate(elements):
-                    node_points = np.array([
-                        [nodes[element[0]][0],
-                         nodes[element[1]][0],
-                         nodes[element[2]][0]],
-                        [nodes[element[0]][1],
-                         nodes[element[1]][1],
-                         nodes[element[2]][1]]
-                    ])
-
                     dn = gradient_local_shape_functions()
                     node_points = np.array([
                         [nodes[element[0]][0],
@@ -464,7 +463,6 @@ class PiezoSimTherm:
                     jacobian = np.dot(node_points, dn.T)
                     jacobian_inverted_t = np.linalg.inv(jacobian).T
                     jacobian_det = np.linalg.det(jacobian)
-                    dn = gradient_local_shape_functions()
                     u_e = np.array([u[2*element[0], time_index],
                                     u[2*element[0]+1, time_index],
                                     u[2*element[1], time_index],
@@ -489,6 +487,9 @@ class PiezoSimTherm:
                         u[element[0]+3*number_of_nodes, time_index],
                         u[element[1]+3*number_of_nodes, time_index],
                         u[element[2]+3*number_of_nodes, time_index]])
+                    volume = integral_volume(node_points)*2*np.pi*jacobian_det
+                    print(f"Index: {element_index}, Volume: {volume}")
+                    print(f"Points: {node_points}")
                     loss_value = (
                         loss_integral_scs(
                             node_points,
@@ -499,6 +500,7 @@ class PiezoSimTherm:
                             jacobian_inverted_t,
                             self.material_data.elasticity_matrix)
                         * 2*np.pi*jacobian_det
+                        * 1/volume
                     )
                     temp_field_energy[time_index] += (
                         energy_integral_theta(

@@ -70,7 +70,7 @@ def run_thermal_simulation(base_directory, name):
     """
     sim_directory = os.path.join(base_directory, name)
     sim = pfem.Simulation(sim_directory, pfem.pic255, name)
-    sim.create_disc_mesh(0.005, 0.001, 0.00015)
+    sim.create_disc_mesh(0.005, 0.001, 0.001)
     sim.set_simulation(
         delta_t=1e-8,
         number_of_time_steps=100,
@@ -181,7 +181,7 @@ if __name__ == "__main__":
     #cwd = os.path.join(os.path.abspath(os.path.dirname(__file__)),
     #                   "simulations")
     cwd_scratch = "/upb/users/j/jonasho/scratch/piezo_fem/results/"
-    real_model(cwd_scratch)
+    #real_model(cwd_scratch)
     # run_disc_simulation(cwd)
     # run_ring_simulation(cwd)
-    # run_thermal_simulation(cwd, "real_model")
+    run_thermal_simulation(cwd_scratch, "test")

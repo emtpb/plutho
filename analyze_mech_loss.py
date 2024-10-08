@@ -3,8 +3,26 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import scipy
+import scipy.integrate
 import scipy.signal
 import piezo_fem as pfem
+
+
+def get_theta_delta(theta, stat_index, time_steps_per_period):
+    return get_diff(
+        theta[:, stat_index+time_steps_per_period],
+        theta[:, stat_index])
+
+
+def get_diff(first_theta, second_theta):
+    if first_theta.shape[0] != second_theta.shape[0]:
+        raise Exception("Lists must be equally long.")
+
+    diff = np.zeros(first_theta.shape[0])
+    for node_index, _ in enumerate(first_theta):
+        diff[node_index] = first_theta[node_index]-second_theta[node_index]
+
+    return diff
 
 
 def get_stationary_mech_loss(
@@ -66,10 +84,73 @@ def get_stationary_mech_loss(
     return stationary_index, stat_mech_loss_per_period
 
 
+def interpolate(
+    theta,
+    stat_index,
+    time_steps_per_period,
+    number_of_periods,
+    number_of_time_steps,
+    delta_t):
+    time_values = np.arange(number_of_time_steps)*delta_t
+    fits = np.zeros(shape=(theta.shape[0], 2))
+    for node_index in range(theta.shape[0]):
+        current_theta = theta[
+            node_index,
+            stat_index:stat_index+number_of_periods*time_steps_per_period
+        ]
+
+        fits[node_index] = np.polyfit(
+            time_values[
+                stat_index:stat_index+number_of_periods*time_steps_per_period
+            ],
+            current_theta,
+            deg=1)
+
+    return fits
+
+def interpolate_node(
+        theta,
+        stat_index,
+        time_steps_per_period,
+        number_of_periods,
+        number_of_time_steps,
+        delta_t):
+    time_values = np.arange(number_of_time_steps)*delta_t
+    return np.polyfit(
+        time_values[
+            stat_index:stat_index+number_of_periods*time_steps_per_period],
+        theta[
+            stat_index:stat_index+number_of_periods*time_steps_per_period],
+        deg=1
+    )
+
+def interpolate_last(
+    theta,
+    time_steps_per_period,
+    number_of_periods,
+    number_of_time_steps,
+    delta_t):
+    time_values = np.arange(number_of_time_steps)*delta_t
+    fits = np.zeros(shape=(theta.shape[0], 2))
+    for node_index in range(theta.shape[0]):
+        current_theta = theta[
+            node_index,
+            -number_of_periods*time_steps_per_period:
+        ]
+
+        fits[node_index] = np.polyfit(
+            time_values[
+                -number_of_periods*time_steps_per_period:
+            ],
+            current_theta,
+            deg=1)
+
+    return fits
+
 if __name__ == "__main__":
     MODEL_NAME = "real_model_30k"
     WD = os.path.join(
-        "/home/jonash/uni/Masterarbeit/simulations", MODEL_NAME)
+        "/upb/users/j/jonasho/scratch/piezo_fem/results", MODEL_NAME)
     LOSS_FILE = os.path.join(
         WD,
         f"{MODEL_NAME}_mech_loss.npy"
@@ -93,27 +174,20 @@ if __name__ == "__main__":
         sim.simulation_data.delta_t,
         sim.excitation_info.frequency
     )
-    time_steps_per_period = int(1/(
-        sim.excitation_info.frequency
-        * sim.simulation_data.delta_t
-    ))
 
-    # Get theta field at stat_index
-    number_of_periods = 10
     number_of_nodes = len(sim.mesh_data.nodes)
-    theta_start = u[3*number_of_nodes:, stat_index]
-    theta_end = u[3*number_of_nodes:, stat_index+number_of_periods*time_steps_per_period]
+    number_of_time_steps = sim.simulation_data.number_of_time_steps
+    delta_t = sim.simulation_data.delta_t
+    theta = u[3*number_of_nodes:, :]
+    time_values = np.arange(number_of_time_steps)*delta_t
 
-    stat_diff = theta_end-theta_start
+    indices = [312, 311, 82, 26, 111]
+    # Take one period and repeat it
+    peaks, _ = scipy.signal.find_peaks(mech_loss[indices[0], stat_index:])
 
-    # Simulate x seconds
-    SECONDS = 2
-    future_time_steps = int(SECONDS/(time_steps_per_period*number_of_periods*sim.simulation_data.delta_t))
-    print("Number of future time steps:", future_time_steps)
-    theta = np.zeros(shape=(number_of_nodes, future_time_steps))
-    theta[:, 0] = theta_start
-    theta[:, 1] = theta_end
-    for time_step in range(2, future_time_steps):
-        theta[:, time_step] = theta[:, time_step-1] + stat_diff
-
-    print(theta[:, -1])
+    time_steps_per_period = peaks[1] - peaks[0]
+    print(peaks[0]+stat_index, peaks[1]+stat_index)
+    print("Supossed", time_steps_per_period)
+    print("Real", real_time_steps_per_period)
+    plt.plot(mech_loss[indices[0]])
+    plt.show()
