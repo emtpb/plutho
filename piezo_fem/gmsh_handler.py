@@ -296,6 +296,42 @@ class GmshHandler:
         if temperature_field:
             gmsh.view.write(theta_view_tag, self.output_file_path, True)
 
+    def create_theta_post_processing_view(
+            self,
+            theta: npt.NDArray,
+            number_of_time_steps: int,
+            delta_t: float,
+            append: bool):
+        """Appends a post processing view to the output mesh file.
+        The given field must be scalar and defined over the nodes.
+
+        Parameters:
+            theta: theta field given from the simulation.
+            number_of_time_steps: Total number of time steps.
+            delta_t: Time difference between each time step.
+            append: Set to true if this field should be appended to the file.
+        """
+        node_tags, _, _ = gmsh.model.mesh.getNodes()
+        number_of_nodes = len(node_tags)
+
+        # Views
+        theta_view_tag = gmsh.view.add("Temperature")
+
+        for time_index in range(number_of_time_steps):
+            current_theta = theta[:, time_index].reshape(number_of_nodes, 1)
+            gmsh.view.addModelData(
+                theta_view_tag,
+                time_index,
+                "",
+                "NodeData",
+                node_tags,
+                current_theta,
+                time_index*delta_t,
+                1)
+        if not os.path.exists(self.output_file_path):
+            gmsh.write(self.output_file_path)
+        gmsh.view.write(theta_view_tag, self.output_file_path, append)
+
     def generate_rectangular_mesh(
             self,
             width: float = 0.005,

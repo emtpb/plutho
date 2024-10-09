@@ -178,11 +178,11 @@ def plot_impedance_with_opencfs(sim: pfem.Simulation, open_cfs_hist_file: str):
 
 
 if __name__ == "__main__":
-    #cwd = os.path.join(os.path.abspath(os.path.dirname(__file__)),
+    # cwd = os.path.join(os.path.abspath(os.path.dirname(__file__)),
     #                   "simulations")
-    # cwd_scratch = "/upb/users/j/jonasho/scratch/piezo_fem/results/"
-    cwd_scratch = "/home/jonash/uni/Masterarbeit/simulations/"
-    real_model(cwd_scratch)
+    # CWD_SCRATCH = "/upb/users/j/jonasho/scratch/piezo_fem/results/"
+    CWD_SCRATCH = "/home/jonash/uni/Masterarbeit/simulations/"
+    real_model(CWD_SCRATCH)
     # run_disc_simulation(cwd)
     # run_ring_simulation(cwd)
-    #run_thermal_simulation(cwd_scratch, "test")
+    run_thermal_simulation(CWD_SCRATCH, "test")

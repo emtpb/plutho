@@ -1,10 +1,13 @@
-import os
-import numpy as np 
-import matplotlib.pyplot as plt
+"""Module for analyzing the results of the piezo sim"""
 
+# Python standard libraries
+import os
+import numpy as np
 import scipy
 import scipy.integrate
 import scipy.signal
+
+# Local libraries
 import piezo_fem as pfem
 
 
@@ -91,21 +94,6 @@ def interpolate(
 
     return fits
 
-
-def calculate_avg_losses_per_node(
-        mech_loss,
-        number_of_nodes,
-        frequency,
-        delta_t):
-    # TODO 2 because the power has double frequency??
-    time_steps_per_period = int(1/(2*frequency*delta_t))
-
-    avg_losses = np.zeros(number_of_nodes)
-    for node_index in range(number_of_nodes):
-        avg_losses[node_index] = np.mean(
-            mech_loss[node_index, -time_steps_per_period:])
-
-    return avg_losses
 
 if __name__ == "__main__":
     MODEL_NAME = "real_model_10k"

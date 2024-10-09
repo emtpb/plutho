@@ -59,6 +59,18 @@ def integral_theta_load(
 
 
 class HeatConductionSim:
+    """Simulates a heat conduction problem for the given mesh, material and
+    simulation information.
+
+    Attributes:
+        mesh_data: Contains the mesh information.
+        material_data: Contains the information about the materials.
+        simulation_data: Contains the information about the simulation.
+        c: Damping matrix.
+        k: Stiffness matrix.
+        theta: Temperature field defined for every node.
+        f: Load vector for the temperature field contains the information
+            from the given losses."""
     mesh_data: MeshData
     material_data: MaterialData
     simulation_data: SimulationData
@@ -67,6 +79,7 @@ class HeatConductionSim:
     k: npt.NDArray
 
     theta: npt.NDArray
+    f: npt.NDArray
 
     def __init__(
             self,
@@ -76,7 +89,7 @@ class HeatConductionSim:
         self.mesh_data = mesh_data
         self.material_data = material_data
         self.simulation_data = simulation_data
-        
+
     def assemble(self):
         """Assembles the FEM matrices based on the set mesh_data and
         material_data.
@@ -134,10 +147,44 @@ class HeatConductionSim:
         self.c = c.tolil()
         self.k = k.tolil()
 
-    def set_excitation(self, theta_start, mech_losses):
-        
+    def set_excitation(
+            self,
+            mech_losses):
+        """Sets the excitation for the heat conduction simulation.
+        The mech_losses are set for every time step.
 
-    def solve_time(self):
+        Parameters:
+            mech_losses: The mechanical losses for each element.
+        """
+        nodes = self.mesh_data.nodes
+        number_of_nodes = len(nodes)
+        f = np.zeros(number_of_nodes)
+
+        for element_index, element in enumerate(self.mesh_data.elements):
+            dn = gradient_local_shape_functions()
+            node_points = np.array([
+                [nodes[element[0]][0],
+                 nodes[element[1]][0],
+                 nodes[element[2]][0]],
+                [nodes[element[0]][1],
+                 nodes[element[1]][1],
+                 nodes[element[2]][1]]
+            ])
+            jacobian = np.dot(node_points, dn.T)
+            jacobian_det = np.linalg.det(jacobian)
+
+            point_loss = np.ones(3) * mech_losses[element_index]/3
+
+            f_theta_e = integral_theta_load(
+                node_points,
+                point_loss)*2*np.pi*jacobian_det
+
+            for local_p, global_p in enumerate(element):
+                f[global_p] += f_theta_e[local_p]
+
+        self.f = f
+
+    def solve_time(self, theta_start):
         """Runs the simulation using the assembled c and k matrices as well
         as the set excitation.
         Calculates the temperature field and saves it in theta.
@@ -145,7 +192,6 @@ class HeatConductionSim:
         number_of_time_steps = self.simulation_data.number_of_time_steps
         gamma = self.simulation_data.gamma
         delta_t = self.simulation_data.delta_t
-        nodes = self.mesh_data.nodes
 
         c = self.c
         k = self.k
@@ -153,7 +199,7 @@ class HeatConductionSim:
         # Init arrays
         # Temperature theta which is calculated
         theta = np.zeros((k.shape[0], number_of_time_steps), dtype=np.float64)
-        theta[:, 0] = self.theta_start
+        theta[:, 0] = theta_start
         # theta derived after t (du/dt)
         theta_dt = np.zeros(
             (k.shape[0], number_of_time_steps),
@@ -168,10 +214,10 @@ class HeatConductionSim:
         #     number_of_nodes)
 
         k_star = (k+1/(gamma*delta_t)*c).tocsr()
+        f = self.f
 
         print("Starting simulation")
         for time_index in range(number_of_time_steps-1):
-            f = self.f[time_index]
 
             # Perform Newmark method
             # Predictor step

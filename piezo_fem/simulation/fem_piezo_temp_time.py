@@ -14,29 +14,7 @@ from .base import MaterialData, SimulationData, MeshData, \
     integral_ku, integral_kuv, integral_kve, apply_dirichlet_bc, \
     quadratic_quadrature
 from .fem_piezo_time import calculate_charge
-
-
-def integral_ktheta(
-        node_points: npt.NDArray,
-        jacobian_inverted_t: npt.NDArray) -> npt.NDArray:
-    """Calculates the Ktheta integral.
-
-    Parameters:
-        node_points: List of node points [[x1, x2, ..], [y1, y2, ..]]
-        jacobian_inverted_t: Jacobian matrix inverted and transposed, needed
-            for calculation of global derivatives
-
-    Returns:
-        npt.NDArray: 3x3 Ktheta matrix for the given element.
-    """
-    def inner(s, t):
-        dn = gradient_local_shape_functions()
-        global_dn = np.dot(jacobian_inverted_t, dn)
-        r = local_to_global_coordinates(node_points, s, t)[0]
-
-        return np.dot(global_dn.T, global_dn)*r
-
-    return quadratic_quadrature(inner)
+from .fem_heat_conduction_time import integral_ktheta, integral_theta_load
 
 
 def integral_volume(node_points: npt.NDArray) -> float:
@@ -54,28 +32,6 @@ def integral_volume(node_points: npt.NDArray) -> float:
     def inner(s, t):
         r = local_to_global_coordinates(node_points, s, t)[0]
         return r
-
-    return quadratic_quadrature(inner)
-
-
-def integral_theta_load(
-        node_points: npt.NDArray,
-        point_loss: npt.NDArray) -> npt.NDArray:
-    """Returns the load value for the temperature field (f) for the specific
-    element.
-
-    Parameters:
-        node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
-            one triangle.
-        point_loss: Loss power on each node (heat source)
-    Returns:
-        npt.NDArray: f vector value at the specific ndoe
-    """
-    def inner(s, t):
-        n = local_shape_functions(s, t)
-        r = local_to_global_coordinates(node_points, s, t)[0]
-
-        return n*point_loss*r
 
     return quadratic_quadrature(inner)
 

@@ -79,22 +79,6 @@ class ExcitationInfo:
         return content
 
 
-def calculate_triangle_volume(node_points: npt.NDArray) -> float:
-    """Returns the volume of the triangle
-
-    Parameters:
-        node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
-            one triangle.
-
-    Returns:
-        Volume of the triangle"""
-    area = 1/2*np.abs(
-        node_points[0][0]*(node_points[1][1]-node_points[1][2])
-        + node_points[0][1]*(node_points[1][2]-node_points[1][0])
-        + node_points[0][2]*(node_points[1][0]-node_points[1][1])
-    )
-
-
 def local_shape_functions(s: float, t: float) -> npt.NDArray:
     """Returns the local linear shape functions for the reference triangle.
 
