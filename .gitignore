@@ -180,3 +180,4 @@ cython_debug/
 
 # Ignore data
 examples/simulations
+examples/cfs

@@ -54,6 +54,31 @@ def parse_displacement_hist_file(
 
     return time_steps, u_r, u_z
 
+def create_scalar_field_as_csv(
+        field_name: str,
+        field: npt.NDArray,
+        nodes: npt.NDArray,
+        folder_path: str):
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+
+    number_of_nodes = len(nodes)
+    number_of_time_steps = field.shape[1]
+
+    for time_step in range(number_of_time_steps):
+        current_file_path = os.path.join(
+            folder_path, f"{field_name}_{time_step}.csv")
+
+        text = f"r,z,{field_name}\n"
+        for node_index, node in enumerate(nodes):
+            current_field = field[node_index, time_step]
+
+            r = node[0]
+            z = node[1]
+            text += f"{r},{z},{current_field}\n"
+
+        with open(current_file_path, "w", encoding="UTF-8") as fd:
+            fd.write(text)
 
 def create_vector_field_as_csv(
         u: npt.NDArray,

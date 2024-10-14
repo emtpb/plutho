@@ -468,7 +468,6 @@ class PiezoSimTherm:
                     # points directly instead of calculating it for the
                     # element and then splitting it later equally on the
                     # points?
-                    volume = integral_volume(node_points)*jacobian_det*2*np.pi
                     mech_loss[element_index, time_index+1] = (
                         loss_integral_scs(
                             node_points,
@@ -479,7 +478,6 @@ class PiezoSimTherm:
                             jacobian_inverted_t,
                             self.material_data.elasticity_matrix)
                         * 2*np.pi*jacobian_det
-                        * 1/volume
                         * self.material_data.alpha_k
                     )
 

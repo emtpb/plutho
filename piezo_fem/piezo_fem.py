@@ -7,6 +7,7 @@ import configparser
 import os
 import numpy as np
 import numpy.typing as npt
+import matplotlib.pyplot as plt
 
 # Local libraries
 from .simulation.base import MeshData, MaterialData, SimulationData, \
@@ -16,6 +17,7 @@ from .simulation.fem_piezo_temp_time import PiezoSimTherm
 from .simulation.fem_piezo_time import PiezoSim
 from .gmsh_handler import GmshHandler
 from .materials import pic255
+from .postprocessing import calculate_impedance
 
 class SimulationException(Exception):
     """Custom exception to simplify errors."""
@@ -455,3 +457,18 @@ class Simulation:
         else:
             raise SimulationException(
                 f"Simulation type {self.simulation_type} is not implemented.")
+
+    def plot_impedence(self):
+        if self.excitation is None:
+            raise SimulationException(
+                "In order to plot the impedance an excitation needs to be set")
+        frequencies_fem, impedence_fem = calculate_impedance(
+            self.solver.q, self.excitation, self.simulation_data.delta_t)
+
+        plt.plot(frequencies_fem, np.abs(impedence_fem), label="MyFEM")
+        plt.xlabel("Frequency f / Hz")
+        plt.ylabel("Impedence |Z| / $\\Omega$")
+        plt.yscale("log")
+        plt.legend()
+        plt.grid()
+        plt.show()

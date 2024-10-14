@@ -6,6 +6,7 @@ import numpy as np
 import scipy
 import scipy.integrate
 import scipy.signal
+import matplotlib.pyplot as plt
 
 # Local libraries
 import piezo_fem as pfem
@@ -55,8 +56,6 @@ def get_stationary_mech_loss(
     if stationary_index == -1:
         raise ValueError("No proper stationary index found")
 
-    print(stationary_index)
-
     stat_mech_loss_per_period = np.zeros(mech_loss.shape[0])
     for node_index in range(mech_loss.shape[0]):
         loss = 0
@@ -70,33 +69,33 @@ def get_stationary_mech_loss(
     return stationary_index, stat_mech_loss_per_period
 
 
-def interpolate(
-    theta,
-    stat_index,
-    time_steps_per_period,
-    number_of_periods,
-    number_of_time_steps,
-    delta_t):
+def interpolate_mech_loss(
+        mech_loss,
+        stat_index,
+        time_steps_per_period,
+        number_of_periods,
+        number_of_time_steps,
+        delta_t):
     time_values = np.arange(number_of_time_steps)*delta_t
-    fits = np.zeros(shape=(theta.shape[0], 2))
-    for node_index in range(theta.shape[0]):
-        current_theta = theta[
-            node_index,
+    fits = np.zeros(shape=(mech_loss.shape[0], 2))
+    for element_index in range(mech_loss.shape[0]):
+        current_mech_loss = mech_loss[
+            element_index,
             stat_index:stat_index+number_of_periods*time_steps_per_period
         ]
 
-        fits[node_index] = np.polyfit(
+        fits[element_index] = np.polyfit(
             time_values[
                 stat_index:stat_index+number_of_periods*time_steps_per_period
             ],
-            current_theta,
+            current_mech_loss,
             deg=1)
 
     return fits
 
 
 if __name__ == "__main__":
-    MODEL_NAME = "real_model_10k"
+    MODEL_NAME = "real_model_30k_sinus"
     #WD = os.path.join(
     #    "/upb/users/j/jonasho/scratch/piezo_fem/results", MODEL_NAME)
     WD = os.path.join(
@@ -117,17 +116,6 @@ if __name__ == "__main__":
     frequency = sim.excitation_info.frequency
     mech_loss = np.load(LOSS_FILE)
     u = np.load(DISPLACEMENT_FILE)
-
-    stat_index, loss_per_period = get_stationary_mech_loss(
-        mech_loss,
-        sim.simulation_data.number_of_time_steps,
-        sim.simulation_data.delta_t,
-        sim.excitation_info.frequency
-    )
-
-    avg_losses = calculate_avg_losses_per_node(
-        mech_loss,
-        len(sim.mesh_data.nodes),
-        frequency,
-        sim.simulation_data.delta_t
-    )
+    frequency = sim.excitation_info.frequency
+    delta_t = sim.simulation_data.delta_t
+    number_of_time_steps = sim.simulation_data.number_of_time_steps

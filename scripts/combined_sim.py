@@ -5,6 +5,8 @@ in order to calculate the Temperature for longer time intervals."""
 import os
 import numpy as np
 import numpy.typing as npt
+import matplotlib.pyplot as plt
+from numpy.polynomial.polynomial import Polynomial
 
 # Third party libraries
 import gmsh
@@ -46,7 +48,7 @@ def run_piezo_thermal_simulation(base_directory, name):
     sim.create_disc_mesh(0.005, 0.001, 0.00015)
     sim.set_simulation(
         delta_t=piezo_delta_t,
-        number_of_time_steps=100,
+        number_of_time_steps=10000,
         gamma=0.5,
         beta=0.25,
         simulation_type=pfem.SimulationType.THERMOPIEZOELECTRIC,
@@ -63,10 +65,77 @@ def run_piezo_thermal_simulation(base_directory, name):
     sim.save_simulation_results()
 
 
+def interpolate_mech_loss(
+        mech_loss,
+        time_steps_per_period,
+        number_of_periods,
+        delta_t):
+    time_values = np.arange(mech_loss.shape[1])*delta_t
+    fits = np.zeros(shape=(mech_loss.shape[0], 2))
+    for element_index in range(mech_loss.shape[0]):
+        current_mech_loss = rolling_avg[
+            -number_of_periods*time_steps_per_period:
+        ]
+        current_time_values = time_values[
+                -number_of_periods*time_steps_per_period:
+        ]
+
+        fits[element_index] = np.polyfit(
+            current_time_values,
+            current_mech_loss,
+            deg=1)
+    return fits
+
+def interpolate_avg_losses(
+        mech_loss,
+        delta_t,
+        number_of_average_periods,
+        time_steps_per_period):
+    fits = np.zeros(shape=(mech_loss.shape[0], 2))
+    time_values = np.arange(mech_loss.shape[1])*delta_t
+    for element_index in range(mech_loss.shape[0]):
+        current_mech_loss = mech_loss[element_index, :]
+
+        # TODO Maybe take last x periods and calculate rolling average
+        # Right now the whole rolling avg is calculated
+        # Calculate rolling avg
+        T = number_of_average_periods*time_steps_per_period
+        rolling_avg = np.convolve(
+            current_mech_loss,
+            np.ones(T)/T,
+            mode="valid"
+        )
+
+        # Take last periods and interpolate
+        current_time_values = time_values[len(rolling_avg)-T:len(rolling_avg)]
+        current_rolling_avg = rolling_avg[-T:]
+
+        #fits[element_index] = Polynomial.fit(
+        #    current_time_values,
+        #    current_rolling_avg,
+        #    1
+        #)
+        fit = np.polyfit(
+            current_time_values, current_rolling_avg, deg=1
+        )
+        fits[element_index] = fit
+        #print(fit)
+        #pol = np.poly1d(fit)
+        #plt.plot(time_values, current_mech_loss, "-", label="data")
+        #plt.plot(time_values, pol(time_values), label="long fit")
+        #plt.plot(current_time_values, pol(current_time_values), label="short fit")
+        #plt.plot(time_values[:len(rolling_avg)], rolling_avg, label="rolling avg")
+        #plt.grid()
+        #plt.legend()
+        #plt.show()
+
+    return fits
+
 if __name__ == "__main__":
     CWD = "/home/jonash/uni/Masterarbeit/simulations/"
-    PIEZO_SIM_NAME = "double_sim"
-    # run_piezo_thermal_simulation(CWD, PIEZO_SIM_NAME)
+    #PIEZO_SIM_NAME = "double_sim"
+    PIEZO_SIM_NAME = "real_model_30k"
+    #run_piezo_thermal_simulation(CWD, PIEZO_SIM_NAME)
 
     # Load data from piezo sim
     piezo_sim_folder = os.path.join(CWD, PIEZO_SIM_NAME)
@@ -77,24 +146,27 @@ if __name__ == "__main__":
         os.path.join(piezo_sim_folder, f"{PIEZO_SIM_NAME}.cfg")
     )
 
-    avg_mech_losses = calculate_avg_losses_per_element(
-        mech_losses,
-        len(piezo_sim.mesh_data.elements),
-        piezo_sim.excitation_info.frequency,
-        piezo_sim.simulation_data.delta_t
+    number_of_average_periods = 1
+    time_steps_per_period = 25
+    T = number_of_average_periods*time_steps_per_period
+    fits = interpolate_avg_losses(
+            mech_losses,
+            piezo_sim.simulation_data.delta_t,
+            number_of_average_periods,
+            time_steps_per_period
     )
 
     # Heat conduction simulation settings
-    SIMULATION_TIME = 1  # In seconds
+    SIMULATION_TIME = 20  # In seconds
 
     # Number of periods of the piezo sim which are simulated in one time step
     # in the heat conduction simulation
-    SKIPPED_PERIODS = 1
+    SKIPPED_PERIODS = 400000
 
     # Set heat conduction simulation settings
     delta_t = SKIPPED_PERIODS*piezo_sim.simulation_data.delta_t
-    # number_of_time_steps = int(SIMULATION_TIME/delta_t)
-    number_of_time_steps = 5
+    number_of_time_steps = int(SIMULATION_TIME/delta_t)
+
     heat_simulation_data = pfem.SimulationData(
         delta_t=delta_t,
         number_of_time_steps=number_of_time_steps,
@@ -109,12 +181,22 @@ if __name__ == "__main__":
         heat_simulation_data
     )
 
+    interpolations = []
+    for fit in fits:
+        interpolations.append(np.poly1d(fit))
+
     # Set excitation for heat conduction sim
     # Multiplied with the number of skipped periods since the avg mech losses
     # represent the power over one period
-    heat_sim.set_excitation(
-        SKIPPED_PERIODS*avg_mech_losses
+    heat_sim.set_constant_volume_heat_source(
+        SKIPPED_PERIODS*fits[:, 1],
+        number_of_time_steps
     )
+    #heat_sim.set_volume_heat_source(
+    #    interpolations,
+    #    number_of_time_steps,
+    #    delta_t
+    #)
 
     # The start temperature field of the heat conduction sim is set to the
     # field of the last time step of the piezo sim
@@ -124,7 +206,10 @@ if __name__ == "__main__":
     heat_sim.solve_time(theta_start)
 
     theta = heat_sim.theta
-    piezo_sim.gmsh_handler.create_theta_post_processing_view(
+    gmsh_handler = pfem.GmshHandler(
+        os.path.join(CWD, "temperature_only.msh")
+    )
+    gmsh_handler.create_theta_post_processing_view(
         theta,
         number_of_time_steps,
         delta_t,
