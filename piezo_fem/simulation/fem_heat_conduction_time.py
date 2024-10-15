@@ -38,7 +38,7 @@ def integral_ktheta(
 
 def integral_theta_load(
         node_points: npt.NDArray,
-        point_loss: npt.NDArray) -> npt.NDArray:
+        mech_loss: float) -> npt.NDArray:
     """Returns the load value for the temperature field (f) for the specific
     element.
 
@@ -52,8 +52,7 @@ def integral_theta_load(
     def inner(s, t):
         n = local_shape_functions(s, t)
         r = local_to_global_coordinates(node_points, s, t)[0]
-
-        return n*point_loss*r
+        return n*mech_loss*r
 
     return quadratic_quadrature(inner)
 
@@ -135,7 +134,7 @@ class HeatConductionSim:
                     node_points,
                     jacobian_inverted_t)
                 * self.material_data.thermal_conductivity
-                * jacobian_det*2*np.pi
+                * jacobian_det * 2 * np.pi
             )
 
             # Now assemble all element matrices
@@ -149,7 +148,7 @@ class HeatConductionSim:
 
     def set_volume_heat_source(
             self,
-            interpolations,
+            mech_loss_density,
             number_of_time_steps,
             delta_t):
         """Sets the excitation for the heat conduction simulation.
@@ -164,7 +163,6 @@ class HeatConductionSim:
         f = np.zeros(shape=(number_of_nodes, number_of_time_steps))
         for time_step, time_value in enumerate(time_values):
             for element_index, element in enumerate(self.mesh_data.elements):
-                interp = interpolations[element_index]
                 dn = gradient_local_shape_functions()
                 node_points = np.array([
                     [nodes[element[0]][0],
@@ -177,11 +175,10 @@ class HeatConductionSim:
                 jacobian = np.dot(node_points, dn.T)
                 jacobian_det = np.linalg.det(jacobian)
 
-                point_loss = np.ones(3) * interp(time_value)/3
-
+                # TODO Maybe the outer time step loop can be removed
                 f_theta_e = integral_theta_load(
                     node_points,
-                    point_loss)*2*np.pi*jacobian_det
+                    mech_loss_density[element_index, time_step])*2*np.pi*jacobian_det
 
                 for local_p, global_p in enumerate(element):
                     f[global_p, time_step] += f_theta_e[local_p]
@@ -190,13 +187,13 @@ class HeatConductionSim:
 
     def set_constant_volume_heat_source(
             self,
-            mech_losses,
+            mech_loss_density,
             number_of_time_steps):
         """Sets the excitation for the heat conduction simulation.
-        The mech_losses are set for every time step.
+        The mech_loss_density are set for every time step.
 
         Parameters:
-            mech_losses: The mechanical losses for each element.
+            mech_loss_density: The mechanical losses for each element.
         """
         nodes = self.mesh_data.nodes
         number_of_nodes = len(nodes)
@@ -215,11 +212,9 @@ class HeatConductionSim:
             jacobian = np.dot(node_points, dn.T)
             jacobian_det = np.linalg.det(jacobian)
 
-            point_loss = np.ones(3) * mech_losses[element_index]/3
-
             f_theta_e = integral_theta_load(
                 node_points,
-                point_loss)*2*np.pi*jacobian_det
+                mech_loss_density[element_index])*2*np.pi*jacobian_det
 
             for local_p, global_p in enumerate(element):
                 f[global_p] += f_theta_e[local_p]
@@ -234,7 +229,6 @@ class HeatConductionSim:
             self.k[node, :] = 0
             self.k[node, node] = 1
             self.f[node] = value
-
 
     def solve_time(self, theta_start=None):
         """Runs the simulation using the assembled c and k matrices as well

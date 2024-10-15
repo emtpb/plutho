@@ -6,6 +6,7 @@ import numpy as np
 import numpy.typing as npt
 import scipy.sparse as sparse
 import scipy.sparse.linalg as slin
+from scipy import integrate
 
 # Local libraries
 from .base import MaterialData, SimulationData, MeshData, \
@@ -64,14 +65,71 @@ def loss_integral_scs(
             (c matrix).
     """
     def inner(s, t):
+        r = local_to_global_coordinates(node_points, s, t)[0]
         b_opt = b_operator_global(node_points, s, t, jacobian_inverted_t)
         dt_s = np.dot(
             b_opt,
             (3*u_e_t-4*u_e_t_minus_1+u_e_t_minus_2)/(2*delta_t)
         )
-        return np.dot(dt_s.T, np.dot(elasticity_matrix.T, dt_s))
+        return np.dot(dt_s.T, np.dot(elasticity_matrix.T, dt_s))*r
 
     return quadratic_quadrature(inner)
+
+
+def loss_integral_scds(
+        node_points: npt.NDArray,
+        u_e_t: npt.NDArray,
+        u_e_t_minus_1: npt.NDArray,
+        u_e_t_minus_2: npt.NDArray,
+        delta_t: float,
+        jacobian_inverted_t: npt.NDArray,
+        elasticity_matrix: npt.NDArray):
+    """Calculates the integral of dS/dt*c*dS/dt over one triangle. Since foward
+    difference quotient of second oder is used the last 2 values of e_u are
+    needed.
+
+    Parameters:
+        node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
+            one triangle.
+        u_e_t: Values of u_e at the current time point.
+            Format: [u1_r, u1_z, u2_r, u2_z, u3_r, u3_z].
+        u_e_t_minus_1: Values of u_e at one time point earlier. Same format
+            as u_e_t.
+        u_e_t_minus_2: Values of u_e at two time points earlier. Same format
+            as u_e_t.
+        delta_t: Difference between the time steps.
+        jacobian_inverted_t: Jacobian matrix inverted and transposed, needed
+            for calculation of global derivatives.
+        elasticity_matrix: Elasticity matrix for the current element
+            (c matrix).
+    """
+    def inner(s, t):
+        b_opt = b_operator_global(node_points, s, t, jacobian_inverted_t)
+        dt_s = np.dot(
+            b_opt,
+            (3*u_e_t-4*u_e_t_minus_1+u_e_t_minus_2)/(2*delta_t)
+        )
+        return np.dot(
+            np.dot(b_opt, u_e_t).T,
+            np.dot(elasticity_matrix.T, dt_s))
+
+    return quadratic_quadrature(inner)
+
+
+def loss_integral_eeds(
+        node_points,
+        piezo_matrix,
+        u_e_t: npt.NDArray,
+        u_e_t_minus_1: npt.NDArray,
+        u_e_t_minus_2: npt.NDArray,
+        delta_t: float,
+        jacobian_inverted_t: npt.NDArray):
+    def inner(s, t):
+        b_opt = b_operator_global(node_points, s, t, jacobian_inverted_t)
+        dt_s = np.dot(
+            b_opt,
+            (3*u_e_t-4*u_e_t_minus_1+u_e_t_minus_2)/(2*delta_t)
+        )
 
 
 def energy_integral_theta(
@@ -468,6 +526,7 @@ class PiezoSimTherm:
                     # points directly instead of calculating it for the
                     # element and then splitting it later equally on the
                     # points?
+                    volume = integral_volume(node_points)*2*np.pi*jacobian_det
                     mech_loss[element_index, time_index+1] = (
                         loss_integral_scs(
                             node_points,
@@ -479,6 +538,7 @@ class PiezoSimTherm:
                             self.material_data.elasticity_matrix)
                         * 2*np.pi*jacobian_det
                         * self.material_data.alpha_k
+                        * 1/volume
                     )
 
             if (time_index + 1) % 100 == 0:
@@ -495,7 +555,7 @@ class PiezoSimTherm:
             values_u: npt.NDArray,
             nodes_v: npt.NDArray,
             values_v: npt.NDArray,
-            mech_loss: npt.NDArray) -> npt.NDArray:
+            mech_loss_density: npt.NDArray) -> npt.NDArray:
         """Calculates the load vector (right hand side) vector for the
         simulation.
 
@@ -505,7 +565,8 @@ class PiezoSimTherm:
                 Contains a tuple of values [u_r, u_z].
             nodes_v: Nodes where the dirichlet bc for v is set.
             values_v: Value of the v boundary condition for the nodes.
-            mech_loss: Power loss of every element of the current time step.
+            mech_loss_density: Power loss density of every element of the
+                current time step.
 
         Returns:
             Right hand side vector for the simulation.
@@ -552,11 +613,9 @@ class PiezoSimTherm:
             jacobian = np.dot(node_points, dn.T)
             jacobian_det = np.linalg.det(jacobian)
 
-            point_loss = np.ones(3) * mech_loss[element_index]/3
-
             f_theta_e = integral_theta_load(
                 node_points,
-                point_loss)*2*np.pi*jacobian_det
+                mech_loss_density[element_index])*2*np.pi*jacobian_det
 
             for local_p, global_p in enumerate(element):
                 f_theta[global_p] += f_theta_e[local_p]

@@ -134,7 +134,7 @@ def interpolate_avg_losses(
 if __name__ == "__main__":
     CWD = "/home/jonash/uni/Masterarbeit/simulations/"
     #PIEZO_SIM_NAME = "double_sim"
-    PIEZO_SIM_NAME = "real_model_30k"
+    PIEZO_SIM_NAME = "real_model_10k_r_volume_no_div_triangle"
     #run_piezo_thermal_simulation(CWD, PIEZO_SIM_NAME)
 
     # Load data from piezo sim
@@ -157,15 +157,17 @@ if __name__ == "__main__":
     )
 
     # Heat conduction simulation settings
-    SIMULATION_TIME = 20  # In seconds
+    SIMULATION_TIME = 0.01  # In seconds
 
     # Number of periods of the piezo sim which are simulated in one time step
     # in the heat conduction simulation
-    SKIPPED_PERIODS = 400000
+    # SKIPPED_PERIODS = 1000
 
     # Set heat conduction simulation settings
-    delta_t = SKIPPED_PERIODS*piezo_sim.simulation_data.delta_t
-    number_of_time_steps = int(SIMULATION_TIME/delta_t)
+    #delta_t = SKIPPED_PERIODS*piezo_sim.simulation_data.delta_t
+    # number_of_time_steps = int(SIMULATION_TIME/delta_t)
+    delta_t = 1000*piezo_sim.simulation_data.delta_t
+    number_of_time_steps = 1000
 
     heat_simulation_data = pfem.SimulationData(
         delta_t=delta_t,
@@ -185,11 +187,13 @@ if __name__ == "__main__":
     for fit in fits:
         interpolations.append(np.poly1d(fit))
 
+    # element_indices = [379, 1196]
+
     # Set excitation for heat conduction sim
     # Multiplied with the number of skipped periods since the avg mech losses
     # represent the power over one period
     heat_sim.set_constant_volume_heat_source(
-        SKIPPED_PERIODS*fits[:, 1],
+        1000*np.mean(mech_losses[:, -time_steps_per_period:], axis=1),
         number_of_time_steps
     )
     #heat_sim.set_volume_heat_source(
@@ -215,4 +219,11 @@ if __name__ == "__main__":
         delta_t,
         False
     )
+
+    input_energy = pfem.calculate_electrical_input_energy(
+        piezo_sim.excitation,
+        np.load(os.path.join(piezo_sim_folder, f"{PIEZO_SIM_NAME}_q.npy")),
+        piezo_sim.simulation_data.delta_t
+    )
+
     gmsh.fltk.run()

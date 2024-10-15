@@ -34,14 +34,44 @@ def get_max_temp_value(sim: pfem.Simulation):
     )
 
 
+def model(sim_directory, sim_name):
+    """Real thermo piezoelectric simulation of a disc.
+
+    Parameters:
+        base_directory: Directory where the simulation directory is created.
+    """
+    sim = pfem.Simulation(
+        sim_directory,
+        pfem.pic255,
+        sim_name)
+    sim.create_disc_mesh(0.005, 0.001, 0.00015)
+    sim.set_simulation(
+        delta_t=1e-8,
+        number_of_time_steps=5000,
+        gamma=0.5,
+        beta=0.25,
+        simulation_type=pfem.SimulationType.THERMOPIEZOELECTRIC,
+    )
+    #sim.set_sinusoidal_excitation(1, 2e6)
+    sim.set_triangle_pulse_excitation(1)
+    sim.set_boundary_conditions()
+    sim.save_simulation_settings(
+        "Simulation to check the energy conservation.")
+    sim.simulate()
+
+    sim.save_simulation_results()
+    sim.create_post_processing_views()
+
+    return sim
+
 if __name__ == "__main__":
-    MODEL_NAME = "real_model_30k_triangle"
+    MODEL_NAME = "energy_check"
     #CWD = os.path.join(
     #    "/upb/users/j/jonasho/scratch/piezo_fem/results/", MODEL_NAME)
     CWD = os.path.join(
         "/home/jonash/uni/Masterarbeit/simulations/", MODEL_NAME
     )
-    TEMP_ENERGY_FILE_PATH = os.path.join(
+    THERM_ENERGY_FILE_PATH = os.path.join(
         CWD, f"{MODEL_NAME}_temp_field_energy.npy"
     )
     CHARGE_FILE_PATH = os.path.join(
@@ -52,10 +82,25 @@ if __name__ == "__main__":
     )
     CONFIG_FILE_PATH = os.path.join(CWD, f"{MODEL_NAME}.cfg")
 
-    simulation = pfem.Simulation.load_simulation_settings(CONFIG_FILE_PATH)
-    simulation.solver.q = np.load(CHARGE_FILE_PATH)
-    simulation.solver.temp_field_energy = np.load(TEMP_ENERGY_FILE_PATH)
-    simulation.solver.u = np.load(DISPLACEMENT_FILE_PATH)
+    if False:
+        # Run simulation
+        simulation = model(CWD, MODEL_NAME)
+    else:
+        # Load data
+        simulation = pfem.Simulation.load_simulation_settings(CONFIG_FILE_PATH)
+        simulation.solver.q = np.load(CHARGE_FILE_PATH)
+        simulation.solver.temp_field_energy = np.load(THERM_ENERGY_FILE_PATH)
+        simulation.solver.u = np.load(DISPLACEMENT_FILE_PATH)
+        simulation.solver.mech_loss = np.load(os.path.join(
+            CWD, f"{MODEL_NAME}_mech_loss.npy"
+        ))
+
 
     # get_max_temp_value(simulation)
     compare_energies(simulation)
+    
+    print(np.trapezoid(np.mean(simulation.solver.mech_loss, axis=0), None, simulation.simulation_data.delta_t))
+
+    plt.plot(np.mean(simulation.solver.mech_loss, axis=0), label="Mech loss")
+    #plt.plot(simulation.solver.temp_field_energy, label="Temp field energy")
+    plt.show()

@@ -13,7 +13,7 @@ def real_model(base_directory):
     Parameters:
         base_directory: Directory where the simulation directory is created.
     """
-    sim_name = "real_model_impedence"
+    sim_name = "real_model_impedence_thermal"
     sim_directory = os.path.join(base_directory, sim_name)
     sim = pfem.Simulation(
         sim_directory,
@@ -31,11 +31,11 @@ def real_model(base_directory):
     sim.set_triangle_pulse_excitation(1)
     sim.set_boundary_conditions()
     sim.save_simulation_settings(
-        "An example for a thermal piezo-electric simulation.")
+        "Simulation to check impedence curve. With thermal sim.")
     sim.simulate()
 
     sim.save_simulation_results()
-    # post_processing_temp(sim)
+    sim.create_post_processing_views()
 
 
 if __name__ == "__main__":
