@@ -161,7 +161,7 @@ class HeatConductionSim:
         nodes = self.mesh_data.nodes
         number_of_nodes = len(nodes)
         f = np.zeros(shape=(number_of_nodes, number_of_time_steps))
-        for time_step, time_value in enumerate(time_values):
+        for time_step, _ in enumerate(time_values):
             for element_index, element in enumerate(self.mesh_data.elements):
                 dn = gradient_local_shape_functions()
                 node_points = np.array([

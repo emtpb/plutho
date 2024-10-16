@@ -118,18 +118,24 @@ def loss_integral_scds(
 
 def loss_integral_eeds(
         node_points,
-        piezo_matrix,
         u_e_t: npt.NDArray,
         u_e_t_minus_1: npt.NDArray,
         u_e_t_minus_2: npt.NDArray,
+        v,
         delta_t: float,
-        jacobian_inverted_t: npt.NDArray):
+        jacobian_inverted_t: npt.NDArray,
+        piezo_matrix,):
     def inner(s, t):
         b_opt = b_operator_global(node_points, s, t, jacobian_inverted_t)
         dt_s = np.dot(
             b_opt,
             (3*u_e_t-4*u_e_t_minus_1+u_e_t_minus_2)/(2*delta_t)
         )
+        e = -1*np.dot(gradient_local_shape_functions(), v)
+
+        return np.dot(e.T, np.dot(piezo_matrix, dt_s))
+
+    return quadratic_quadrature(inner)
 
 
 def energy_integral_theta(
@@ -508,6 +514,11 @@ class PiezoSimTherm:
                                     u[2*element[1]+1, time_index-2],
                                     u[2*element[2], time_index-2],
                                     u[2*element[2]+1, time_index-2]])
+                    v_e = np.array([
+                        u[element[0]+2*number_of_nodes, time_index],
+                        u[element[1]+2*number_of_nodes, time_index],
+                        u[element[2]+2*number_of_nodes, time_index]
+                    ])
                     theta_e = np.array([
                         u[element[0]+3*number_of_nodes, time_index],
                         u[element[1]+3*number_of_nodes, time_index],
@@ -536,10 +547,18 @@ class PiezoSimTherm:
                             delta_t,
                             jacobian_inverted_t,
                             self.material_data.elasticity_matrix)
-                        * 2*np.pi*jacobian_det
                         * self.material_data.alpha_k
-                        * 1/volume
-                    )
+                        #- loss_integral_eeds(
+                        #    node_points,
+                        #    u_e,
+                        #    u_e_t_minus_1,
+                        #    u_e_t_minus_2,
+                        #    v_e,
+                        #    delta_t,
+                        #    jacobian_inverted_t,
+                        #    self.material_data.piezo_matrix
+                        #)
+                    ) * 1/volume * 2*np.pi*jacobian_det
 
             if (time_index + 1) % 100 == 0:
                 print(f"Finished time step {time_index+1}")
