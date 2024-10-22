@@ -15,25 +15,6 @@ import gmsh
 import piezo_fem as pfem
 
 
-def calculate_avg_losses_per_element(
-        mech_loss: npt.NDArray,
-        number_of_elements: float,
-        piezo_sim_frequency: float,
-        piezo_sim_delta_t: float):
-    """Calculates the average losses per element. Does only work properly for
-    sinusoidal excitation"""
-    # TODO 2 because the power has double frequency??
-    time_steps_per_period = int(1/(2*piezo_sim_frequency*piezo_sim_delta_t))
-
-    # Averages the losses for the last period.
-    avg_losses = np.zeros(number_of_elements)
-    for element_index in range(number_of_elements):
-        avg_losses[element_index] = np.mean(
-            mech_loss[element_index, -time_steps_per_period:])
-
-    return avg_losses
-
-
 def run_piezo_thermal_simulation(base_directory, name):
     """Example for a thermo piezoelectric simulation of a disc.
 
@@ -131,43 +112,55 @@ def interpolate_avg_losses(
 
     return fits
 
+def calculate_avg_loss_density_per_element(
+        mech_loss_density,
+        time_steps_per_period,
+        delta_t):
+    avg_losses = np.zeros(mech_loss_density.shape[0])
+    for element_index in range(mech_loss_density.shape[0]):
+        period = delta_t*time_steps_per_period
+        avg_losses[element_index] = 1/period*np.trapezoid(
+            mech_loss_density[element_index, -time_steps_per_period:])
+
+    return avg_losses
+
 if __name__ == "__main__":
-    CWD = "/home/jonash/uni/Masterarbeit/simulations/"
+    #CWD = "/home/jonash/uni/Masterarbeit/simulations/"
+    CWD = "/upb/users/j/jonasho/scratch/piezo_fem/results/"
     #PIEZO_SIM_NAME = "double_sim"
-    PIEZO_SIM_NAME = "real_model_10k_r_volume_no_div_triangle"
+    PIEZO_SIM_NAME = "real_model_15k"
     #run_piezo_thermal_simulation(CWD, PIEZO_SIM_NAME)
 
     # Load data from piezo sim
     piezo_sim_folder = os.path.join(CWD, PIEZO_SIM_NAME)
     u = np.load(os.path.join(piezo_sim_folder, f"{PIEZO_SIM_NAME}_u.npy"))
-    mech_losses = np.load(
+    mech_loss_density = np.load(
         os.path.join(piezo_sim_folder, f"{PIEZO_SIM_NAME}_mech_loss.npy"))
     piezo_sim = pfem.Simulation.load_simulation_settings(
         os.path.join(piezo_sim_folder, f"{PIEZO_SIM_NAME}.cfg")
     )
 
-    number_of_average_periods = 1
-    time_steps_per_period = 25
-    T = number_of_average_periods*time_steps_per_period
-    fits = interpolate_avg_losses(
-            mech_losses,
-            piezo_sim.simulation_data.delta_t,
-            number_of_average_periods,
-            time_steps_per_period
-    )
+    NUMBER_OF_AVERAGE_PERIODS = 1
+    TIME_STEPS_PER_PERIOD = 25  # Empirically
+    T = NUMBER_OF_AVERAGE_PERIODS*TIME_STEPS_PER_PERIOD
+    # fits = interpolate_avg_losses(
+    #         mech_loss_density,
+    #         piezo_sim.simulation_data.delta_t,
+    #         number_of_average_periods,
+    #         time_steps_per_period
+    # )
 
     # Heat conduction simulation settings
-    SIMULATION_TIME = 0.01  # In seconds
+    SIMULATION_TIME = 1  # In seconds
 
     # Number of periods of the piezo sim which are simulated in one time step
     # in the heat conduction simulation
-    # SKIPPED_PERIODS = 1000
+    SKIPPED_PERIODS = 100000
 
     # Set heat conduction simulation settings
-    #delta_t = SKIPPED_PERIODS*piezo_sim.simulation_data.delta_t
-    # number_of_time_steps = int(SIMULATION_TIME/delta_t)
-    delta_t = 1000*piezo_sim.simulation_data.delta_t
-    number_of_time_steps = 1000
+    delta_t = SKIPPED_PERIODS*piezo_sim.simulation_data.delta_t
+    number_of_time_steps = int(SIMULATION_TIME/delta_t)
+    print("Total number of time steps:", number_of_time_steps)
 
     heat_simulation_data = pfem.SimulationData(
         delta_t=delta_t,
@@ -183,9 +176,9 @@ if __name__ == "__main__":
         heat_simulation_data
     )
 
-    interpolations = []
-    for fit in fits:
-        interpolations.append(np.poly1d(fit))
+    # interpolations = []
+    # for fit in fits:
+    #     interpolations.append(np.poly1d(fit))
 
     # element_indices = [379, 1196]
 
@@ -193,7 +186,11 @@ if __name__ == "__main__":
     # Multiplied with the number of skipped periods since the avg mech losses
     # represent the power over one period
     heat_sim.set_constant_volume_heat_source(
-        1000*np.mean(mech_losses[:, -time_steps_per_period:], axis=1),
+        SKIPPED_PERIODS*calculate_avg_loss_density_per_element(
+            mech_loss_density,
+            TIME_STEPS_PER_PERIOD,
+            piezo_sim.simulation_data.delta_t
+        ),
         number_of_time_steps
     )
     #heat_sim.set_volume_heat_source(
@@ -220,10 +217,10 @@ if __name__ == "__main__":
         False
     )
 
-    input_energy = pfem.calculate_electrical_input_energy(
-        piezo_sim.excitation,
-        np.load(os.path.join(piezo_sim_folder, f"{PIEZO_SIM_NAME}_q.npy")),
-        piezo_sim.simulation_data.delta_t
-    )
+    #input_energy = pfem.calculate_electrical_input_energy(
+    #    piezo_sim.excitation,
+    #    np.load(os.path.join(piezo_sim_folder, f"{PIEZO_SIM_NAME}_q.npy")),
+    #    piezo_sim.simulation_data.delta_t
+    #)
 
     gmsh.fltk.run()

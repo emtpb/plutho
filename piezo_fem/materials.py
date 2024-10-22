@@ -22,6 +22,7 @@ pic255 = MaterialData(
     thermal_conductivity=1.1,
     heat_capacity=350,
     alpha_k=6.259e-10,
-    alpha_m=1.267e5,
+    #alpha_m=1.267e5,
+    alpha_m=0,
     name="pic255"
 )

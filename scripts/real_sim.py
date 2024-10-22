@@ -31,7 +31,7 @@ def real_model(base_directory):
     #sim.set_triangle_pulse_excitation(1)
     sim.set_boundary_conditions()
     sim.save_simulation_settings(
-        "Simulation to check impedence curve. With thermal sim.")
+        "Simulation for the thermal field and losses used in a thermal sim.")
     sim.simulate()
 
     sim.save_simulation_results()
@@ -39,5 +39,6 @@ def real_model(base_directory):
 
 
 if __name__ == "__main__":
-    CWD_SCRATCH = "/home/jonash/uni/Masterarbeit/simulations/"
+    #CWD_SCRATCH = "/home/jonash/uni/Masterarbeit/simulations/"
+    CWD_SCRATCH = "/upb/users/j/jonasho/scratch/piezo_fem/results/"
     real_model(CWD_SCRATCH)

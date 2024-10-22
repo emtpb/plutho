@@ -9,7 +9,8 @@ import gmsh
 # Local libraries
 import piezo_fem as pfem
 from piezo_fem.simulation.base import local_shape_functions, \
-    local_to_global_coordinates, quadratic_quadrature
+    local_to_global_coordinates, quadratic_quadrature, \
+        gradient_local_shape_functions
 
 
 def energy_integral_theta(
@@ -33,7 +34,8 @@ def energy_integral_theta(
 
 
 if __name__ == "__main__":
-    CWD = "/home/jonash/uni/Masterarbeit/simulations/"
+    #WD = "/home/jonash/uni/Masterarbeit/simulations/"
+    CWD = "/upb/users/j/jonasho/scratch/piezo_fem/results/"
     SIM_NAME = "heat_cond_comparison"
     SIM_DIR = os.path.join(CWD, SIM_NAME)
 
