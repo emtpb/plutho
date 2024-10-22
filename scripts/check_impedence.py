@@ -30,16 +30,24 @@ def plot_impedance_with_opencfs(sim: pfem.Simulation, sim_term: pfem.Simulation,
     frequencies_cfs, impedence_cfs = pfem.calculate_impedance(
         charge_cfs, sim.excitation, sim.simulation_data.delta_t)
 
+    plt.rcParams.update({'font.size': 18})
+
     # Plot FEM and OpenCfs
-    plt.plot(frequencies_fem, np.abs(impedence_fem), label="MyFEM normal")
-    plt.plot(frequencies_fem_therm, np.abs(impedence_fem_therm), "--", label="MyFEM therm")
-    plt.plot(frequencies_cfs, np.abs(impedence_cfs), "+", label="OpenCFS")
+    plt.plot(frequencies_fem, np.abs(impedence_fem), label="Piezo FEM")
+    plt.plot(frequencies_cfs, np.abs(impedence_cfs), "--", label="OpenCFS")
     plt.xlabel("Frequency f / Hz")
-    plt.ylabel("Impedence |Z| / $\\Omega$")
+    plt.ylabel("Impedance |Z| / $\\Omega$")
     plt.yscale("log")
+    plt.xlim(0, 0.8e7)
+    plt.ylim(20, 2*1e4)
     plt.legend()
     plt.grid()
     plt.show()
+    #plt.savefig("/home/jonash/uni/Masterarbeit/plots/compare_impedance.png", bbox_inches='tight')
+    import tikzplotlib
+
+    tikzplotlib.save("/home/jonash/uni/Masterarbeit/plots/compare_impedance.tex")
+
 
 
 if __name__ == "__main__":
