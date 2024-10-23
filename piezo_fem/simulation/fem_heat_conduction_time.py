@@ -223,12 +223,21 @@ class HeatConductionSim:
         self.f = np.tile(f.reshape(-1, 1), (1, number_of_time_steps))
 
     def set_fixed_temperature(self, nodes, values):
-        self.f = np.zeros(len(self.mesh_data.nodes))
+        """Sets a fixed temperature of value at node (dirichlet boundary
+        condition).
+    
+        Parameters:
+            nodes: Nodes at which the values shall be set.
+            values: Values which are set at the corresponding node (same index)
+        """
+        self.f = np.zeros(
+            shape=(len(self.mesh_data.nodes),
+                   self.simulation_data.number_of_time_steps))
         for node, value in zip(nodes, values):
             self.c[node, :] = 0
             self.k[node, :] = 0
             self.k[node, node] = 1
-            self.f[node] = value
+            self.f[node, :] = value
 
     def solve_time(self, theta_start=None):
         """Runs the simulation using the assembled c and k matrices as well

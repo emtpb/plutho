@@ -67,10 +67,14 @@ def loss_integral_scs(
     def inner(s, t):
         r = local_to_global_coordinates(node_points, s, t)[0]
         b_opt = b_operator_global(node_points, s, t, jacobian_inverted_t)
-        dt_s = np.dot(
-            b_opt,
-            (3*u_e_t-4*u_e_t_minus_1+u_e_t_minus_2)/(2*delta_t)
-        )
+        #dt_s = np.dot(
+        #    b_opt,
+        #    (3*u_e_t-4*u_e_t_minus_1+u_e_t_minus_2)/(2*delta_t)
+        #)
+        S = np.dot(b_opt, u_e_t)
+        S_t_minus_1 = np.dot(b_opt, u_e_t_minus_1)
+        S_t_minus_2 = np.dot(b_opt, u_e_t_minus_2)
+        dt_s = (3*S-4*S_t_minus_1+S_t_minus_2)/(2*delta_t)
         return np.dot(dt_s.T, np.dot(elasticity_matrix.T, dt_s))*r
 
     return quadratic_quadrature(inner)
@@ -127,10 +131,14 @@ def loss_integral_eeds(
         piezo_matrix,):
     def inner(s, t):
         b_opt = b_operator_global(node_points, s, t, jacobian_inverted_t)
-        dt_s = np.dot(
-            b_opt,
-            (3*u_e_t-4*u_e_t_minus_1+u_e_t_minus_2)/(2*delta_t)
-        )
+        #dt_s = np.dot(
+        #    b_opt,
+        #    (3*u_e_t-4*u_e_t_minus_1+u_e_t_minus_2)/(2*delta_t)
+        #)
+        S = np.dot(b_opt, u_e_t)
+        S_t_minus_1 = np.dot(b_opt, u_e_t_minus_1)
+        S_t_minus_2 = np.dot(b_opt, u_e_t_minus_2)
+        dt_s = (3*S-4*S_t_minus_1+S_t_minus_2)/(2*delta_t)
         e = -1*np.dot(gradient_local_shape_functions(), v)
 
         return np.dot(e.T, np.dot(piezo_matrix, dt_s))
@@ -558,7 +566,7 @@ class PiezoSimTherm:
                         #    jacobian_inverted_t,
                         #    self.material_data.piezo_matrix
                         #)
-                    ) * 1/volume * 2*np.pi*jacobian_det
+                    ) * 2*np.pi*jacobian_det * 1/volume
 
             if (time_index + 1) % 100 == 0:
                 print(f"Finished time step {time_index+1}")
