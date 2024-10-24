@@ -98,7 +98,7 @@ def model(sim_directory, sim_name):
         sim_directory,
         pfem.pic255,
         sim_name)
-    sim.create_disc_mesh(0.005, 0.001, 0.0001)
+    sim.create_disc_mesh(0.005, 0.001, 0.00007)
     sim.set_simulation(
         delta_t=1e-8,
         number_of_time_steps=5000,
@@ -109,7 +109,7 @@ def model(sim_directory, sim_name):
     sim.set_triangle_pulse_excitation(1)
     sim.set_boundary_conditions()
     sim.save_simulation_settings(
-        "Simulation to check the energy conservation. The mech losses are powers and not power densities. Different calculation for dt_S. Divide by volume. e erm added to calculation.")
+        "Simulation to check the energy conservation. The mech losses are powers and not power densities. Different calculation for dt_S. Divide by volume.")
     sim.simulate()
 
     sim.save_simulation_results()
@@ -118,14 +118,14 @@ def model(sim_directory, sim_name):
     return sim
 
 if __name__ == "__main__":
-    MODEL_NAME = "energy_check_eds"
-    CWD = os.path.join(
-        "/upb/departments/emt/Student/jonasho/Masterarbeit/piezo_fem_results/",
-        MODEL_NAME
-    )
+    MODEL_NAME = "test"
     #CWD = os.path.join(
-    #    "/home/jonash/uni/Masterarbeit/simulations/", MODEL_NAME
+    #    "/upb/departments/emt/Student/jonasho/Masterarbeit/piezo_fem_results/",
+    #    MODEL_NAME
     #)
+    CWD = os.path.join(
+        "/home/jonash/uni/Masterarbeit/simulations/", MODEL_NAME
+    )
     THERM_ENERGY_FILE_PATH = os.path.join(
         CWD, f"{MODEL_NAME}_temp_field_energy.npy"
     )
@@ -137,7 +137,7 @@ if __name__ == "__main__":
     )
     CONFIG_FILE_PATH = os.path.join(CWD, f"{MODEL_NAME}.cfg")
 
-    if False:
+    if True:
         # Run simulation
         simulation = model(CWD, MODEL_NAME)
     else:

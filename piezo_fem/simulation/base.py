@@ -354,7 +354,7 @@ def apply_dirichlet_bc(
         # Set diagonal values to 1
         k[node+offset, node+offset] = 1
 
-    # Currently no dirichlet bc for the temperature field -> TODO Instable?
+    # Currently no dirichlet bc for the temperature field -> TODO?
 
     return m, c, k
 
@@ -385,10 +385,11 @@ def get_dirichlet_boundary_conditions(
     symaxis_nodes = pg_nodes["Symaxis"]
     ground_nodes = pg_nodes["Ground"]
 
-    # For "Electrode" set excitation function
-    # "Symaxis" and "Ground" are set to 0
-    # For displacement u set symaxis values to 0.
+    # For Potential set "Electrode" to excitation function
+    # "Ground" is set to 0
+    # For displacement set symaxis values to 0.
     # Zeros are set for u_r and u_z but the u_z component is not used.
+    # Others are implicit natrual bcs (Neumann B.C. -> 0).
     if set_symmetric_bc:
         dirichlet_nodes_u = symaxis_nodes
         dirichlet_values_u = np.zeros(

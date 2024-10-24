@@ -83,7 +83,8 @@ def create_scalar_field_as_csv(
 def create_vector_field_as_csv(
         u: npt.NDArray,
         nodes: npt.NDArray,
-        folder_path: str):
+        folder_path: str,
+        contains_theta: bool):
     """Creates a new *.csv for each time step containing the data from u.
 
     Parameters:
@@ -96,17 +97,19 @@ def create_vector_field_as_csv(
 
     number_of_nodes = len(nodes)
     number_of_time_steps = u.shape[1]
-    add_theta = u.shape[0] == 4*number_of_nodes
 
     for time_step in range(number_of_time_steps):
         current_file_path = os.path.join(folder_path, f"u_{time_step}.csv")
 
-        text = "r,z,u_r,u_z,v,theta\n"
+        if contains_theta:
+            text = "r,z,u_r,u_z,v,theta\n"
+        else:
+            text = "r,z,u_r,u_z,v\n"
         for node_index, node in enumerate(nodes):
             current_u_r = u[2*node_index, time_step]
             current_u_z = u[2*node_index+1, time_step]
             current_v = u[2*number_of_nodes+node_index, time_step]
-            if add_theta:
+            if contains_theta:
                 current_theta = u[3*number_of_nodes+node_index, time_step]
                 theta = current_theta
 
@@ -115,7 +118,7 @@ def create_vector_field_as_csv(
             u_r = current_u_r
             u_z = current_u_z
             v = current_v
-            if add_theta:
+            if contains_theta:
                 text += f"{r},{z},{u_r},{u_z},{v},{theta}\n"
             else:
                 text += f"{r},{z},{u_r},{u_z},{v}\n"
