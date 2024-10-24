@@ -114,27 +114,9 @@ def model(sim_directory, sim_name):
         sim_name)
     sim.create_disc_mesh(0.005, 0.001, 0.0001)
 
-    # Disable damping
-    sim.material_data.alpha_k = 0
-    sim.material_data.alpha_m = 0
-
-    lambda_l = 0.84e11
-    mu_l = 0.21e11
-    sim.material_data.elasticity_matrix = np.array([
-        [lambda_l+2*mu_l, lambda_l, 0, lambda_l],
-        [lambda_l, lambda_l+2*mu_l, 0, lambda_l],
-        [0, 0, mu_l, 0],
-        [lambda_l, lambda_l, 0, lambda_l+2*mu_l]
-    ])
-    sim.material_data.permittivity_matrix = np.diag([8.15e-9, 8.15e-9])
-    sim.material_data.piezo_matrix=np.array([
-            [1, 1, 1, 1],
-            [1, 1, 1, 1]
-    ])
-
     sim.set_simulation(
         delta_t=1e-8,
-        number_of_time_steps=400,
+        number_of_time_steps=1500,
         gamma=0.5,
         beta=0.25,
         simulation_type=pfem.SimulationType.PIEZOELECTRIC,
@@ -164,7 +146,7 @@ def load_hist_file(file):
 
 
 if __name__ == "__main__":
-    MODEL_NAME = "electric_energy_check_alternative_material"
+    MODEL_NAME = "electric_energy_check"
     #CWD = os.path.join(
     #    "/upb/departments/emt/Student/jonasho/Masterarbeit/piezo_fem_results/",
     #    MODEL_NAME
@@ -185,24 +167,16 @@ if __name__ == "__main__":
         simulation = model(CWD, MODEL_NAME)
 
         pfem.create_vector_field_as_csv(
-        simulation.solver.u,
-        simulation.mesh_data.nodes,
-        os.path.join(CWD, "csv"),
-        False
-    )
+            simulation.solver.u,
+            simulation.mesh_data.nodes,
+            os.path.join(CWD, "csv"),
+            False
+        )
     else:
         # Load data
         simulation = pfem.Simulation.load_simulation_settings(CONFIG_FILE_PATH)
         simulation.solver.q = np.load(CHARGE_FILE_PATH)
         simulation.solver.u = np.load(DISPLACEMENT_FILE_PATH)
-
-    CFS_CHARGE_FILE = "scripts/data/cfs_charge.hist"
-    times, cfs_q = load_hist_file(CFS_CHARGE_FILE)
-    plt.plot(times, simulation.solver.q, label="MyFEM")
-    plt.plot(times, cfs_q, "--", label="OpenCFS")
-    plt.grid()
-    plt.legend()
-    plt.show()
     exit(0)
     energy = calculate_stored_electrical_energy(simulation)
 
@@ -215,10 +189,6 @@ if __name__ == "__main__":
     for time_value, energy_value in zip(time_values, energy):
         print(time_value, energy_value)
     print("Input energy:", input_energy)
-
-    HIST_FILE = "scripts/data/elec_density_elecEnergy.hist"
-    times, values = load_hist_file(HIST_FILE)
-    print("OpenCFS Energy:", np.trapezoid(values, None, simulation.simulation_data.delta_t))
 
     plt.plot(energy)
     plt.grid()

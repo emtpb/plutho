@@ -16,3 +16,11 @@ Currently only validated for 1 single parameter set and compared with OpenCFS.
 - Fix importing structure
 - Test simulation class
 - Add possibility to load simulation settings without creating a mesh
+- Refactor whole project -> Base classes for thermal (and 
+maybe electrical and mechanical sim)
+    -> Different api to use
+    -> Refactor the dirichlet nodes and calculation of f vector as well
+        as the usage of boundary conditions
+- Simulation can be made much faster when calculating all the element nodes and
+    jacobians beforehand and reusing
+    - Maybe lru caches can be utilized?

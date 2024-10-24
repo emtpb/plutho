@@ -364,6 +364,10 @@ class PiezoSim:
 
         k_star = (k+gamma/(beta*delta_t)*c+1/(beta*delta_t**2)*m).tocsr()
 
+        # Set initial value of potential at electrode nodes to given excitation
+        for index, node in enumerate(self.dirichlet_nodes[1]):
+            u[node+2*number_of_nodes, 0] = self.dirichlet_values[1][0][index]
+
         print("Starting simulation")
         for time_index in range(number_of_time_steps-1):
             # Calculate load vector and add dirichlet boundary conditions

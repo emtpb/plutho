@@ -98,7 +98,7 @@ def model(sim_directory, sim_name):
         sim_directory,
         pfem.pic255,
         sim_name)
-    sim.create_disc_mesh(0.005, 0.001, 0.00007)
+    sim.create_disc_mesh(0.005, 0.001, 0.00015)
     sim.set_simulation(
         delta_t=1e-8,
         number_of_time_steps=5000,
@@ -117,8 +117,22 @@ def model(sim_directory, sim_name):
 
     return sim
 
+
+def load_hist_file(file):
+    times = []
+    values = []
+    with open(file, "r", encoding="UTF-8") as fd:
+        for line in fd.readlines()[3:]:
+            time, value = line.split("  ")
+            times.append(float(time.strip()))
+            values.append(float(value.strip()))
+
+    return np.array(times), np.array(values)
+
+
+
 if __name__ == "__main__":
-    MODEL_NAME = "test"
+    MODEL_NAME = "energy_check"
     #CWD = os.path.join(
     #    "/upb/departments/emt/Student/jonasho/Masterarbeit/piezo_fem_results/",
     #    MODEL_NAME
@@ -137,9 +151,20 @@ if __name__ == "__main__":
     )
     CONFIG_FILE_PATH = os.path.join(CWD, f"{MODEL_NAME}.cfg")
 
-    if True:
+    if False:
         # Run simulation
         simulation = model(CWD, MODEL_NAME)
+
+        csv_path = os.path.join(CWD, "csv")
+        if not os.path.exists(csv_path):
+            os.makedirs(csv_path)
+
+        pfem.io.create_vector_field_as_csv(
+            simulation.solver.u,
+            simulation.mesh_data.nodes,
+            csv_path,
+            True
+        )
     else:
         # Load data
         simulation = pfem.Simulation.load_simulation_settings(CONFIG_FILE_PATH)
@@ -149,6 +174,15 @@ if __name__ == "__main__":
         simulation.solver.mech_loss = np.load(os.path.join(
             CWD, f"{MODEL_NAME}_mech_loss.npy"
         ))
+
+    
+    CHARGE_CFS = "piezo_energy_check-elecCharge-surfRegion-load.hist"
+    time, charge_cfs = load_hist_file(CHARGE_CFS)
+    plt.plot(time, simulation.solver.q, label="MyFEM")
+    plt.plot(time, charge_cfs, "+", label="OpenCFS")
+    plt.legend()
+    plt.grid()
+    #plt.show()
 
     # get_max_temp_value(simulation)
     # compare_energies(simulation)

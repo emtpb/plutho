@@ -125,11 +125,11 @@ def calculate_avg_loss_density_per_element(
     return avg_losses
 
 if __name__ == "__main__":
-    #CWD = "/home/jonash/uni/Masterarbeit/simulations/"
-    CWD = "/upb/users/j/jonasho/scratch/piezo_fem/results/"
+    CWD = "/home/jonash/uni/Masterarbeit/simulations/"
+    #CWD = "/upb/users/j/jonasho/scratch/piezo_fem/results/"
     #PIEZO_SIM_NAME = "double_sim"
-    PIEZO_SIM_NAME = "real_model_15k"
-    #run_piezo_thermal_simulation(CWD, PIEZO_SIM_NAME)
+    PIEZO_SIM_NAME = "real_model"
+    run_piezo_thermal_simulation(CWD, PIEZO_SIM_NAME)
 
     # Load data from piezo sim
     piezo_sim_folder = os.path.join(CWD, PIEZO_SIM_NAME)

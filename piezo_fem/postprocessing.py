@@ -43,6 +43,6 @@ def calculate_electrical_input_energy(
 
     Returns:
         Electric input energy."""
-    current = np.gradient(charge)
+    current = np.gradient(charge, delta_t)
 
     return np.trapezoid(current*voltage_excitation, None, delta_t)
