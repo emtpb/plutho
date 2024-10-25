@@ -1,5 +1,0 @@
-Simulation in slice to check the conservation of energy between
-input excitation and temperature field in the end
-
-Time steps: 10000
-Mesh size: 0.000075 
