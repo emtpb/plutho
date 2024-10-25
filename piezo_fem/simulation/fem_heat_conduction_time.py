@@ -3,8 +3,8 @@
 # Python standard libraries
 import numpy as np
 import numpy.typing as npt
-import scipy.sparse as sparse
 import scipy.sparse.linalg as slin
+from scipy import sparse
 
 # Local libraries
 from .base import MaterialData, SimulationData, MeshData, \
@@ -261,17 +261,9 @@ class HeatConductionSim:
             (k.shape[0], number_of_time_steps),
             dtype=np.float64)
 
-        # TODO Since there are no dirichlet bc this should be irrelevant?
-        # c, k = apply_dirichlet_bc(
-        #     c,
-        #     k,
-        #     self.dirichlet_nodes[0],
-        #     self.dirichlet_nodes[1],
-        #     number_of_nodes)
-
         k_star = (k+1/(gamma*delta_t)*c).tocsr()
 
-        print("Starting simulation")
+        print("Starting heat conduction simulation")
         for time_index in range(number_of_time_steps-1):
             f = self.f[:, time_index]
 

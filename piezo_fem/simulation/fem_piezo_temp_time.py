@@ -2,39 +2,20 @@
 thermal field."""
 
 # Python standard libraries
+from typing import List
 import numpy as np
 import numpy.typing as npt
-import scipy.sparse as sparse
 import scipy.sparse.linalg as slin
-from scipy import integrate
+from scipy import sparse
 
 # Local libraries
 from .base import MaterialData, SimulationData, MeshData, \
-    local_shape_functions, gradient_local_shape_functions, \
+    gradient_local_shape_functions, create_local_element_data, \
     local_to_global_coordinates, b_operator_global, integral_m, \
     integral_ku, integral_kuv, integral_kve, apply_dirichlet_bc, \
-    quadratic_quadrature
+    quadratic_quadrature, LocalElementData, calculate_volumes
 from .fem_piezo_time import calculate_charge
 from .fem_heat_conduction_time import integral_ktheta, integral_theta_load
-
-
-def integral_volume(node_points: npt.NDArray) -> float:
-    """Calculates the volume of the triangle given by the node points.
-    HINT: Must be multiplied with 2*np.pi and the jacobian determinant in order
-    to give the correct volume of any rotationsymmetric triangle.
-
-    Parameters:
-        node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
-            one triangle.
-
-    Returns:
-        Volume of the triangle.
-    """
-    def inner(s, t):
-        r = local_to_global_coordinates(node_points, s, t)[0]
-        return r
-
-    return quadratic_quadrature(inner)
 
 
 def loss_integral_scs(
@@ -67,14 +48,12 @@ def loss_integral_scs(
     def inner(s, t):
         r = local_to_global_coordinates(node_points, s, t)[0]
         b_opt = b_operator_global(node_points, s, t, jacobian_inverted_t)
-        #dt_s = np.dot(
-        #    b_opt,
-        #    (3*u_e_t-4*u_e_t_minus_1+u_e_t_minus_2)/(2*delta_t)
-        #)
+
         s_e = np.dot(b_opt, u_e_t)
         s_e_t_minus_1 = np.dot(b_opt, u_e_t_minus_1)
         s_e_t_minus_2 = np.dot(b_opt, u_e_t_minus_2)
         dt_s = (3*s_e-4*s_e_t_minus_1+s_e_t_minus_2)/(2*delta_t)
+
         return np.dot(dt_s.T, np.dot(elasticity_matrix.T, dt_s))*r
 
     return quadratic_quadrature(inner)
@@ -115,53 +94,8 @@ def loss_integral_scds(
         )
         return np.dot(
             np.dot(b_opt, u_e_t).T,
-            np.dot(elasticity_matrix.T, dt_s))
-
-    return quadratic_quadrature(inner)
-
-
-def loss_integral_eeds(
-        node_points,
-        u_e_t: npt.NDArray,
-        u_e_t_minus_1: npt.NDArray,
-        u_e_t_minus_2: npt.NDArray,
-        v,
-        delta_t: float,
-        jacobian_inverted_t: npt.NDArray,
-        piezo_matrix,):
-    def inner(s, t):
-        b_opt = b_operator_global(node_points, s, t, jacobian_inverted_t)
-        #dt_s = np.dot(
-        #    b_opt,
-        #    (3*u_e_t-4*u_e_t_minus_1+u_e_t_minus_2)/(2*delta_t)
-        #)
-        S = np.dot(b_opt, u_e_t)
-        S_t_minus_1 = np.dot(b_opt, u_e_t_minus_1)
-        S_t_minus_2 = np.dot(b_opt, u_e_t_minus_2)
-        dt_s = (3*S-4*S_t_minus_1+S_t_minus_2)/(2*delta_t)
-        e = -1*np.dot(gradient_local_shape_functions(), v)
-
-        return np.dot(e.T, np.dot(piezo_matrix, dt_s))
-
-    return quadratic_quadrature(inner)
-
-
-def energy_integral_theta(
-        node_points: npt.NDArray,
-        theta: npt.NDArray):
-    """Integrates the given element over the given theta field.
-
-    Parameters:
-        node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
-            one triangle.
-        theta: List of the temperature field values of the points
-            [theta1, theta2, theta3].
-    """
-    def inner(s, t):
-        n = local_shape_functions(s, t)
-        r = local_to_global_coordinates(node_points, s, t)[0]
-
-        return np.dot(n.T, theta)*r
+            np.dot(elasticity_matrix.T, dt_s)
+        )
 
     return quadratic_quadrature(inner)
 
@@ -219,6 +153,9 @@ class PiezoSimTherm:
     mech_loss: npt.NDArray
     temp_field_energy: npt.NDArray
 
+    # Internal simulation data
+    local_elements: List[LocalElementData]
+
     def __init__(
             self,
             mesh_data: MeshData,
@@ -236,6 +173,8 @@ class PiezoSimTherm:
         # TODO Assembly takes long rework this algorithm?
         # Maybe the 2x2 matrix slicing is not very fast
         nodes = self.mesh_data.nodes
+        elements = self.mesh_data.elements
+        self.local_elements = create_local_element_data(nodes, elements)
 
         number_of_nodes = len(nodes)
         mu = sparse.lil_matrix(
@@ -257,27 +196,17 @@ class PiezoSimTherm:
             (number_of_nodes, number_of_nodes),
             dtype=np.float64)
 
-        for element in self.mesh_data.elements:
-            dn = gradient_local_shape_functions()
-            # Get node points of element in format
-            # [x1 x2 x3]
-            # [y1 y2 y3] where (xi, yi) are the coordinates for Node i
-            node_points = np.array([
-                [nodes[element[0]][0],
-                 nodes[element[1]][0],
-                 nodes[element[2]][0]],
-                [nodes[element[0]][1],
-                 nodes[element[1]][1],
-                 nodes[element[2]][1]]
-            ])
-            jacobian = np.dot(node_points, dn.T)
-            jacobian_inverted_t = np.linalg.inv(jacobian).T
-            jacobian_det = np.linalg.det(jacobian)
+        for element_index, element in enumerate(self.mesh_data.elements):
+            # Get local element nodes and matrices
+            local_element = self.local_elements[element_index]
+            node_points = local_element.node_points
+            jacobian_inverted_t = local_element.jacobian_inverted_t
+            jacobian_det = local_element.jacobian_det
 
             # TODO Check if its necessary to calculate all integrals
             # --> Dirichlet nodes could be leaved out?
-            # Multiply with jac_det because its integrated with respect to
-            # local coordinates.
+            # Multiply with jacobian_det because its integrated with respect
+            # to local coordinates.
             # Mutiply with 2*pi because theta is integrated from 0 to 2*pi
             mu_e = (
                 self.material_data.density
@@ -316,7 +245,7 @@ class PiezoSimTherm:
                     node_points,
                     jacobian_inverted_t)
                 * self.material_data.thermal_conductivity
-                * jacobian_det*2*np.pi
+                * jacobian_det * 2 * np.pi
             )
 
             # Now assemble all element matrices
@@ -422,17 +351,22 @@ class PiezoSimTherm:
             k,
             self.dirichlet_nodes[0],
             self.dirichlet_nodes[1],
-            number_of_nodes)
+            number_of_nodes
+        )
 
         k_star = (k+gamma/(beta*delta_t)*c+1/(beta*delta_t**2)*m).tocsr()
 
         # Mechanical loss calculated during simulation (for thermal field)
         mech_loss = np.zeros(
             shape=(number_of_elements, number_of_time_steps),
-            dtype=np.float64)
+            dtype=np.float64
+        )
         temp_field_energy = np.zeros(
             shape=(number_of_time_steps),
-            dtype=np.float64)
+            dtype=np.float64
+        )
+
+        volumes = calculate_volumes(self.local_elements)
 
         print("Starting simulation")
         for time_index in range(number_of_time_steps-1):
@@ -448,8 +382,8 @@ class PiezoSimTherm:
                 # If it is a ring there are no boundary conditions for u_r
                 # or u_z.
                 f = self.get_load_vector(
-                        [],
-                        [],
+                        np.array([]),
+                        np.array([]),
                         self.dirichlet_nodes[1],
                         self.dirichlet_values[1][time_index+1],
                         mech_loss[:, time_index])
@@ -477,75 +411,50 @@ class PiezoSimTherm:
             a[:, time_index+1] = (u[:, time_index+1]-u_tilde)/(beta*delta_t**2)
             v[:, time_index+1] = v_tilde + gamma*delta_t*a[:, time_index+1]
 
-            # Calculate charge
             q[time_index+1] = calculate_charge(
                 u[:, time_index+1],
                 self.material_data.permittivity_matrix,
                 self.material_data.piezo_matrix,
                 electrode_elements,
-                self.mesh_data.nodes
+                nodes
             )
 
             # Calculate power_loss
-            # TODO Calculate charge and power loss together (one loop)
-            if time_index > 1:
-                for element_index, element in enumerate(elements):
-                    dn = gradient_local_shape_functions()
-                    node_points = np.array([
-                        [nodes[element[0]][0],
-                         nodes[element[1]][0],
-                         nodes[element[2]][0]],
-                        [nodes[element[0]][1],
-                         nodes[element[1]][1],
-                         nodes[element[2]][1]]
-                    ])
-                    jacobian = np.dot(node_points, dn.T)
-                    jacobian_inverted_t = np.linalg.inv(jacobian).T
-                    jacobian_det = np.linalg.det(jacobian)
-                    u_e = np.array([u[2*element[0], time_index],
-                                    u[2*element[0]+1, time_index],
-                                    u[2*element[1], time_index],
-                                    u[2*element[1]+1, time_index],
-                                    u[2*element[2], time_index],
-                                    u[2*element[2]+1, time_index]])
-                    u_e_t_minus_1 = np.array([
-                                    u[2*element[0], time_index-1],
-                                    u[2*element[0]+1, time_index-1],
-                                    u[2*element[1], time_index-1],
-                                    u[2*element[1]+1, time_index-1],
-                                    u[2*element[2], time_index-1],
-                                    u[2*element[2]+1, time_index-1]])
-                    u_e_t_minus_2 = np.array([
-                                    u[2*element[0], time_index-2],
-                                    u[2*element[0]+1, time_index-2],
-                                    u[2*element[1], time_index-2],
-                                    u[2*element[1]+1, time_index-2],
-                                    u[2*element[2], time_index-2],
-                                    u[2*element[2]+1, time_index-2]])
-                    v_e = np.array([
-                        u[element[0]+2*number_of_nodes, time_index],
-                        u[element[1]+2*number_of_nodes, time_index],
-                        u[element[2]+2*number_of_nodes, time_index]
-                    ])
-                    theta_e = np.array([
-                        u[element[0]+3*number_of_nodes, time_index],
-                        u[element[1]+3*number_of_nodes, time_index],
-                        u[element[2]+3*number_of_nodes, time_index]])
-                    temp_field_energy[time_index] += (
-                        energy_integral_theta(
-                            node_points,
-                            theta_e)
-                        * self.material_data.heat_capacity
-                        * self.material_data.density
-                        * 2*np.pi*jacobian_det
-                    )
-                    # The mech loss of the element is divided by the volume
-                    # because it must be a power density.
-                    # TODO Is it possible to calculate the mech loss for the
-                    # points directly instead of calculating it for the
-                    # element and then splitting it later equally on the
-                    # points?
-                    volume = integral_volume(node_points)*2*np.pi*jacobian_det
+            for element_index, element in enumerate(elements):
+                # Get local element data
+                local_element = self.local_elements[element_index]
+                node_points = local_element.node_points
+                jacobian_inverted_t = local_element.jacobian_inverted_t
+
+                # Get field values at current element at time index
+                u_e = np.array([
+                    u[2*element[0], time_index+1],
+                    u[2*element[0]+1, time_index+1],
+                    u[2*element[1], time_index+1],
+                    u[2*element[1]+1, time_index+1],
+                    u[2*element[2], time_index+1],
+                    u[2*element[2]+1, time_index+1]])
+                u_e_t_minus_1 = np.array([
+                    u[2*element[0], time_index],
+                    u[2*element[0]+1, time_index],
+                    u[2*element[1], time_index],
+                    u[2*element[1]+1, time_index],
+                    u[2*element[2], time_index],
+                    u[2*element[2]+1, time_index]])
+                u_e_t_minus_2 = np.array([
+                    u[2*element[0], time_index-1],
+                    u[2*element[0]+1, time_index-1],
+                    u[2*element[1], time_index-1],
+                    u[2*element[1]+1, time_index-1],
+                    u[2*element[2], time_index-1],
+                    u[2*element[2]+1, time_index-1]])
+
+                # The mech loss of the element is divided by the volume
+                # because it must be a power density.
+                # The 2*np.pi*jacobian_det is removed because it is
+                # multiplied in mthe  mech loss and divided through the
+                # volume.
+                if time_index > 0:
                     mech_loss[element_index, time_index+1] = (
                         loss_integral_scs(
                             node_points,
@@ -556,17 +465,8 @@ class PiezoSimTherm:
                             jacobian_inverted_t,
                             self.material_data.elasticity_matrix)
                         * self.material_data.alpha_k
-                        #- loss_integral_eeds(
-                        #    node_points,
-                        #    u_e,
-                        #    u_e_t_minus_1,
-                        #    u_e_t_minus_2,
-                        #    v_e,
-                        #    delta_t,
-                        #    jacobian_inverted_t,
-                        #    self.material_data.piezo_matrix
-                        #)
-                    ) * 2*np.pi*jacobian_det * 1/volume
+                        * 1/volumes[element_index]
+                    )
 
             if (time_index + 1) % 100 == 0:
                 print(f"Finished time step {time_index+1}")

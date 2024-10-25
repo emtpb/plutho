@@ -21,5 +21,3 @@ homepage = "https://emt.uni-paderborn.de"
 [build-system]
 requires = ["setuptools>=41", "wheel", "setuptools_scm"]
 build-backend = "setuptools.build_meta"
-
-[tool.setuptools_scm]

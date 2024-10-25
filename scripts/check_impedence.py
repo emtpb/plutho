@@ -7,11 +7,17 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
+# Third party libraries
+import tikzplotlib
+
 # Local libraries
 import piezo_fem as pfem
 
 
-def plot_impedance_with_opencfs(sim: pfem.Simulation, sim_term: pfem.Simulation, open_cfs_hist_file: str):
+def plot_impedance_with_opencfs(
+        sim: pfem.Simulation,
+        sim_term: pfem.Simulation,
+        open_cfs_hist_file: str):
     """Calculates and plots the impedence curves of the given FEM simulation
     together with OpenCFS results.
 
@@ -44,10 +50,8 @@ def plot_impedance_with_opencfs(sim: pfem.Simulation, sim_term: pfem.Simulation,
     plt.grid()
     plt.show()
     #plt.savefig("/home/jonash/uni/Masterarbeit/plots/compare_impedance.png", bbox_inches='tight')
-    import tikzplotlib
 
     tikzplotlib.save("/home/jonash/uni/Masterarbeit/plots/compare_impedance.tex")
-
 
 
 if __name__ == "__main__":

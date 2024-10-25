@@ -1,12 +1,14 @@
 """Module for base functionalities needed for the simulations."""
 
 # Python standard libraries
-from typing import Tuple
+from typing import Tuple, Callable, List
 from dataclasses import dataclass
 from enum import Enum
 import numpy as np
 import numpy.typing as npt
 
+### ENUMS AND DATACLASSES
+# -----------------------
 
 class ModelType(Enum):
     """Containts the model type. Since for different model types
@@ -44,7 +46,7 @@ class MaterialData:
 class SimulationData:
     """Contains data for the simulation itself."""
     delta_t: float
-    number_of_time_steps: float
+    number_of_time_steps: int
     gamma: float
     beta: float
 
@@ -78,6 +80,17 @@ class ExcitationInfo:
         content["excitation_type"] = self.excitation_type.value
         return content
 
+@dataclass
+class LocalElementData():
+    """Conatins the data of a single element"""
+    node_points: npt.NDArray
+    jacobian: npt.NDArray
+    jacobian_inverted_t: npt.NDArray
+    jacobian_det: float
+
+
+### Local functions and integrals
+# -------------------------------
 
 def local_shape_functions(s: float, t: float) -> npt.NDArray:
     """Returns the local linear shape functions for the reference triangle.
@@ -274,7 +287,46 @@ def integral_kve(
     return quadratic_quadrature(inner)
 
 
-def quadratic_quadrature(func: callable) -> npt.NDArray:
+def energy_integral_theta(
+        node_points: npt.NDArray,
+        theta: npt.NDArray):
+    """Integrates the given element over the given theta field.
+
+    Parameters:
+        node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
+            one triangle.
+        theta: List of the temperature field values of the points
+            [theta1, theta2, theta3].
+    """
+    def inner(s, t):
+        n = local_shape_functions(s, t)
+        r = local_to_global_coordinates(node_points, s, t)[0]
+
+        return np.dot(n.T, theta)*r
+
+    return quadratic_quadrature(inner)
+
+
+def integral_volume(node_points: npt.NDArray) -> float:
+    """Calculates the volume of the triangle given by the node points.
+    HINT: Must be multiplied with 2*np.pi and the jacobian determinant in order
+    to give the correct volume of any rotationsymmetric triangle.
+
+    Parameters:
+        node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
+            one triangle.
+
+    Returns:
+        Volume of the triangle.
+    """
+    def inner(s, t):
+        r = local_to_global_coordinates(node_points, s, t)[0]
+        return r
+
+    return quadratic_quadrature(inner)
+
+
+def quadratic_quadrature(func: Callable):
     """Integrates the given function of 2 variables using gaussian
     quadrature along 2 variables for a reference triangle.
     This gives exact results for linear shape functions.
@@ -305,6 +357,10 @@ def line_quadrature(func):
     return 0.5*(func(-1/2/np.sqrt(3)+1/2, 0) + func(1/2/np.sqrt(3)+1/2, 0))
 
 
+### Boundary condition functions
+# ------------------------------
+
+
 def apply_dirichlet_bc(
         m: npt.NDArray,
         c: npt.NDArray,
@@ -315,7 +371,8 @@ def apply_dirichlet_bc(
     """Prepares the given matrices m, c and k for the dirichlet boundary
     conditions. This is done by setting the corresponding rows to 0
     excepct for the node which will contain the specific value (this is set
-    to 1).
+    to 1). Right now only boundary conditions for v and u_r can be set, not
+    for u_z (not neede yet).
 
     Parameters:
         m: Mass matrix M.
@@ -359,16 +416,21 @@ def apply_dirichlet_bc(
     return m, c, k
 
 
-def get_dirichlet_boundary_conditions(
+def create_dirichlet_bc_nodes(
         gmsh_handler,
         electrode_excitation: npt.NDArray,
-        number_of_time_steps: float,
+        number_of_time_steps: int,
         set_symmetric_bc: bool = True):
-    """Sets the dirichlet boundary condition for the simulation
-    given the nodes of electrode, symaxis and ground. The electrode
-    nodes are set to the given electrode_excitation.
-    The symaxis nodes are the due to the axisymmetric model
-    and the ground nodes are set to 0.
+    """Creates lists of nodes and values used in the simulation to
+    apply the boundary conditions.
+    There are 4 lists returning: nodes_u, values_u, nodes_v, values_v.
+    The values are corresponding to the nodes with the same index.
+    The lists are set using the given electrode excitation as well
+    as the information if a symmetric bc is needed
+        Disc -> Symmetric bc
+        Ring -> No symmtric bc
+    The symmetric bc sets the u_r values at the symmetric axis nodes to 0.
+    The ground electrode nodes are implicitly set to 0.
 
     Parameters:
         electrode_nodes: Nodes in the electrode region.
@@ -376,6 +438,11 @@ def get_dirichlet_boundary_conditions(
         ground_nodes: Nodes in the ground region.
         electrode_excitation: Excitation values for each time step.
         number_of_time_steps: Total number of time steps of the simulation.
+
+    Returns
+        Tuple of 2 tuples. The first inner tuple is a tuple containing
+        the nodes and values for u and the second inner tuple contains
+        the nodes and values for v. 
     """
     # Get nodes from gmsh handler
     pg_nodes = gmsh_handler.get_nodes_by_physical_groups(
@@ -410,3 +477,61 @@ def get_dirichlet_boundary_conditions(
 
     return [dirichlet_nodes_u, dirichlet_nodes_v], \
         [dirichlet_values_u, dirichlet_values_v]
+
+def create_local_element_data(
+        nodes: npt.NDArray,
+        elements: npt.NDArray) -> List[LocalElementData]:
+    """Create the local node data and the corresponding matrices
+    for every element which are needed in many parts of the simulations.
+
+    Parameters:
+        nodes: Nodes of the mesh
+        elements: Elements of the mesh
+
+    Returns:
+        List of LocalElementData objects.
+    """
+    local_element_data = []
+    dn = gradient_local_shape_functions()
+    for element in elements:
+        # Get node points of element in format
+        # [x1 x2 x3]
+        # [y1 y2 y3] where (xi, yi) are the coordinates for Node i
+        node_points = np.array([
+            [nodes[element[0]][0],
+             nodes[element[1]][0],
+             nodes[element[2]][0]],
+            [nodes[element[0]][1],
+             nodes[element[1]][1],
+             nodes[element[2]][1]]
+        ])
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_inverted_t = np.linalg.inv(jacobian).T
+        jacobian_det = np.linalg.det(jacobian)
+        local_element_data.append(LocalElementData(
+            node_points,
+            jacobian,
+            jacobian_inverted_t,
+            jacobian_det
+        ))
+
+    return local_element_data
+
+
+def calculate_volumes(local_element_data: List[LocalElementData]):
+    """Calculates the volume of each element. The element information
+    is given by the local_element_data
+
+    Parameters:
+        local_element_data: List of LocalElementData objects.
+
+    Returns:
+        List of volumes of the elements.
+    """
+    volumes = []
+
+    for local_element in local_element_data:
+        node_points = local_element.node_points
+        volumes.append(integral_volume(node_points))
+
+    return volumes

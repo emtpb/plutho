@@ -1,6 +1,5 @@
 import gmsh
 import os
-from enum import Enum
 
 def plot_view(
     input_file_path: str,

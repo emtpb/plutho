@@ -1,6 +1,7 @@
 """Main module for the simulation of piezoelectric systems."""
 
 # Python standard libraries
+from typing import List
 import numpy as np
 import numpy.typing as npt
 import scipy.sparse as sparse
@@ -11,7 +12,7 @@ from .base import MaterialData, SimulationData, MeshData, \
     gradient_local_shape_functions, \
     local_to_global_coordinates, b_operator_global, integral_m, \
     integral_ku, integral_kuv, integral_kve, apply_dirichlet_bc, \
-    line_quadrature
+    line_quadrature, create_local_element_data, LocalElementData
 
 
 def charge_integral_u(
@@ -100,15 +101,18 @@ def calculate_charge(
     for element in elements:
         dn = gradient_local_shape_functions()
         node_points = np.array([
-            [nodes[element[0]][0], nodes[element[1]][0], nodes[element[2]][0]],
-            [nodes[element[0]][1], nodes[element[1]][1], nodes[element[2]][1]]
+            [nodes[element[0]][0],
+             nodes[element[1]][0],
+             nodes[element[2]][0]],
+            [nodes[element[0]][1],
+             nodes[element[1]][1],
+             nodes[element[2]][1]]
         ])
 
         # TODO Check why the jacobian_det did not work
         # It should work with line elements instead of triangle elements
         jacobian = np.dot(node_points, dn.T)
         jacobian_inverted_t = np.linalg.inv(jacobian).T
-        # jacobian_det = np.linalg.det(jacobian)
 
         # Since its a line integral along the top edge of the model where the
         # triangles are aligned in a line.
@@ -123,21 +127,25 @@ def calculate_charge(
                         u[2*element[1]],
                         u[2*element[1]+1],
                         u[2*element[2]],
-                        u[2*element[2]+1]])
+                        u[2*element[2]+1]
+        ])
         ve_e = np.array([u[element[0]+2*number_of_nodes],
                          u[element[1]+2*number_of_nodes],
-                         u[element[2]+2*number_of_nodes]])
+                         u[element[2]+2*number_of_nodes]
+        ])
 
         q_u = charge_integral_u(
             node_points,
             u_e,
             piezo_matrix,
-            jacobian_inverted_t)*2*np.pi*jacobian_det
+            jacobian_inverted_t
+        ) * 2 * np.pi * jacobian_det
         q_v = charge_integral_v(
             node_points,
             ve_e,
             permittivity_matrix,
-            jacobian_inverted_t)*2*np.pi*jacobian_det
+            jacobian_inverted_t
+        ) * 2 * np.pi * jacobian_det
 
         q += q_u - q_v
 
@@ -189,6 +197,9 @@ class PiezoSim:
     u: npt.NDArray
     q: npt.NDArray
 
+    # Internal simulation data
+    local_elements: List[LocalElementData]
+
     def __init__(
             self,
             mesh_data: MeshData,
@@ -206,37 +217,33 @@ class PiezoSim:
         # TODO Assembly takes to long rework this algorithm
         # Maybe the 2x2 matrix slicing is not very fast
         nodes = self.mesh_data.nodes
+        elements = self.mesh_data.elements
+        self.local_elements = create_local_element_data(nodes, elements)
 
         number_of_nodes = len(nodes)
         mu = sparse.lil_matrix(
             (2*number_of_nodes, 2*number_of_nodes),
-            dtype=np.float64)
+            dtype=np.float64
+        )
         ku = sparse.lil_matrix(
             (2*number_of_nodes, 2*number_of_nodes),
-            dtype=np.float64)
+            dtype=np.float64
+        )
         kuv = sparse.lil_matrix(
             (2*number_of_nodes, number_of_nodes),
-            dtype=np.float64)
+            dtype=np.float64
+        )
         kve = sparse.lil_matrix(
             (number_of_nodes, number_of_nodes),
-            dtype=np.float64)
+            dtype=np.float64
+        )
 
-        for element in self.mesh_data.elements:
-            dn = gradient_local_shape_functions()
-            # Get node points of element in format
-            # [x1 x2 x3]
-            # [y1 y2 y3] where (xi, yi) are the coordinates for Node i
-            node_points = np.array([
-                [nodes[element[0]][0],
-                 nodes[element[1]][0],
-                 nodes[element[2]][0]],
-                [nodes[element[0]][1],
-                 nodes[element[1]][1],
-                 nodes[element[2]][1]]
-            ])
-            jacobian = np.dot(node_points, dn.T)
-            jacobian_inverted_t = np.linalg.inv(jacobian).T
-            jacobian_det = np.linalg.det(jacobian)
+        for element_index, element in enumerate(self.mesh_data.elements):
+            # Get local element nodes and matrices
+            local_element = self.local_elements[element_index]
+            node_points = local_element.node_points
+            jacobian_inverted_t = local_element.jacobian_inverted_t
+            jacobian_det = local_element.jacobian_det
 
             # TODO Check if its necessary to calculate all integrals
             # --> Dirichlet nodes could be leaved out?

@@ -1,6 +1,9 @@
+"""Module to compare the therm simulation in the piezo sim with the
+external thermal simulation.
+"""
+
 import os
 import numpy as np
-import matplotlib.pyplot as plt
 import piezo_fem as pfem
 
 if __name__ == "__main__":

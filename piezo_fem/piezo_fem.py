@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 # Local libraries
 from .simulation.base import MeshData, MaterialData, SimulationData, \
-    SimulationType, ModelType, get_dirichlet_boundary_conditions, \
+    SimulationType, ModelType, create_dirichlet_bc_nodes, \
     ExcitationInfo, ExcitationType
 from .simulation.fem_piezo_temp_time import PiezoSimTherm
 from .simulation.fem_piezo_time import PiezoSim
@@ -241,7 +241,7 @@ class Simulation:
             raise SimulationException("Please setup excitation first.")
         if not self.simulation_data:
             raise SimulationException("Please setup simulation data first.")
-        dirichlet_nodes, dirichlet_values = get_dirichlet_boundary_conditions(
+        dirichlet_nodes, dirichlet_values = create_dirichlet_bc_nodes(
             self.gmsh_handler,
             self.excitation,
             self.simulation_data.number_of_time_steps,
@@ -297,17 +297,41 @@ class Simulation:
                 encoding="UTF-8") as fd:
             settings.write(fd)
 
+    def load_simulation_results(self):
+        """Loads already existing simulation results from the folder into
+        the solver object.
+        """
+        if not os.path.exists(self.workspace_directory):
+            raise IOError("No simulation results found.")
+
+        displacement_file = os.path.join(
+            self.workspace_directory,
+            f"{self.simulation_name}_u.npy")
+        charge_file = os.path.join(
+            self.workspace_directory,
+            f"{self.simulation_name}_q.npy")
+
+        self.solver.u = np.load(displacement_file)
+        self.solver.q = np.load(charge_file)
+
+        if isinstance(self.solver, PiezoSimTherm):
+            mech_loss_file = os.path.join(
+                self.workspace_directory,
+                f"{self.simulation_name}_mech_loss.npy"
+            )
+            self.solver.mech_loss = np.load(mech_loss_file)
+
     @staticmethod
     def load_simulation_settings(
             config_file_path: str,
-            new_working_diretory: str = None) -> Simulation:
+            new_working_diretory: str = "") -> Simulation:
         """Creates a simulation object from the given config.
 
         Parameters:
             config_file_path: Pathto the config file.
             new_working_directory: Overrides the working directory of the
                 given file with a new one. The simulation files are then saved
-                in the new working_direcotry. If set to None the working
+                in the new working_direcotry. If set to "" the working
                 directory of the file is used.
 
         Returns:
@@ -355,29 +379,36 @@ class Simulation:
             raise SimulationException(
                 f"Unknown excitation type given {excitation_type}")
 
-        working_directory = new_working_diretory if new_working_diretory \
-            is not None else os.path.dirname(os.path.abspath(config_file_path))
+        workspace_directory = new_working_diretory \
+            if new_working_diretory != "" \
+                else os.path.dirname(os.path.abspath(config_file_path))
 
-        sim = Simulation(working_directory, material_data, simulation_name)
+        sim = Simulation(workspace_directory, material_data, simulation_name)
 
         model_type = ModelType(config["model"]["model_type"])
-        # TODO Is it necessary to always create the new mesh file? Most 
-        # likely the file is already there.
         if model_type is ModelType.DISC:
-            sim.create_disc_mesh(
-                radius=float(config["model"]["width"]),
-                height=float(config["model"]["height"]),
-                mesh_size=float(config["model"]["mesh_size"])
-            )
+            mesh_file = os.path.join(
+                workspace_directory,
+                f"{simulation_name}_disc.msh")
+            sim.gmsh_handler = GmshHandler(mesh_file, True)
+            sim.gmsh_handler.model_type = model_type
+            sim.gmsh_handler.radius = float(config["model"]["width"])
+            sim.gmsh_handler.height = float(config["model"]["height"])
+            sim.gmsh_handler.mesh_size = float(config["model"]["mesh_size"])
         elif model_type is ModelType.RING:
-            sim.create_ring_mesh(
-                inner_radius=float(config["model"]["x_offset"]),
-                outer_radius=float(config["model"]["width"]),
-                height=float(config["model"]["height"]),
-                mesh_size=float(config["model"]["mesh_size"])
-            )
+            mesh_file = os.path.join(
+                workspace_directory,
+                f"{simulation_name}_ring.msh")
+            sim.gmsh_handler = GmshHandler(mesh_file, True)
+            sim.gmsh_handler.model_type = model_type
+            sim.gmsh_handler.radius = float(config["model"]["width"])
+            sim.gmsh_handler.height = float(config["model"]["height"])
+            sim.gmsh_handler.mesh_size = float(config["model"]["mesh_size"])
+            sim.gmsh_handler.x_offset = float(config["model"]["x_offset"])
         else:
             raise IOError(f"Cannot deserialize ModelType {model_type}")
+        nodes, elements = sim.gmsh_handler.get_mesh_nodes_and_elements()
+        sim.mesh_data = MeshData(nodes, elements)
 
         sim.set_simulation(
             delta_t=simulation_data.delta_t,
@@ -459,6 +490,7 @@ class Simulation:
                 f"Simulation type {self.simulation_type} is not implemented.")
 
     def plot_impedence(self):
+        """Plots the impedence of the simulation results."""
         if self.excitation is None:
             raise SimulationException(
                 "In order to plot the impedance an excitation needs to be set")

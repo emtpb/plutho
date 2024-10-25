@@ -59,10 +59,18 @@ def create_scalar_field_as_csv(
         field: npt.NDArray,
         nodes: npt.NDArray,
         folder_path: str):
+    """Creates a series of *.csv files in the given folder each for
+    a specific time step of the given field.
+
+    Parameters:
+        field_name: Name of the field -> Name of the file.
+        field: Field which shall be exported.
+        nodes: Nodes of the mesh.
+        folder_path: Path of the folder in which all the files are created.
+    """
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
 
-    number_of_nodes = len(nodes)
     number_of_time_steps = field.shape[1]
 
     for time_step in range(number_of_time_steps):

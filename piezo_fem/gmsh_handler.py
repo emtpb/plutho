@@ -27,7 +27,7 @@ class GmshHandler:
     x_offset: float
     model_type: ModelType
 
-    def __init__(self, mesh_file_path: str):
+    def __init__(self, mesh_file_path: str, load_mesh: bool = False):
         """Constructor for the GmshHandler. Given the mesh file path a *.msh
         file is created. If post processing views are added the results are
         saved in a different file with the same path as mesh file path but
@@ -35,6 +35,8 @@ class GmshHandler:
 
         Parameters:
             mesh_file_path: Path where the mesh file will be saved.
+            load_mesh: Set to true if there is already a mesh and it shall be
+                opened in gmsh.
         """
         if not gmsh.isInitialized():
             gmsh.initialize()
@@ -42,6 +44,9 @@ class GmshHandler:
         self.mesh_file_path = mesh_file_path
         self.output_file_path = os.path.splitext(mesh_file_path)[0] + \
             "_results.msh"
+
+        if load_mesh:
+            gmsh.open(self.mesh_file_path)
 
     @staticmethod
     def _get_nodes(node_tags, node_coords, _=None) -> npt.NDArray:
