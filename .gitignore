@@ -179,4 +179,5 @@ cython_debug/
 .vscode/
 
 # Ignore data
+examples/simulations
 examples/cfs
