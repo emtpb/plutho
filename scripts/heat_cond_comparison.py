@@ -35,7 +35,7 @@ def energy_integral_theta(
 
 if __name__ == "__main__":
     #WD = "/home/jonash/uni/Masterarbeit/simulations/"
-    CWD = "/upb/users/j/jonasho/scratch/piezo_fem/results/"
+    CWD = "/upb/departments/emt/Student/jonasho/Masterarbeit/simulations/"
     SIM_NAME = "heat_cond_comparison"
     SIM_DIR = os.path.join(CWD, SIM_NAME)
 
@@ -53,6 +53,8 @@ if __name__ == "__main__":
         nodes,
         elements
     )
+    el = gmsh_handler.get_elements_by_physical_groups(["Electrode", "Ground"])
+    boundary_elements = np.concatenate([el["Electrode"], el["Ground"]])
 
     delta_t = 0.001
     number_of_time_steps = 1000
@@ -80,7 +82,7 @@ if __name__ == "__main__":
         1*np.ones(len(heat_sim.mesh_data.elements)),
         number_of_time_steps
     )
-    heat_sim.solve_time()
+    heat_sim.solve_time(boundary_elements=boundary_elements)
     #pfem.create_scalar_field_as_csv(
     #    "theta",
     #    heat_sim.theta,
@@ -97,31 +99,11 @@ if __name__ == "__main__":
     print("Average temperature", np.mean(heat_sim.theta[:, -1]))
     
     # Check if the thermal energy integral is working
-    theta = heat_sim.theta
-    temp_field_energy = 0
-    for element_index, element in enumerate(mesh_data.elements):
-        dn = gradient_local_shape_functions()
-        node_points = np.array([
-            [nodes[element[0]][0],
-             nodes[element[1]][0],
-             nodes[element[2]][0]],
-            [nodes[element[0]][1],
-             nodes[element[1]][1],
-             nodes[element[2]][1]]
-        ])
-        jacobian = np.dot(node_points, dn.T)
-        jacobian_inverted_t = np.linalg.inv(jacobian).T
-        jacobian_det = np.linalg.det(jacobian)
-        theta_e = np.array([
-            theta[element[0], -1],
-            theta[element[1], -1],
-            theta[element[2], -1]])
-        temp_field_energy += (
-            energy_integral_theta(
-                node_points,
-                theta_e)
-            * pfem.pic255.heat_capacity
-            * pfem.pic255.density
-            * 2*np.pi*jacobian_det
-        )
+    temp_field_energy= pfem.postprocessing.calculate_stored_thermal_energy(
+        heat_sim.theta[-1],
+        nodes,
+        elements,
+        heat_sim.material_data.heat_capacity,
+        heat_sim.material_data.density
+    )
     print("Calculated temperature field energy", temp_field_energy)
