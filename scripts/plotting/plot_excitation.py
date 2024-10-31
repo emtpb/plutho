@@ -27,8 +27,8 @@ if __name__ == "__main__":
     excitation = 20*np.sin(2*np.pi*time_values*FREQUENCY)
     plt.figure(figsize=(10, 8))
     plt.plot(time_values, excitation)
-    plt.xlabel("Time / s")
-    plt.ylabel("Excitation / V")
+    plt.xlabel("Zeit / s")
+    plt.ylabel("Spannung / V")
     plt.grid()
 
     plt.savefig(os.path.join(

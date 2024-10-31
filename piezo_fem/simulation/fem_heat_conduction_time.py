@@ -323,7 +323,7 @@ class HeatConductionSim:
 
         print("Starting heat conduction simulation")
         for time_index in range(number_of_time_steps-1):
-            f = self.f[:, time_index]+ self.calculate_convection_bc(
+            f = self.f[:, time_index] + self.calculate_convection_bc(
                 self.mesh_data.nodes,
                 boundary_elements,
                 theta[:, time_index],

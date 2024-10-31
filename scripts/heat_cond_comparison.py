@@ -4,34 +4,12 @@ import numpy as np
 import numpy.typing as npt
 
 # Third party libraries
-import gmsh
 from dotenv import load_dotenv
 
 # Local libraries
 import piezo_fem as pfem
 from piezo_fem.simulation.base import local_shape_functions, \
-    local_to_global_coordinates, quadratic_quadrature, \
-        gradient_local_shape_functions
-
-
-def energy_integral_theta(
-        node_points: npt.NDArray,
-        theta: npt.NDArray):
-    """Integrates the given element over the given theta field.
-
-    Parameters:
-        node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
-            one triangle.
-        theta: List of the temperature field values of the points
-            [theta1, theta2, theta3].
-    """
-    def inner(s, t):
-        n = local_shape_functions(s, t)
-        r = local_to_global_coordinates(node_points, s, t)[0]
-
-        return np.dot(n.T, theta)*r
-
-    return quadratic_quadrature(inner)
+    local_to_global_coordinates, quadratic_quadrature
 
 
 if __name__ == "__main__":
@@ -62,11 +40,11 @@ if __name__ == "__main__":
     el = gmsh_handler.get_elements_by_physical_groups(["Electrode", "Ground"])
     boundary_elements = np.concatenate([el["Electrode"], el["Ground"]])
 
-    delta_t = 0.001
-    number_of_time_steps = 1000
+    DELTA_T = 0.001
+    NUMBER_OF_TIME_STEPS = 1000
     simulation_data = pfem.SimulationData(
-        delta_t = delta_t,
-        number_of_time_steps=number_of_time_steps,
+        delta_t=DELTA_T,
+        number_of_time_steps=NUMBER_OF_TIME_STEPS,
         gamma=0.5,
         beta=0
     )
@@ -75,41 +53,45 @@ if __name__ == "__main__":
     heat_sim = pfem.HeatConductionSim(
         mesh_data, pfem.pic255, simulation_data
     )
-    # losses = np.zeros(len(elements))
-    # heat_sim.set_volume_heat_source(
-    #     losses
-    # )
+
     heat_sim.assemble()
     electrode_nodes = gmsh_handler.get_nodes_by_physical_groups(["Electrode"])["Electrode"]
-    #heat_sim.set_fixed_temperature(
-    #    electrode_nodes,
-    #    20*np.ones(len(electrode_nodes)))
+
     heat_sim.set_constant_volume_heat_source(
-        1*np.ones(len(heat_sim.mesh_data.elements)),
-        number_of_time_steps
+        0*np.ones(len(heat_sim.mesh_data.elements)),
+        NUMBER_OF_TIME_STEPS
     )
-    heat_sim.solve_time(boundary_elements=boundary_elements)
+    theta_start = 30*np.ones(len(nodes))
+    heat_sim.solve_time(
+        theta_start=theta_start,
+        boundary_elements=boundary_elements
+    )
+
     #pfem.create_scalar_field_as_csv(
     #    "theta",
     #    heat_sim.theta,
     #    nodes,
     #    os.path.join(SIM_DIR, "field")
     #)
+
     gmsh_handler.create_theta_post_processing_view(
         heat_sim.theta,
-        number_of_time_steps,
-        delta_t,
+        NUMBER_OF_TIME_STEPS,
+        DELTA_T,
         False
     )
     np.save(os.path.join(SIM_DIR, "theta"), heat_sim.theta)
     print("Average temperature", np.mean(heat_sim.theta[:, -1]))
-    
+
     # Check if the thermal energy integral is working
-    temp_field_energy= pfem.postprocessing.calculate_stored_thermal_energy(
-        heat_sim.theta[-1],
+    temp_field_energy = pfem.postprocessing.calculate_stored_thermal_energy(
+        heat_sim.theta[:, -1],
         nodes,
         elements,
         heat_sim.material_data.heat_capacity,
         heat_sim.material_data.density
     )
     print("Calculated temperature field energy", temp_field_energy)
+
+    import gmsh
+    gmsh.fltk.run()

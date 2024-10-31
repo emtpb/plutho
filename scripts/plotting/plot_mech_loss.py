@@ -11,10 +11,9 @@ from dotenv import load_dotenv
 if __name__ == "__main__":
     load_dotenv()
 
-    MODEL_NAME = "real_model_10k"
+    MODEL_NAME = "real_model_30k"
     PLOT_FOLDER = os.environ["piezo_fem_plot_path"]
     SIMULATION_FOLDER = os.environ["piezo_fem_simulation_path"]
-    NUMBER_OF_TIME_STEPS = 10000
     DELTA_T = 1e-8
 
     plt.rcParams.update({'font.size': 18})
@@ -24,15 +23,16 @@ if __name__ == "__main__":
         MODEL_NAME,
         f"{MODEL_NAME}_mech_loss.npy"
     ))
+    number_of_time_steps = mech_loss_density.shape[1]
     element_indices = [379, 1079]
     for element_index in element_indices:
         plt.figure(figsize=(12,6))
         plt.plot(
-            np.arange(NUMBER_OF_TIME_STEPS)*DELTA_T,
+            np.arange(number_of_time_steps)*DELTA_T,
             mech_loss_density[element_index, :],
             label=f"Element {element_index}")
-        plt.xlabel("Time / s")
-        plt.ylabel("Loss density / $\\frac{\\mathrm{W}}{\\mathrm{m}^{3}}$")
+        plt.xlabel("Zeit / s")
+        plt.ylabel("Verlustleistungsdichte / $\\frac{\\mathrm{W}}{\\mathrm{m}^{3}}$")
         plt.grid()
         plt.legend()
 
