@@ -8,6 +8,9 @@ import scipy.integrate
 import scipy.signal
 import matplotlib.pyplot as plt
 
+# Third party libraries
+from dotenv import load_dotenv 
+
 # Local libraries
 import piezo_fem as pfem
 
@@ -96,20 +99,23 @@ def interpolate_mech_loss(
 
 if __name__ == "__main__":
     MODEL_NAME = "real_model_30k_sinus"
-    #WD = os.path.join(
-    #    "/upb/users/j/jonasho/scratch/piezo_fem/results", MODEL_NAME)
-    WD = os.path.join(
-        "/home/jonash/uni/Masterarbeit/simulations/", MODEL_NAME)
+    load_dotenv()
+
+    CWD = os.getenv("piezo_fem_simulation_path")
+    if CWD is None:
+        print("Couldn't find simulation path.")
+        exit(1)
+
     LOSS_FILE = os.path.join(
-        WD,
+        CWD,
         f"{MODEL_NAME}_mech_loss.npy"
     )
     CONFIG_FILE = os.path.join(
-        WD,
+        CWD,
         f"{MODEL_NAME}.cfg"
     )
     DISPLACEMENT_FILE = os.path.join(
-        WD,
+        CWD,
         f"{MODEL_NAME}_u.npy"
     )
     sim = pfem.Simulation.load_simulation_settings(CONFIG_FILE)

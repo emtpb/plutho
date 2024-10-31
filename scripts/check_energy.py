@@ -6,6 +6,9 @@ piezo simulation
 import os
 import numpy as np
 
+# Third party libraries
+from dotenv import load_dotenv
+
 # Local libraries
 import piezo_fem as pfem
 
@@ -113,14 +116,13 @@ def model(sim_directory, sim_name):
 
 
 if __name__ == "__main__":
+    load_dotenv()
+
+    CWD = os.getenv("piezo_fem_simulation_path")
+    if CWD is None:
+        print("Couldn't find simulation path.")
+        exit(1)
     MODEL_NAME = "energy_check"
-    #CWD = os.path.join(
-    #    "/upb/departments/emt/Student/jonasho/Masterarbeit/piezo_fem_results/",
-    #    MODEL_NAME
-    #)
-    CWD = os.path.join(
-        "/home/jonash/uni/Masterarbeit/simulations/", MODEL_NAME
-    )
     CONFIG_FILE_PATH = os.path.join(CWD, f"{MODEL_NAME}.cfg")
 
     if False:

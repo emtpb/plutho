@@ -181,3 +181,4 @@ cython_debug/
 # Ignore data
 examples/cfs
 examples/simulations
+.env

@@ -267,8 +267,7 @@ class HeatConductionSim:
             outer_temperature):
         f = np.zeros(len(nodes))
 
-        for element_index, element in enumerate(boundary_elements):
-            dn = gradient_local_shape_functions()
+        for _, element in enumerate(boundary_elements):
             node_points = np.array([
                 [nodes[element[0]][0],
                  nodes[element[1]][0],
@@ -277,7 +276,6 @@ class HeatConductionSim:
                  nodes[element[1]][1],
                  nodes[element[2]][1]]
             ])
-            #jacobian_det = -np.abs(nodes[element[1]][0]-nodes[element[0]][0])
             min_r = np.min([nodes[element[0]][0], nodes[element[1]][0]])
             max_r = np.max([nodes[element[0]][0], nodes[element[1]][0]])
             jacobian_det = (min_r-max_r)

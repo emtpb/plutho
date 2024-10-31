@@ -5,6 +5,7 @@ import numpy.typing as npt
 
 # Third party libraries
 import gmsh
+from dotenv import load_dotenv
 
 # Local libraries
 import piezo_fem as pfem
@@ -34,8 +35,13 @@ def energy_integral_theta(
 
 
 if __name__ == "__main__":
-    #WD = "/home/jonash/uni/Masterarbeit/simulations/"
-    CWD = "/upb/departments/emt/Student/jonasho/Masterarbeit/simulations/"
+    load_dotenv()
+
+    CWD = os.getenv("piezo_fem_simulation_path")
+    if CWD is None:
+        print("Couldn't find simulation path.")
+        exit(1)
+
     SIM_NAME = "heat_cond_comparison"
     SIM_DIR = os.path.join(CWD, SIM_NAME)
 

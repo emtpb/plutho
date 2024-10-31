@@ -24,3 +24,13 @@ maybe electrical and mechanical sim)
 - Simulation can be made much faster when calculating all the element nodes and
     jacobians beforehand and reusing
     - Maybe lru caches can be utilized?
+
+## Developer
+
+In order to use the scripts from the scripts/ folder out of the box it is
+necessary to add a environment variable for the path of the simulation results.
+In order to do this only for the current workspace create a .env file
+and add the following vscode setting:
+```json
+"python.envFile": "${workspaceFolder}/.env"
+```

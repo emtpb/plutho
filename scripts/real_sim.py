@@ -3,6 +3,9 @@
 # Python standard libraries
 import os
 
+# Third party libraries
+from dotenv import load_dotenv
+
 # Local libraries
 import piezo_fem as pfem
 
@@ -39,6 +42,11 @@ def real_model(base_directory):
 
 
 if __name__ == "__main__":
-    #CWD_SCRATCH = "/home/jonash/uni/Masterarbeit/simulations/"
-    CWD_SCRATCH = "/upb/departments/emt/Student/jonasho/Masterarbeit/simulations"
-    real_model(CWD_SCRATCH)
+    load_dotenv()
+
+    CWD = os.getenv("piezo_fem_simulation_path")
+    if CWD is None:
+        print("Couldn't find simulation path.")
+        exit(1)
+
+    real_model(CWD)

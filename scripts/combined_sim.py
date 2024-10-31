@@ -7,6 +7,7 @@ import numpy as np
 import numpy.typing as npt
 
 # Third party libraries
+from dotenv import load_dotenv
 import gmsh
 
 # Local libraries
@@ -65,11 +66,16 @@ def calculate_avg_loss_density_per_element(
 
     return avg_losses
 
-if __name__ == "__main__":
-    #CWD = "/home/jonash/uni/Masterarbeit/simulations/"
-    CWD = "/upb/departments/emt/Student/jonasho/Masterarbeit/simulations/"
 
-    PIEZO_SIM_NAME = "real_model_10k_convective"
+if __name__ == "__main__":
+    load_dotenv()
+
+    CWD = os.getenv("piezo_fem_simulation_path")
+    if CWD is None:
+        print("Couldn't find simulation path.")
+        exit(1)
+
+    PIEZO_SIM_NAME = "real_model_30k"
     # run_piezo_thermal_simulation(CWD, PIEZO_SIM_NAME)
 
     # Load data from piezo sim
@@ -113,7 +119,8 @@ if __name__ == "__main__":
     # Multiplied with the number of skipped periods since the avg mech losses
     # represent the power over one period
     heat_sim.set_constant_volume_heat_source(
-        SKIPPED_TIME_STEPS/TIME_STEPS_PER_PERIOD*calculate_avg_loss_density_per_element(
+        SKIPPED_TIME_STEPS/TIME_STEPS_PER_PERIOD *
+        calculate_avg_loss_density_per_element(
             piezo_mech_loss_density,
             TIME_STEPS_PER_PERIOD
         ),

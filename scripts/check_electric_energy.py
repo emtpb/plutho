@@ -5,6 +5,9 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
+# Third party libraries
+from dotenv import load_dotenv
+
 # Local libraries
 import piezo_fem as pfem
 from piezo_fem.simulation.base import *
@@ -147,13 +150,13 @@ def load_hist_file(file):
 
 if __name__ == "__main__":
     MODEL_NAME = "electric_energy_check"
-    #CWD = os.path.join(
-    #    "/upb/departments/emt/Student/jonasho/Masterarbeit/piezo_fem_results/",
-    #    MODEL_NAME
-    #)
-    CWD = os.path.join(
-        "/home/jonash/uni/Masterarbeit/simulations/", MODEL_NAME
-    )
+    load_dotenv()
+
+    CWD = os.getenv("piezo_fem_simulation_path")
+    if CWD is None:
+        print("Couldn't find simulation path.")
+        exit(1)
+
     CHARGE_FILE_PATH = os.path.join(
         CWD, f"{MODEL_NAME}_q.npy"
     )

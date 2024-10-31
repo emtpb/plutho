@@ -1,18 +1,28 @@
+
+# Python standard libraries
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+
+# Third party libraries
 import tikzplotlib
+from dotenv import load_dotenv
 
 if __name__ == "__main__":
-    PLOT_FOLDER = "/home/jonash/uni/Masterarbeit/plots/"
+    load_dotenv()
+
+    MODEL_NAME = "real_model_10k"
+    PLOT_FOLDER = os.environ["piezo_fem_plot_path"]
+    SIMULATION_FOLDER = os.environ["piezo_fem_simulation_path"]
     NUMBER_OF_TIME_STEPS = 10000
-    DELTA_T = 1e-8    
-    
+    DELTA_T = 1e-8
+
     plt.rcParams.update({'font.size': 18})
 
     mech_loss_density = np.load(os.path.join(
-        "/home/jonash/uni/Masterarbeit/simulations/real_model_10k/",
-        "real_model_10k_mech_loss.npy"
+        SIMULATION_FOLDER,
+        MODEL_NAME,
+        f"{MODEL_NAME}_mech_loss.npy"
     ))
     element_indices = [379, 1079]
     for element_index in element_indices:
