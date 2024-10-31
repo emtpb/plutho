@@ -532,6 +532,7 @@ def calculate_volumes(local_element_data: List[LocalElementData]):
 
     for local_element in local_element_data:
         node_points = local_element.node_points
-        volumes.append(integral_volume(node_points))
+        jacobian_det = local_element.jacobian_det
+        volumes.append(integral_volume(node_points) * 2 * np.pi * jacobian_det)
 
     return volumes

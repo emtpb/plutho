@@ -425,6 +425,7 @@ class PiezoSimTherm:
                 local_element = self.local_elements[element_index]
                 node_points = local_element.node_points
                 jacobian_inverted_t = local_element.jacobian_inverted_t
+                jacobian_det = local_element.jacobian_det
 
                 # Get field values at current element at time index
                 u_e = np.array([
@@ -451,9 +452,6 @@ class PiezoSimTherm:
 
                 # The mech loss of the element is divided by the volume
                 # because it must be a power density.
-                # The 2*np.pi*jacobian_det is removed because it is
-                # multiplied in mthe  mech loss and divided through the
-                # volume.
                 if time_index > 0:
                     mech_loss[element_index, time_index+1] = (
                         loss_integral_scs(
@@ -464,6 +462,7 @@ class PiezoSimTherm:
                             delta_t,
                             jacobian_inverted_t,
                             self.material_data.elasticity_matrix)
+                        * 2 * np.pi * jacobian_det
                         * self.material_data.alpha_k
                         * 1/volumes[element_index]
                     )
