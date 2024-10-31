@@ -5,11 +5,19 @@ external thermal simulation.
 import os
 import numpy as np
 import piezo_fem as pfem
+from dotenv import load_dotenv
 
 if __name__ == "__main__":
+    load_dotenv()
+
+    CWD = os.getenv("piezo_fem_simulation_path")
+    if CWD is None:
+        print("Couldn't find simulation path.")
+        exit(1)
+
     SIM_NAME = "energy_check"
     sim_dir = os.path.join(
-        "/home/jonash/uni/Masterarbeit/simulations/",
+        CWD,
         SIM_NAME
     )
     CONFIG_FILE_PATH = os.path.join(

@@ -10,8 +10,27 @@ from scipy import sparse
 from .base import MaterialData, SimulationData, MeshData, \
     local_shape_functions, gradient_local_shape_functions, \
     local_to_global_coordinates, integral_m, \
-    quadratic_quadrature
+    quadratic_quadrature, line_quadrature
 
+
+def integral_heat_flux(
+        node_points: npt.NDArray,
+        heat_flux: npt.NDArray) -> npt.NDArray:
+    """Integrates the heat flux using the shape functions.
+
+    Parameters:
+        node_points: List of node points [[x1, x2, ..], [y1, y2, ..]]
+        heat_flux: Heat flux at the points
+
+    Returns:
+        npt.NDArray heat flux integral on each point."""
+    def inner(s, t):
+        n = local_shape_functions(s, t)
+        r = local_to_global_coordinates(node_points, s, t)[0]
+
+        return n*heat_flux*r
+
+    return line_quadrature(inner)
 
 def integral_ktheta(
         node_points: npt.NDArray,
@@ -239,7 +258,46 @@ class HeatConductionSim:
             self.k[node, node] = 1
             self.f[node, :] = value
 
-    def solve_time(self, theta_start=None):
+    def calculate_convection_bc(
+            self,
+            nodes,
+            boundary_elements,
+            theta,
+            alpha,
+            outer_temperature):
+        f = np.zeros(len(nodes))
+
+        for _, element in enumerate(boundary_elements):
+            node_points = np.array([
+                [nodes[element[0]][0],
+                 nodes[element[1]][0],
+                 nodes[element[2]][0]],
+                [nodes[element[0]][1],
+                 nodes[element[1]][1],
+                 nodes[element[2]][1]]
+            ])
+            min_r = np.min([nodes[element[0]][0], nodes[element[1]][0]])
+            max_r = np.max([nodes[element[0]][0], nodes[element[1]][0]])
+            jacobian_det = (min_r-max_r)
+            theta_e = np.array([
+                theta[element[0]],
+                theta[element[1]],
+                theta[element[2]]
+            ])
+
+            heat_flux = alpha*(theta_e-np.ones(3)*outer_temperature)
+            heat_flux[2] = 0  # No heat flux for the inner element
+            f_e = (
+                integral_heat_flux(node_points, heat_flux)
+                * 2 * np.pi * jacobian_det
+            )
+
+            for local_p, global_p in enumerate(element):
+                f[global_p] += f_e[local_p]
+
+        return f
+
+    def solve_time(self, theta_start=None, boundary_elements=[]):
         """Runs the simulation using the assembled c and k matrices as well
         as the set excitation.
         Calculates the temperature field and saves it in theta.
@@ -265,7 +323,13 @@ class HeatConductionSim:
 
         print("Starting heat conduction simulation")
         for time_index in range(number_of_time_steps-1):
-            f = self.f[:, time_index]
+            f = self.f[:, time_index] + self.calculate_convection_bc(
+                self.mesh_data.nodes,
+                boundary_elements,
+                theta[:, time_index],
+                80,
+                20
+            )
 
             # Perform Newmark method
             # Predictor step

@@ -59,7 +59,7 @@ def calculate_stored_thermal_energy(
         density: float) -> Union[float, npt.NDArray[float]]:
     """Calculates the stored thermal energy from the given field.
     theta can have 2 different formats depending on if its time dependent:
-        theta[node_index, time_index] or 
+        theta[node_index, time_index] or
         theta[node_index].
 
     Parameters:
@@ -71,12 +71,10 @@ def calculate_stored_thermal_energy(
 
     Returns:
         The stored energy either as float or list of floats."""
-    stored_energy = 0
-    number_of_nodes = len(nodes)
 
     if len(theta.shape) == 2:
         # Need to calculate for every time step
-        stored_energy = np.zeros(theta.shape[1])
+        stored_energies = np.zeros(theta.shape[1])
 
         for time_index in range(theta.shape[1]):
             for element in elements:
@@ -92,14 +90,16 @@ def calculate_stored_thermal_energy(
                 jacobian = np.dot(node_points, dn.T)
                 jacobian_det = np.linalg.det(jacobian)
                 theta_e = np.array([
-                    theta[element[0]+3*number_of_nodes, time_index],
-                    theta[element[1]+3*number_of_nodes, time_index],
-                    theta[element[2]+3*number_of_nodes, time_index]
+                    theta[element[0], time_index],
+                    theta[element[1], time_index],
+                    theta[element[2], time_index]
                 ])
-                stored_energy[time_index] += energy_integral_theta(
+                stored_energies[time_index] += energy_integral_theta(
                     node_points,
                     theta_e
                 ) * 2 * np.pi * jacobian_det * heat_capacity * density
+
+        return stored_energies
 
     elif len(theta.shape) == 1:
         # Only one time step
@@ -122,9 +122,11 @@ def calculate_stored_thermal_energy(
                 theta[element[1]],
                 theta[element[2]]
             ])
-            stored_energy+= energy_integral_theta(
+            stored_energy += energy_integral_theta(
                 node_points,
                 theta_e
             ) * 2 * np.pi * jacobian_det * heat_capacity * density
 
-    return stored_energy
+        return stored_energy
+
+    return -1

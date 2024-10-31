@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Third party libraries
+from dotenv import load_dotenv
 import tikzplotlib
 
 # Local libraries
@@ -27,8 +28,6 @@ def plot_impedance_with_opencfs(
     """
     frequencies_fem, impedence_fem = pfem.calculate_impedance(
         sim.solver.q, sim.excitation, sim.simulation_data.delta_t)
-    #frequencies_fem_therm, impedence_fem_therm = pfem.calculate_impedance(
-    #    sim_term.solver.q, sim_term.excitation, sim_term.simulation_data.delta_t)
 
     # Get OpenCFS data
     _, charge_cfs = pfem.parse_charge_hist_file(open_cfs_hist_file)
@@ -48,21 +47,32 @@ def plot_impedance_with_opencfs(
     plt.ylim(20, 2*1e4)
     plt.legend()
     plt.grid()
-    #plt.show()
-    plt.savefig("/home/jonash/uni/Masterarbeit/plots/compare_impedance.png", bbox_inches='tight')
+    plt.show()
 
-    tikzplotlib.save("/home/jonash/uni/Masterarbeit/plots/compare_impedance.tex")
+    plot_folder = os.environ["piezo_fem_plot_path"]
+    plt.savefig(
+        os.path.join(
+            plot_folder,
+            "compare_impedance.png"
+        ),
+        bbox_inches='tight'
+    )
+    tikzplotlib.save(os.path.join(
+        plot_folder,
+        "compare_impedance.tex"
+    ))
 
 
 if __name__ == "__main__":
-    MODEL_NAME = "real_model_impedance"
-    WD = os.path.join(
-        "/home/jonash/uni/Masterarbeit/simulations/", MODEL_NAME)
-    OPENCFS_FILE = os.path.join(WD, "cfs_charge.hist")
+    load_dotenv()
+    MODEL_NAME = "real_model_impedence"
+    CWD = os.path.join(
+        os.environ["piezo_fem_simulation_path"],
+        MODEL_NAME)
+    OPENCFS_FILE = os.path.join(CWD, "cfs_charge.hist")
     fem_sim = pfem.Simulation.load_simulation_settings(
-        os.path.join(WD, f"{MODEL_NAME}.cfg")
+        os.path.join(CWD, f"{MODEL_NAME}.cfg")
     )
-    fem_sim.solver.q = np.load(os.path.join(WD, f"{MODEL_NAME}_q.npy"))
+    fem_sim.load_simulation_results()
 
-    # plot_impedence(fem_sim)
     plot_impedance_with_opencfs(fem_sim, OPENCFS_FILE)

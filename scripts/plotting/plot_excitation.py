@@ -1,10 +1,17 @@
+
+# Python standard libraries
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+
+# Third party libraries 
 import tikzplotlib
+from dotenv import load_dotenv
 
 if __name__ == "__main__":
-    PLOT_FOLDER = "/home/jonash/uni/Masterarbeit/plots/"
+    load_dotenv()
+
+    PLOT_FOLDER = os.environ["piezo_fem_plot_path"]
     NUMBER_OF_TIME_STEPS = 100
     DELTA_T = 1e-8
     FREQUENCY = 2e6
@@ -18,7 +25,7 @@ if __name__ == "__main__":
         * np.array([0.2, 0.4, 0.6, 0.8, 1, 0.8, 0.6, 0.4, 0.2])
     )
     excitation = 20*np.sin(2*np.pi*time_values*FREQUENCY)
-    plt.figure(figsize=(10,8))
+    plt.figure(figsize=(10, 8))
     plt.plot(time_values, excitation)
     plt.xlabel("Zeit / s")
     plt.ylabel("Spannung / V")

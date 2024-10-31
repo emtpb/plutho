@@ -1,10 +1,15 @@
-import gmsh
+
+# Python standard libraries
 import os
 
+# Third party libraries
+import gmsh
+from dotenv import load_dotenv
+
 def plot_view(
-    input_file_path: str,
-    output_file_path: str,
-    view_name: str):
+        input_file_path: str,
+        output_file_path: str,
+        view_name: str):
 
     gmsh.initialize()
     gmsh.open(input_file_path)
@@ -37,14 +42,19 @@ def plot_view(
     # gmsh.fltk.finalize()
     gmsh.finalize()
 
+
 if __name__ == "__main__":
     #file_path = os.path.join(
     #    "/home/jonash/uni/Masterarbeit/simulations/real_model_10k",
     #    "real_model_10k_disc_results.msh"
     #)
+    MODEL_NAME = "test_model"
+    load_dotenv()
+    simulation_folder = os.environ["piezo_fem_simulation_path"]
     file_path = os.path.join(
-        "/home/jonash/uni/Masterarbeit/simulations/test_model",
-        "test_model_disc_results.msh"
+        simulation_folder,
+        MODEL_NAME,
+        f"{MODEL_NAME}disc_results.msh"
     )
 
     plot_view(file_path, "test.png", "Displacement")

@@ -7,6 +7,7 @@ import numpy as np
 import numpy.typing as npt
 
 # Third party libraries
+from dotenv import load_dotenv
 import gmsh
 
 # Local libraries
@@ -24,7 +25,7 @@ def run_piezo_thermal_simulation(base_directory, name):
 
     sim_directory = os.path.join(base_directory, name)
     sim = pfem.Simulation(sim_directory, pfem.pic255, name)
-    sim.create_disc_mesh(0.005, 0.001, 0.00015)
+    sim.create_disc_mesh(0.005, 0.001, 0.0001)
     sim.set_simulation(
         delta_t=piezo_delta_t,
         number_of_time_steps=10000,
@@ -38,7 +39,8 @@ def run_piezo_thermal_simulation(base_directory, name):
     )
     sim.set_boundary_conditions()
     sim.save_simulation_settings(
-        "An example for a thermal piezo-electric simulation.")
+        "An example for a thermal piezo-electric simulation."
+        "With convective boundary condition for iron.")
     sim.simulate()
 
     sim.save_simulation_results()
@@ -46,8 +48,7 @@ def run_piezo_thermal_simulation(base_directory, name):
 
 def calculate_avg_loss_density_per_element(
         mech_loss_density: npt.NDArray,
-        time_steps_per_period: int,
-        delta_t: float):
+        time_steps_per_period: int):
     """Calculates the avg loss density per element at the last time step.
 
     Parameters:
@@ -59,18 +60,38 @@ def calculate_avg_loss_density_per_element(
     """
     avg_losses = np.zeros(mech_loss_density.shape[0])
     for element_index in range(mech_loss_density.shape[0]):
-        period = delta_t*time_steps_per_period
-        avg_losses[element_index] = 1/period*np.trapezoid(
-            mech_loss_density[element_index, -time_steps_per_period:])
+        avg_losses[element_index] = np.mean(
+            mech_loss_density[element_index, -time_steps_per_period:]
+        )
 
     return avg_losses
 
-if __name__ == "__main__":
-    CWD = "/home/jonash/uni/Masterarbeit/simulations/"
-    #CWD = "/upb/users/j/jonasho/scratch/piezo_fem/results/"
 
-    PIEZO_SIM_NAME = "real_model"
-    run_piezo_thermal_simulation(CWD, PIEZO_SIM_NAME)
+def extrapolate_mech_loss_density(
+        mech_loss_density,
+        delta_t):
+    fits = []
+    for element_index in range(mech_loss_density.shape[0]):
+        current_losses = mech_loss_density[element_index, :]
+        n = 50
+        running_avg = np.convolve(current_losses, np.ones(n)/n, mode="valid")[-1000:]
+        time_values = np.arange(len(running_avg))*delta_t
+        time_values = time_values[-1000:]
+        fits.append(np.polyfit(time_values, running_avg, 1))
+
+    return fits
+
+
+if __name__ == "__main__":
+    load_dotenv()
+
+    CWD = os.getenv("piezo_fem_simulation_path")
+    if CWD is None:
+        print("Couldn't find simulation path.")
+        exit(1)
+
+    PIEZO_SIM_NAME = "real_model_30k"
+    # run_piezo_thermal_simulation(CWD, PIEZO_SIM_NAME)
 
     # Load data from piezo sim
     piezo_sim_folder = os.path.join(CWD, PIEZO_SIM_NAME)
@@ -81,19 +102,17 @@ if __name__ == "__main__":
         os.path.join(piezo_sim_folder, f"{PIEZO_SIM_NAME}.cfg")
     )
 
-    NUMBER_OF_AVERAGE_PERIODS = 1
     TIME_STEPS_PER_PERIOD = 25  # Empirically
-    T = NUMBER_OF_AVERAGE_PERIODS*TIME_STEPS_PER_PERIOD
 
     # Heat conduction simulation settings
-    SIMULATION_TIME = 1  # In seconds
+    SIMULATION_TIME = 20  # In seconds
 
     # Number of periods of the piezo sim which are simulated in one time step
     # in the heat conduction simulation
-    SKIPPED_PERIODS = 100000
+    SKIPPED_TIME_STEPS = 400000
 
     # Set heat conduction simulation settings
-    heat_cond_delta_t = SKIPPED_PERIODS*piezo_sim.simulation_data.delta_t
+    heat_cond_delta_t = SKIPPED_TIME_STEPS*piezo_sim.simulation_data.delta_t
     number_of_time_steps = int(SIMULATION_TIME/heat_cond_delta_t)
     print("Total number of time steps:", number_of_time_steps)
 
@@ -114,13 +133,32 @@ if __name__ == "__main__":
     # Set excitation for heat conduction sim
     # Multiplied with the number of skipped periods since the avg mech losses
     # represent the power over one period
-    heat_sim.set_constant_volume_heat_source(
-        SKIPPED_PERIODS*calculate_avg_loss_density_per_element(
-            piezo_mech_loss_density,
-            TIME_STEPS_PER_PERIOD,
-            piezo_sim.simulation_data.delta_t
-        ),
-        number_of_time_steps
+    #heat_sim.set_constant_volume_heat_source(
+    #    SKIPPED_TIME_STEPS/TIME_STEPS_PER_PERIOD *
+    #    calculate_avg_loss_density_per_element(
+    #        piezo_mech_loss_density,
+    #        TIME_STEPS_PER_PERIOD
+    #    ),
+    #    number_of_time_steps
+    #)
+
+    extrap = np.zeros(
+        shape=(len(piezo_sim.mesh_data.elements),
+               number_of_time_steps))
+
+    fits = extrapolate_mech_loss_density(
+        piezo_mech_loss_density, piezo_sim.simulation_data.delta_t
+    )
+
+    for index, fit in enumerate(fits):
+        time_values = np.arange(number_of_time_steps)*heat_cond_delta_t
+        interp = np.poly1d(fit)
+        extrap[index, :] = interp(time_values)
+
+    heat_sim.set_volume_heat_source(
+        extrap,
+        number_of_time_steps,
+        heat_cond_delta_t
     )
 
     # The start temperature field of the heat conduction sim is set to the
@@ -131,8 +169,9 @@ if __name__ == "__main__":
     heat_sim.solve_time(theta_start)
 
     theta = heat_sim.theta
+    np.save(os.path.join(piezo_sim_folder, f"{PIEZO_SIM_NAME}_theta_20_s.npy"), theta)
     gmsh_handler = pfem.GmshHandler(
-        os.path.join(CWD, "temperature_only.msh")
+        os.path.join(piezo_sim_folder, "temperature_only_20s.msh")
     )
     gmsh_handler.create_theta_post_processing_view(
         theta,
