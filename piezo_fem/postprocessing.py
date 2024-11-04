@@ -35,7 +35,7 @@ def calculate_impedance(
 def calculate_electrical_input_energy(
         voltage_excitation: npt.NDArray,
         charge: npt.NDArray,
-        delta_t: float) -> float:
+        delta_t: float):
     """Calculates the energy of the elctric input.
 
     Parameters:
@@ -56,7 +56,7 @@ def calculate_stored_thermal_energy(
         nodes: npt.NDArray,
         elements: npt.NDArray,
         heat_capacity: float,
-        density: float) -> Union[float, npt.NDArray[float]]:
+        density: float) -> Union[float, npt.NDArray]:
     """Calculates the stored thermal energy from the given field.
     theta can have 2 different formats depending on if its time dependent:
         theta[node_index, time_index] or

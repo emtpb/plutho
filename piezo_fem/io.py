@@ -3,6 +3,7 @@
 # Python standard libraries
 from typing import Tuple
 import os
+import numpy as np
 import numpy.typing as npt
 
 
@@ -27,7 +28,7 @@ def parse_charge_hist_file(file_path: str) -> Tuple[npt.NDArray, npt.NDArray]:
         time.append(float(current_time))
         charge.append(float(current_charge))
 
-    return time, charge
+    return np.array(time), np.array(charge)
 
 
 def parse_displacement_hist_file(
@@ -52,7 +53,7 @@ def parse_displacement_hist_file(
         u_r.append(float(current_u_r))
         u_z.append(float(current_u_z))
 
-    return time_steps, u_r, u_z
+    return np.array(time_steps), np.array(u_r), np.array(u_z)
 
 def create_scalar_field_as_csv(
         field_name: str,

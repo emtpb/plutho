@@ -113,12 +113,13 @@ def compare_energies(sim: pfem.Simulation):
     Parameters:
         sim: Simulation object where the simulation is already done.
     """
-    input_energy = pfem.calculate_electrical_input_energy(
-        sim.excitation, sim.solver.qq, sim.simulation_data.delta_t)
-    thermal_energy = sim.solver.temp_field_energy
+    if isinstance(sim.solver, pfem.PiezoSimTherm):
+        input_energy = pfem.calculate_electrical_input_energy(
+            sim.excitation, sim.solver.q, sim.simulation_data.delta_t)
+        thermal_energy = sim.solver.temp_field_energy
 
-    print("Input energy:", input_energy)
-    print("Energy in thermal field at last time step:", thermal_energy[-1])
+        print("Input energy:", input_energy)
+        print("Energy in thermal field at last time step:", thermal_energy[-1])
 
 
 def plot_impedance_with_opencfs(sim: pfem.Simulation, open_cfs_hist_file: str):

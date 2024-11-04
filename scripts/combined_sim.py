@@ -70,13 +70,23 @@ def calculate_avg_loss_density_per_element(
 def extrapolate_mech_loss_density(
         mech_loss_density,
         delta_t):
+    """Makes a linear interpolation of the last 1000 steps of the mech
+    loss density assuming it is stationary.
+    """
+    n = 50
     fits = []
     for element_index in range(mech_loss_density.shape[0]):
         current_losses = mech_loss_density[element_index, :]
-        n = 50
-        running_avg = np.convolve(current_losses, np.ones(n)/n, mode="valid")[-1000:]
+        running_avg = np.convolve(
+            current_losses,
+            np.ones(n)/n,
+            mode="valid"
+        )[-1000:]
+
+        # TODO Can this be moved out of the loop
         time_values = np.arange(len(running_avg))*delta_t
         time_values = time_values[-1000:]
+
         fits.append(np.polyfit(time_values, running_avg, 1))
 
     return fits
@@ -146,11 +156,11 @@ if __name__ == "__main__":
         shape=(len(piezo_sim.mesh_data.elements),
                number_of_time_steps))
 
-    fits = extrapolate_mech_loss_density(
+    mech_loss_density_fits = extrapolate_mech_loss_density(
         piezo_mech_loss_density, piezo_sim.simulation_data.delta_t
     )
 
-    for index, fit in enumerate(fits):
+    for index, fit in enumerate(mech_loss_density_fits):
         time_values = np.arange(number_of_time_steps)*heat_cond_delta_t
         interp = np.poly1d(fit)
         extrap[index, :] = interp(time_values)

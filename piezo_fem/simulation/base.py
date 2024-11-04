@@ -1,7 +1,7 @@
 """Module for base functionalities needed for the simulations."""
 
 # Python standard libraries
-from typing import Tuple, Callable, List
+from typing import Tuple, Callable, List, Any
 from dataclasses import dataclass
 from enum import Enum
 import numpy as np
@@ -92,7 +92,7 @@ class LocalElementData():
 ### Local functions and integrals
 # -------------------------------
 
-def local_shape_functions(s: float, t: float) -> npt.NDArray:
+def local_shape_functions(s: float, t: float):
     """Returns the local linear shape functions for the reference triangle.
 
     Parameters:
@@ -120,7 +120,7 @@ def gradient_local_shape_functions():
 def local_to_global_coordinates(
         node_points: npt.NDArray,
         s: float,
-        t: float) -> npt.NDArray:
+        t: float) -> Any:
     """Transforms the local coordinates s, t using the node points to
     the global coordinates r, z.
 
@@ -140,7 +140,7 @@ def b_operator_global(
         node_points: npt.NDArray,
         s: float,
         t: float,
-        jacobian_inverted_t: npt.NDArray) -> npt.NDArray:
+        jacobian_inverted_t: npt.NDArray):
     """Calculates the B operator for the local coordinantes which is needed
     for voigt-notation.
     The derivates are with respect to the global coordinates r and z.
@@ -183,7 +183,7 @@ def b_operator_global(
     ])
 
 
-def integral_m(node_points: npt.NDArray) -> npt.NDArray:
+def integral_m(node_points: npt.NDArray):
     """Calculates the M integral.
 
     Parameters:
@@ -210,7 +210,7 @@ def integral_m(node_points: npt.NDArray) -> npt.NDArray:
 def integral_ku(
         node_points: npt.NDArray,
         jacobian_inverted_t: npt.NDArray,
-        elasticity_matrix: npt.NDArray) -> npt.NDArray:
+        elasticity_matrix: npt.NDArray):
     """Calculates the Ku integral
 
     Parameters:
@@ -236,7 +236,7 @@ def integral_ku(
 def integral_kuv(
         node_points: npt.NDArray,
         jacobian_inverted_t: npt.NDArray,
-        piezo_matrix: npt.NDArray) -> npt.NDArray:
+        piezo_matrix: npt.NDArray):
     """Calculates the KuV integral.
 
     Parameters:
@@ -263,7 +263,7 @@ def integral_kuv(
 def integral_kve(
         node_points: npt.NDArray,
         jacobian_inverted_t: npt.NDArray,
-        permittivity_matrix: npt.NDArray) -> npt.NDArray:
+        permittivity_matrix: npt.NDArray):
     """Calculates the KVe integral.
 
     Parameters:
@@ -307,7 +307,7 @@ def energy_integral_theta(
     return quadratic_quadrature(inner)
 
 
-def integral_volume(node_points: npt.NDArray) -> float:
+def integral_volume(node_points: npt.NDArray):
     """Calculates the volume of the triangle given by the node points.
     HINT: Must be multiplied with 2*np.pi and the jacobian determinant in order
     to give the correct volume of any rotationsymmetric triangle.
@@ -317,7 +317,7 @@ def integral_volume(node_points: npt.NDArray) -> float:
             one triangle.
 
     Returns:
-        Volume of the triangle.
+        Float. Volume of the triangle.
     """
     def inner(s, t):
         r = local_to_global_coordinates(node_points, s, t)[0]

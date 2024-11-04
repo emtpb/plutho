@@ -2,10 +2,15 @@
 external thermal simulation.
 """
 
+# Python standard libraries
 import os
 import numpy as np
-import piezo_fem as pfem
+
+# Third-party libraries
 from dotenv import load_dotenv
+
+# Local libraries
+import piezo_fem as pfem
 
 if __name__ == "__main__":
     load_dotenv()
@@ -35,6 +40,10 @@ if __name__ == "__main__":
 
     # Load piezo simulation
     piezo_sim = pfem.Simulation.load_simulation_settings(CONFIG_FILE_PATH)
+
+    if not isinstance(piezo_sim.solver, pfem.PiezoSimTherm):
+        raise IOError("Please load thermal-piezoelecrtic simulation.")
+
     piezo_sim.solver.mech_loss = np.load(MECH_LOSS_DENSITY_PATH)
     piezo_sim.solver.u = np.load(DISPLACEMENT_FILE_PATH)
 

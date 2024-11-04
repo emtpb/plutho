@@ -144,7 +144,7 @@ class GmshHandler:
 
     def get_elements_by_physical_groups(
             self,
-            needed_pg_names: List[str]) -> Dict[str, List]:
+            needed_pg_names: List[str]) -> Dict[str, npt.NDArray]:
         """Returns the elements inside the given physical groups.
 
         Parameters:
@@ -212,10 +212,13 @@ class GmshHandler:
             else:
                 # Since the components have 2 components but gmsh can only take
                 # 3.
-                current_field_value = [
-                    [field[2*i, time_index],
-                     field[2*i+1, time_index], 0] for i in range(
-                         number_of_elements)]
+                current_field_value = np.array(
+                    [
+                        [field[2*i, time_index],
+                         field[2*i+1, time_index], 0] for i in range(
+                         number_of_elements)
+                    ]
+                )
             gmsh.view.addModelData(
                 view_tag,
                 time_index,
@@ -402,16 +405,16 @@ class GmshHandler:
         gmsh.model.mesh.generate(2)
         gmsh.write(self.mesh_file_path)
 
-    def as_dict(self) -> Dict[str, float]:
+    def as_dict(self) -> Dict[str, str]:
         """Returns the important mesh parameters as dictionary in order
         to save it to a file.
 
         Returns:
             The dictionary containing the values."""
         return {
-            "width": self.width,
-            "height": self.height,
-            "mesh_size": self.mesh_size,
-            "x_offset": self.x_offset,
+            "width": str(self.width),
+            "height": str(self.height),
+            "mesh_size": str(self.mesh_size),
+            "x_offset": str(self.x_offset),
             "model_type": self.model_type.value
         }

@@ -2,7 +2,7 @@
 
 # Python standard libraries
 from __future__ import annotations
-from typing import Union
+from typing import Union, Any
 import configparser
 import os
 import numpy as np
@@ -64,7 +64,7 @@ class Simulation:
 
     # Simulation parameters
     solver: Union[PiezoSim, PiezoSimTherm]
-    mesh_data: MeshData
+    mesh_data: Union[Any, MeshData]
     material_data: MaterialData
     simulation_data: SimulationData
     excitation: npt.NDArray
@@ -81,13 +81,6 @@ class Simulation:
         if not os.path.exists(self.workspace_directory):
             os.makedirs(self.workspace_directory)
 
-        # Set all other attributes to None
-        self.gmsh_handler = None
-        self.simulation_data = None
-        self.solver = None
-        self.mesh_data = None
-        self.excitation_info = None
-
     def create_disc_mesh(self,
                          radius: float,
                          height: float,
@@ -99,7 +92,7 @@ class Simulation:
             height: Height of the disc.
             mesh_size: Maximum distance between mesh elements.
         """
-        if not self.gmsh_handler:
+        if hasattr(self, "gmsh_handler"):
             self.gmsh_handler = GmshHandler(
                 os.path.join(
                     self.workspace_directory,
@@ -128,7 +121,7 @@ class Simulation:
             height: Height of the ring.
             mesh_size: Maximum distance between mesh elements.
         """
-        if not self.gmsh_handler:
+        if hasattr(self, "gmsh_handler"):
             self.gmsh_handler = GmshHandler(
                 os.path.join(self.workspace_directory, "ring.msh")
             )
@@ -149,12 +142,12 @@ class Simulation:
 
         Parameters:
             amplitude: Sets the amplitude of the triangle pulse."""
-        if not self.simulation_data:
+        if hasattr(self, "simulation_data"):
             raise SimulationException("Please set simulation data first.")
 
         self.excitation_info = ExcitationInfo(
             amplitude,
-            None,
+            0.0,
             ExcitationType.TRIANGULAR_PULSE
         )
         excitation = np.zeros(self.simulation_data.number_of_time_steps)
@@ -173,7 +166,7 @@ class Simulation:
         Parameters:
             amplitude: Amplitude of the sin function.
             frequency: Frequency of the sin function in Hz."""
-        if not self.simulation_data:
+        if hasattr(self, "simulation_data"):
             raise SimulationException("Please set simulation data first.")
 
         self.excitation_info = ExcitationInfo(
@@ -204,9 +197,9 @@ class Simulation:
             simulation_type: Type of the simulation.
         """
         # Check if everything is set up.
-        if not self.mesh_data:
+        if hasattr(self, "mesh_data"):
             raise SimulationException("Please set mesh data first.")
-        if not self.material_data:
+        if hasattr(self, "material_data"):
             raise SimulationException("Please set material data first.")
 
         self.simulation_data = SimulationData(
@@ -392,7 +385,7 @@ class Simulation:
                 f"{simulation_name}_disc.msh")
             sim.gmsh_handler = GmshHandler(mesh_file, True)
             sim.gmsh_handler.model_type = model_type
-            sim.gmsh_handler.radius = float(config["model"]["width"])
+            sim.gmsh_handler.width = float(config["model"]["width"])
             sim.gmsh_handler.height = float(config["model"]["height"])
             sim.gmsh_handler.mesh_size = float(config["model"]["mesh_size"])
         elif model_type is ModelType.RING:
@@ -401,7 +394,7 @@ class Simulation:
                 f"{simulation_name}_ring.msh")
             sim.gmsh_handler = GmshHandler(mesh_file, True)
             sim.gmsh_handler.model_type = model_type
-            sim.gmsh_handler.radius = float(config["model"]["width"])
+            sim.gmsh_handler.width = float(config["model"]["width"])
             sim.gmsh_handler.height = float(config["model"]["height"])
             sim.gmsh_handler.mesh_size = float(config["model"]["mesh_size"])
             sim.gmsh_handler.x_offset = float(config["model"]["x_offset"])

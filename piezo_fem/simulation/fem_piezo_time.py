@@ -19,7 +19,7 @@ def charge_integral_u(
         node_points: npt.NDArray,
         u_e: npt.NDArray,
         piezo_matrix: npt.NDArray,
-        jacobian_inverted_t: npt.NDArray) -> float:
+        jacobian_inverted_t: npt.NDArray):
     """Calculates the integral of eBu of the given element.
 
     Parameters:
@@ -32,7 +32,7 @@ def charge_integral_u(
             for calculation of global derivatives.
 
     Returns:
-        Integral of eBu of the current triangle.
+        Float: Integral of eBu of the current triangle.
     """
     def inner(s, t):
         r = local_to_global_coordinates(node_points, s, t)[0]
@@ -53,7 +53,7 @@ def charge_integral_v(
         node_points: npt.NDArray,
         v_e: npt.NDArray,
         permittivity_matrix: npt.NDArray,
-        jacobian_inverted_t: npt.NDArray) -> float:
+        jacobian_inverted_t: npt.NDArray):
     """Calculates the integral of epsilonBVe of the given element.
 
     Parameters:
@@ -67,7 +67,7 @@ def charge_integral_v(
             for calculation of global derivatives.
 
     Returns:
-        Integral of epsilonBVe of the current triangle.
+        Float: Integral of epsilonBVe of the current triangle.
     """
     def inner(s, t):
         r = local_to_global_coordinates(node_points, s, t)[0]
@@ -389,8 +389,8 @@ class PiezoSim:
                 # If it is a ring there are no boundary conditions for u_r
                 # or u_z.
                 f = self.get_load_vector(
-                        [],
-                        [],
+                        np.array([]),
+                        np.array([]),
                         self.dirichlet_nodes[1],
                         self.dirichlet_values[1][time_index+1]
                 )

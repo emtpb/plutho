@@ -20,12 +20,13 @@ def compare_energies(sim: pfem.Simulation):
     Parameters:
         sim: Simulation object where the simulation is already done.
     """
-    input_energy = pfem.calculate_electrical_input_energy(
-        sim.excitation, sim.solver.q, sim.simulation_data.delta_t)
-    thermal_energy = sim.solver.temp_field_energy
+    if isinstance(sim.solver, pfem.PiezoSimTherm):
+        input_energy = pfem.calculate_electrical_input_energy(
+            sim.excitation, sim.solver.q, sim.simulation_data.delta_t)
+        thermal_energy = sim.solver.temp_field_energy
 
-    print("Input energy:", input_energy)
-    print("Energy in thermal field at last time step:", thermal_energy[-2])
+        print("Input energy:", input_energy)
+        print("Energy in thermal field at last time step:", thermal_energy[-2])
 
 
 def compare_loss_energies(sim: pfem.Simulation):
@@ -34,52 +35,53 @@ def compare_loss_energies(sim: pfem.Simulation):
     Parameters:
         sim: Simulation object where the simulation is already done.
     """
-    mech_loss = sim.solver.mech_loss
+    if isinstance(sim.solver, pfem.PiezoSimTherm):
+        mech_loss = sim.solver.mech_loss
 
-    number_of_time_steps = sim.simulation_data.number_of_time_steps
-    total_power = np.zeros(number_of_time_steps)
-    elements = sim.mesh_data.elements
-    nodes = sim.mesh_data.nodes
+        number_of_time_steps = sim.simulation_data.number_of_time_steps
+        total_power = np.zeros(number_of_time_steps)
+        elements = sim.mesh_data.elements
+        nodes = sim.mesh_data.nodes
 
-    # Calculate the volume of each element
-    volumes = np.zeros(len(elements))
-    for element_index, element in enumerate(elements):
-        dn = pfem.simulation.base.gradient_local_shape_functions()
-        node_points = np.array([
-            [nodes[element[0]][0],
-                nodes[element[1]][0],
-                nodes[element[2]][0]],
-            [nodes[element[0]][1],
-                nodes[element[1]][1],
-                nodes[element[2]][1]]
-        ])
-        jacobian = np.dot(node_points, dn.T)
-        jacobian_det = np.linalg.det(jacobian)
-        volumes[element_index] = (
-            pfem.simulation.base.integral_volume(
-                node_points)
-            * 2*np.pi*jacobian_det)
+        # Calculate the volume of each element
+        volumes = np.zeros(len(elements))
+        for element_index, element in enumerate(elements):
+            dn = pfem.simulation.base.gradient_local_shape_functions()
+            node_points = np.array([
+                [nodes[element[0]][0],
+                    nodes[element[1]][0],
+                    nodes[element[2]][0]],
+                [nodes[element[0]][1],
+                    nodes[element[1]][1],
+                    nodes[element[2]][1]]
+            ])
+            jacobian = np.dot(node_points, dn.T)
+            jacobian_det = np.linalg.det(jacobian)
+            volumes[element_index] = (
+                pfem.simulation.base.integral_volume(
+                    node_points)
+                * 2*np.pi*jacobian_det)
 
-    for time_step in range(number_of_time_steps):
-        total_power[time_step] = np.dot(mech_loss[:, time_step], volumes)
+        for time_step in range(number_of_time_steps):
+            total_power[time_step] = np.dot(mech_loss[:, time_step], volumes)
 
-    input_energy = pfem.calculate_electrical_input_energy(
-        sim.excitation, sim.solver.q, sim.simulation_data.delta_t)
+        input_energy = pfem.calculate_electrical_input_energy(
+            sim.excitation, sim.solver.q, sim.simulation_data.delta_t)
 
-    loss_energy = np.trapezoid(total_power, None, sim.simulation_data.delta_t)
+        loss_energy = np.trapezoid(total_power, None, sim.simulation_data.delta_t)
 
-    # Calculate thermal energy in last time step
-    thermal_energy = pfem.postprocessing.calculate_stored_thermal_energy(
-        sim.solver.u[3*len(nodes):, -2],
-        sim.mesh_data.nodes,
-        sim.mesh_data.elements,
-        sim.material_data.heat_capacity,
-        sim.material_data.density
-    )
+        # Calculate thermal energy in last time step
+        thermal_energy = pfem.postprocessing.calculate_stored_thermal_energy(
+            sim.solver.u[3*len(nodes):, -2],
+            sim.mesh_data.nodes,
+            sim.mesh_data.elements,
+            sim.material_data.heat_capacity,
+            sim.material_data.density
+        )
 
-    print("Input energy:", input_energy)
-    print("Loss energy:", loss_energy)
-    print("Energy in thermal field at last time step:", thermal_energy)
+        print("Input energy:", input_energy)
+        print("Loss energy:", loss_energy)
+        print("Energy in thermal field at last time step:", thermal_energy)
 
 
 def model(sim_directory, sim_name):

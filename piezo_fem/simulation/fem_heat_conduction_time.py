@@ -15,7 +15,7 @@ from .base import MaterialData, SimulationData, MeshData, \
 
 def integral_heat_flux(
         node_points: npt.NDArray,
-        heat_flux: npt.NDArray) -> npt.NDArray:
+        heat_flux: npt.NDArray):
     """Integrates the heat flux using the shape functions.
 
     Parameters:
@@ -34,7 +34,7 @@ def integral_heat_flux(
 
 def integral_ktheta(
         node_points: npt.NDArray,
-        jacobian_inverted_t: npt.NDArray) -> npt.NDArray:
+        jacobian_inverted_t: npt.NDArray):
     """Calculates the Ktheta integral.
 
     Parameters:
@@ -57,7 +57,7 @@ def integral_ktheta(
 
 def integral_theta_load(
         node_points: npt.NDArray,
-        mech_loss: float) -> npt.NDArray:
+        mech_loss: float):
     """Returns the load value for the temperature field (f) for the specific
     element.
 
@@ -260,11 +260,24 @@ class HeatConductionSim:
 
     def calculate_convection_bc(
             self,
-            nodes,
-            boundary_elements,
-            theta,
-            alpha,
-            outer_temperature):
+            nodes: npt.NDArray,
+            boundary_elements: npt.NDArray,
+            theta: npt.NDArray,
+            alpha: float,
+            outer_temperature: float) -> npt.NDArray:
+        """Calculates the load vector for the convection boundary condition.
+        The condition is calculated using the temeprature at the given boundary,
+        The heat transfer coefficient alpha and the temeprature outside of the
+        model.
+
+        Parameters:
+            nodes: All nodes in the mesh.
+            elements: Boundary elements at which the convection boundary is
+                added.
+            theta: Current temperature field at all nodes.
+            alpha: Heat transfer coefficient.
+            outer_temperature: Temperature outside of the model.
+        """
         f = np.zeros(len(nodes))
 
         for _, element in enumerate(boundary_elements):
@@ -278,7 +291,7 @@ class HeatConductionSim:
             ])
             min_r = np.min([nodes[element[0]][0], nodes[element[1]][0]])
             max_r = np.max([nodes[element[0]][0], nodes[element[1]][0]])
-            jacobian_det = (min_r-max_r)
+            jacobian_det = min_r-max_r
             theta_e = np.array([
                 theta[element[0]],
                 theta[element[1]],
@@ -297,7 +310,12 @@ class HeatConductionSim:
 
         return f
 
-    def solve_time(self, theta_start=None, boundary_elements=[]):
+    def solve_time(
+            self,
+            theta_start=None,
+            boundary_elements=None,
+            alpha=80,
+            outer_temeprature=20):
         """Runs the simulation using the assembled c and k matrices as well
         as the set excitation.
         Calculates the temperature field and saves it in theta.
@@ -323,13 +341,15 @@ class HeatConductionSim:
 
         print("Starting heat conduction simulation")
         for time_index in range(number_of_time_steps-1):
-            f = self.f[:, time_index] + self.calculate_convection_bc(
-                self.mesh_data.nodes,
-                boundary_elements,
-                theta[:, time_index],
-                80,
-                20
-            )
+            f = self.f[:, time_index]
+            if boundary_elements is not None:
+                f += self.calculate_convection_bc(
+                    self.mesh_data.nodes,
+                    boundary_elements,
+                    theta[:, time_index],
+                    alpha,
+                    outer_temeprature
+                )
 
             # Perform Newmark method
             # Predictor step
