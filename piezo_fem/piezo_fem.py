@@ -92,7 +92,7 @@ class Simulation:
             height: Height of the disc.
             mesh_size: Maximum distance between mesh elements.
         """
-        if hasattr(self, "gmsh_handler"):
+        if not hasattr(self, "gmsh_handler"):
             self.gmsh_handler = GmshHandler(
                 os.path.join(
                     self.workspace_directory,
@@ -121,7 +121,7 @@ class Simulation:
             height: Height of the ring.
             mesh_size: Maximum distance between mesh elements.
         """
-        if hasattr(self, "gmsh_handler"):
+        if not hasattr(self, "gmsh_handler"):
             self.gmsh_handler = GmshHandler(
                 os.path.join(self.workspace_directory, "ring.msh")
             )
@@ -142,7 +142,7 @@ class Simulation:
 
         Parameters:
             amplitude: Sets the amplitude of the triangle pulse."""
-        if hasattr(self, "simulation_data"):
+        if not hasattr(self, "simulation_data"):
             raise SimulationException("Please set simulation data first.")
 
         self.excitation_info = ExcitationInfo(
@@ -166,7 +166,7 @@ class Simulation:
         Parameters:
             amplitude: Amplitude of the sin function.
             frequency: Frequency of the sin function in Hz."""
-        if hasattr(self, "simulation_data"):
+        if not hasattr(self, "simulation_data"):
             raise SimulationException("Please set simulation data first.")
 
         self.excitation_info = ExcitationInfo(
@@ -197,9 +197,9 @@ class Simulation:
             simulation_type: Type of the simulation.
         """
         # Check if everything is set up.
-        if hasattr(self, "mesh_data"):
+        if not hasattr(self, "mesh_data"):
             raise SimulationException("Please set mesh data first.")
-        if hasattr(self, "material_data"):
+        if not hasattr(self, "material_data"):
             raise SimulationException("Please set material data first.")
 
         self.simulation_data = SimulationData(
@@ -228,11 +228,11 @@ class Simulation:
 
     def set_boundary_conditions(self):
         """Sets boundary conditions for the simulation."""
-        if not self.gmsh_handler:
+        if not hasattr(self, "gmsh_handler"):
             raise SimulationException("Please setup mesh first.")
-        if not self.excitation_info:
+        if not hasattr(self, "excitation_info"):
             raise SimulationException("Please setup excitation first.")
-        if not self.simulation_data:
+        if not hasattr(self, "simulation_data"):
             raise SimulationException("Please setup simulation data first.")
         dirichlet_nodes, dirichlet_values = create_dirichlet_bc_nodes(
             self.gmsh_handler,
@@ -246,9 +246,9 @@ class Simulation:
     def simulate(self):
         """Executes the simulation. Results can be accessed using
         self.solver."""
-        if not self.gmsh_handler:
+        if not hasattr(self, "gmsh_handler"):
             raise SimulationException("Please setup mesh first.")
-        if not self.solver:
+        if not hasattr(self, "solver"):
             raise SimulationException("Please setup the simulation first.")
         # Get excited triangles
         pg_elements = self.gmsh_handler.get_elements_by_physical_groups(

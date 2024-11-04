@@ -3,8 +3,6 @@
 Implements the Finite Element Method for piezoelectric systems.
 Gmsh is internally used to create the mesh.
 
-Currently only validated for 1 single parameter set and compared with OpenCFS. 
-
 ## Features
 - Automatic mesh generation with gmsh
 - Resulting fields automatically saved to *.msh files to be viewed in gmsh
@@ -33,4 +31,9 @@ In order to do this only for the current workspace create a .env file
 and add the following vscode setting:
 ```json
 "python.envFile": "${workspaceFolder}/.env"
+```
+The .env file needs to contain the following variables
+```
+piezo_fem_simulation_path=path-to-file
+piezo_fem_plot_path=path-to-file
 ```
