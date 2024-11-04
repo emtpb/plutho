@@ -182,3 +182,4 @@ cython_debug/
 examples/cfs
 examples/simulations
 .env
+mypy.ini
