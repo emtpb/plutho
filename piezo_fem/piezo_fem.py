@@ -445,10 +445,6 @@ class Simulation:
                 self.workspace_directory,
                 f"{self.simulation_name}_mech_loss")
             np.save(mech_loss_file_path, self.solver.mech_loss)
-            temp_field_energy_file_path = os.path.join(
-                self.workspace_directory,
-                f"{self.simulation_name}_temp_field_energy")
-            np.save(temp_field_energy_file_path, self.solver.temp_field_energy)
 
     def create_post_processing_views(self):
         """Writes the calculated fields to a gmsh *.msh file which can be

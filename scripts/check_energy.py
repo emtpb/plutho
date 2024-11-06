@@ -79,10 +79,18 @@ def compare_loss_energies(sim: pfem.Simulation):
             sim.material_data.density
         )
 
+        time_duration = sim.simulation_data.delta_t * \
+            sim.simulation_data.number_of_time_steps
+
+        max_duration = 1
+        max_factor = max_duration/time_duration
+        print("Time duration")
+
         print("Input energy:", input_energy)
         print("Loss energy:", loss_energy)
         print("Energy in thermal field at last time step:", thermal_energy)
 
+        print("Input energy 1s:", input_energy*max_factor)
 
 def model(sim_directory, sim_name):
     """Real thermo piezoelectric simulation of a disc.
@@ -124,8 +132,12 @@ if __name__ == "__main__":
     if CWD is None:
         print("Couldn't find simulation path.")
         exit(1)
-    MODEL_NAME = "energy_check"
-    CONFIG_FILE_PATH = os.path.join(CWD, f"{MODEL_NAME}.cfg")
+    MODEL_NAME = "real_model_20k_check_energy"
+    CONFIG_FILE_PATH = os.path.join(
+        CWD,
+        MODEL_NAME,
+        f"{MODEL_NAME}.cfg"
+    )
 
     if False:
         # Run simulation

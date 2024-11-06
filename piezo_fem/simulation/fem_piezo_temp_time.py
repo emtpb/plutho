@@ -130,8 +130,6 @@ class PiezoSimTherm:
         q: Resulting charges for each time step q[time_index].
         mech_loss: Mechanical loss for each element per time step
             mech_loss[element_index, time_index].
-        temp_field_energy: Energy stored in the temperature field for every
-            time step.
     """
     # Simulation parameters
     mesh_data: MeshData
@@ -151,7 +149,6 @@ class PiezoSimTherm:
     u: npt.NDArray
     q: npt.NDArray
     mech_loss: npt.NDArray
-    temp_field_energy: npt.NDArray
 
     # Internal simulation data
     local_elements: List[LocalElementData]
@@ -361,10 +358,6 @@ class PiezoSimTherm:
             shape=(number_of_elements, number_of_time_steps),
             dtype=np.float64
         )
-        temp_field_energy = np.zeros(
-            shape=(number_of_time_steps),
-            dtype=np.float64
-        )
 
         volumes = calculate_volumes(self.local_elements)
 
@@ -473,7 +466,6 @@ class PiezoSimTherm:
         self.q = q
         self.u = u
         self.mech_loss = mech_loss
-        self.temp_field_energy = temp_field_energy
 
     def get_load_vector(
             self,
