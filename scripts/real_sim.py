@@ -16,7 +16,7 @@ def real_model(base_directory):
     Parameters:
         base_directory: Directory where the simulation directory is created.
     """
-    sim_name = "real_model_20k_check_energy"
+    sim_name = "energy_check_sinusoidal_20k"
     sim_directory = os.path.join(base_directory, sim_name)
     sim = pfem.Simulation(
         sim_directory,

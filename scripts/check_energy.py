@@ -13,22 +13,6 @@ from dotenv import load_dotenv
 import piezo_fem as pfem
 
 
-def compare_energies(sim: pfem.Simulation):
-    """Prints the input energy and the energy stored in the thermal field
-    at the end of the simulation.
-
-    Parameters:
-        sim: Simulation object where the simulation is already done.
-    """
-    if isinstance(sim.solver, pfem.PiezoSimTherm):
-        input_energy = pfem.calculate_electrical_input_energy(
-            sim.excitation, sim.solver.q, sim.simulation_data.delta_t)
-        thermal_energy = sim.solver.temp_field_energy
-
-        print("Input energy:", input_energy)
-        print("Energy in thermal field at last time step:", thermal_energy[-2])
-
-
 def compare_loss_energies(sim: pfem.Simulation):
     """Prints the input energy and the loss energy of the simulation.
 

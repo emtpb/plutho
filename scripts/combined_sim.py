@@ -62,7 +62,8 @@ def analyze_energies(
         piezo_sim: Thermo-piezoelectric simulation.
         heat_sim: Heat conduction simulation."""
     # Calculate input energy
-    heat_sim_duration = heat_sim.simulation_data.delta_t * heat_sim.simulation_data.number_of_time_steps
+    heat_sim_duration = heat_sim.simulation_data.delta_t * \
+        heat_sim.simulation_data.number_of_time_steps
     input_energy_piezo_sim = pfem.calculate_electrical_input_energy(
         piezo_sim.excitation,
         piezo_sim.solver.q,
@@ -115,7 +116,7 @@ def calculate_mech_loss_energy(
         mech_loss: npt.NDArray,
         nodes: npt.NDArray,
         elements: npt.NDArray,
-        delta_t: float) -> float:
+        delta_t: float):
     """Given the mech_loss_density[element_index, time_index], which is a
     power density, the total energy is calculated.
 
@@ -171,6 +172,10 @@ if __name__ == "__main__":
     piezo_sim = pfem.Simulation.load_simulation_settings(
         os.path.join(piezo_sim_folder, f"{PIEZO_SIM_NAME}.cfg")
     )
+
+    if not isinstance(piezo_sim.simulation_type, pfem.PiezoSimTherm):
+        raise IOError("The given simulation must be thermo-piezoelectric")
+
     piezo_sim.load_simulation_results()
     u = piezo_sim.solver.u
 
