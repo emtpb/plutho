@@ -16,7 +16,7 @@ import piezo_fem as pfem
 
 
 def plot_impedance_with_opencfs(
-        sim: pfem.Simulation,
+        sim: pfem.PiezoSimulation,
         open_cfs_hist_file: str):
     """Calculates and plots the impedence curves of the given FEM simulation
     together with OpenCFS results.
@@ -26,7 +26,7 @@ def plot_impedance_with_opencfs(
         open_cfs_hist_file: Hist file cotaining the charge from opencfs
             simulation.
     """
-    frequencies_fem, impedence_fem = pfem.calculate_impedance(
+    frequencies_fem, impedance_fem = pfem.calculate_impedance(
         sim.solver.q, sim.excitation, sim.simulation_data.delta_t)
 
     # Get OpenCFS data
@@ -38,39 +38,40 @@ def plot_impedance_with_opencfs(
 
     # Plot FEM and OpenCfs
     plt.figure(figsize=(12,6))
-    plt.plot(frequencies_fem, np.abs(impedence_fem), label="Piezo FEM")
+    #plt.plot(frequencies_fem, np.abs(impedence_fem), label="Piezo FEM")
     #plt.plot(frequencies_cfs, np.abs(impedence_cfs), "--", label="OpenCFS")
+    plt.plot(frequencies_fem, np.angle(impedance_fem), label="Phase piezo fem")
     plt.xlabel("Frequenz f / Hz")
     plt.ylabel("Impedanz |Z| / $\\Omega$")
-    plt.yscale("log")
-    plt.xlim(0, 0.8e7)
-    plt.ylim(20, 2*1e4)
+    #plt.yscale("log")
+    #plt.xlim(0, 0.8e7)
+    #plt.ylim(20, 2*1e4)
     plt.legend()
     plt.grid()
     plt.show()
 
     plot_folder = os.environ["piezo_fem_plot_path"]
-    plt.savefig(
-        os.path.join(
-            plot_folder,
-            "compare_impedance.png"
-        ),
-        bbox_inches='tight'
-    )
-    tikzplotlib.save(os.path.join(
-        plot_folder,
-        "compare_impedance.tex"
-    ))
+    #plt.savefig(
+    #    os.path.join(
+    #        plot_folder,
+    #        "compare_impedance.png"
+    #    ),
+    #    bbox_inches='tight'
+    #)
+    #tikzplotlib.save(os.path.join(
+    #    plot_folder,
+    #    "compare_impedance.tex"
+    #))
 
 
 if __name__ == "__main__":
     load_dotenv()
-    MODEL_NAME = "impedance_model"
+    MODEL_NAME = "impedance_alpha_m_zero"
     CWD = os.path.join(
         os.environ["piezo_fem_simulation_path"],
         MODEL_NAME)
     OPENCFS_FILE = os.path.join(CWD, "cfs_charge.hist")
-    fem_sim = pfem.Simulation.load_simulation_settings(
+    fem_sim = pfem.PiezoSimulation.load_simulation_settings(
         os.path.join(CWD, f"{MODEL_NAME}.cfg")
     )
     fem_sim.load_simulation_results()

@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 import piezo_fem as pfem
 
 
-def compare_loss_energies(sim: pfem.Simulation):
+def compare_loss_energies(sim: pfem.PiezoSimulation):
     """Prints the input energy and the loss energy of the simulation.
 
     Parameters:
@@ -82,7 +82,7 @@ def model(sim_directory, sim_name):
     Parameters:
         base_directory: Directory where the simulation directory is created.
     """
-    sim = pfem.Simulation(
+    sim = pfem.PiezoSimulation(
         sim_directory,
         pfem.pic255,
         sim_name)
@@ -139,7 +139,7 @@ if __name__ == "__main__":
         )
     else:
         # Load data
-        simulation = pfem.Simulation.load_simulation_settings(CONFIG_FILE_PATH)
+        simulation = pfem.PiezoSimulation.load_simulation_settings(CONFIG_FILE_PATH)
         simulation.load_simulation_results()
 
     compare_loss_energies(simulation)

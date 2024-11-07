@@ -24,7 +24,7 @@ def run_piezo_thermal_simulation(base_directory, name):
     frequency = 2e6
 
     sim_directory = os.path.join(base_directory, name)
-    sim = pfem.Simulation(sim_directory, pfem.pic255, name)
+    sim = pfem.PiezoSimulation(sim_directory, pfem.pic255, name)
     sim.create_disc_mesh(0.005, 0.001, 0.0001)
     sim.set_simulation(
         delta_t=piezo_delta_t,
@@ -47,7 +47,7 @@ def run_piezo_thermal_simulation(base_directory, name):
 
 
 def analyze_energies(
-        piezo_sim: pfem.Simulation,
+        piezo_sim: pfem.PiezoSimulation,
         heat_sim: pfem.HeatConductionSim,
         avg_mech_loss: npt.NDArray):
     """Given a thermal-piezoeelectric simulation and the heat conduction
@@ -156,6 +156,31 @@ def calculate_mech_loss_energy(
     return np.trapezoid(total_power, None, delta_t)
 
 
+def print_temperature_at_right_boundary(
+        nodes,
+        theta):
+    """Prints the average temperature at the nodes of theright boundary
+    of the given temperature field.
+
+    Parameters:
+        nodes: Nodes of the mesh
+        theta: Temperature field theta[element_index]
+    """
+    # Find nodes which are most right
+    radius = np.max(nodes[:, 1])
+    print(radius)
+
+    right_node_indices = []
+    for index, node in enumerate(nodes):
+        if np.isclose(node[1], radius):
+            right_node_indices.append(index)
+
+    print(
+        "Average temperature at right boundary:",
+        np.mean(theta[right_node_indices])
+    )
+
+
 if __name__ == "__main__":
     load_dotenv()
 
@@ -164,16 +189,16 @@ if __name__ == "__main__":
         print("Couldn't find simulation path.")
         exit(1)
 
-    PIEZO_SIM_NAME = "real_model_20k_check_energy"
+    PIEZO_SIM_NAME = "energy_check_sinusoidal_20k_200kHz"
     # run_piezo_thermal_simulation(CWD, PIEZO_SIM_NAME)
 
     # Load data from piezo sim
     piezo_sim_folder = os.path.join(CWD, PIEZO_SIM_NAME)
-    piezo_sim = pfem.Simulation.load_simulation_settings(
+    piezo_sim = pfem.PiezoSimulation.load_simulation_settings(
         os.path.join(piezo_sim_folder, f"{PIEZO_SIM_NAME}.cfg")
     )
 
-    if not isinstance(piezo_sim.simulation_type, pfem.PiezoSimTherm):
+    if not isinstance(piezo_sim.solver, pfem.PiezoSimTherm):
         raise IOError("The given simulation must be thermo-piezoelectric")
 
     piezo_sim.load_simulation_results()
@@ -208,7 +233,11 @@ if __name__ == "__main__":
     )
 
     # Set constant heat source
-    avg_mech_loss = np.mean(piezo_sim.solver.mech_loss[:, -25:], axis=1)
+    import matplotlib.pyplot as plt
+    plt.plot(piezo_sim.solver.mech_loss[342, :])
+    plt.plot(piezo_sim.solver.mech_loss[566, :])
+    plt.show()
+    avg_mech_loss = np.mean(piezo_sim.solver.mech_loss[:, -100:], axis=1)
     heat_sim.set_constant_volume_heat_source(
         avg_mech_loss,
         number_of_time_steps,
@@ -235,10 +264,10 @@ if __name__ == "__main__":
 
     # Save temperature only results
     np.save(
-        os.path.join(piezo_sim_folder, f"{PIEZO_SIM_NAME}_theta_20_s.npy"),
+        os.path.join(piezo_sim_folder, f"{PIEZO_SIM_NAME}_theta_only.npy"),
         heat_sim.theta)
     gmsh_handler = pfem.GmshHandler(
-        os.path.join(piezo_sim_folder, "temperature_only_20s.msh")
+        os.path.join(piezo_sim_folder, "temperature_only.msh")
     )
     gmsh_handler.create_theta_post_processing_view(
         heat_sim.theta,
@@ -247,5 +276,10 @@ if __name__ == "__main__":
         False
     )
 
+    print_temperature_at_right_boundary(
+        piezo_sim.mesh_data.nodes,
+        heat_sim.theta
+    )
+
     # Show the results in gmsh
-    gmsh.fltk.run()
+    # gmsh.fltk.run()

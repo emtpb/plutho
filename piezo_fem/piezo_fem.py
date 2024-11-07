@@ -23,7 +23,7 @@ class SimulationException(Exception):
     """Custom exception to simplify errors."""
 
 
-class Simulation:
+class PiezoSimulation:
     """Wrapper class to make the handling of the different simulation
     classes easier. In order to use this it is necessary to call certain
     functions to setup the simulation. Those include:
@@ -317,7 +317,7 @@ class Simulation:
     @staticmethod
     def load_simulation_settings(
             config_file_path: str,
-            new_working_diretory: str = "") -> Simulation:
+            new_working_diretory: str = "") -> PiezoSimulation:
         """Creates a simulation object from the given config.
 
         Parameters:
@@ -376,7 +376,7 @@ class Simulation:
             if new_working_diretory != "" \
                 else os.path.dirname(os.path.abspath(config_file_path))
 
-        sim = Simulation(workspace_directory, material_data, simulation_name)
+        sim = PiezoSimulation(workspace_directory, material_data, simulation_name)
 
         model_type = ModelType(config["model"]["model_type"])
         if model_type is ModelType.DISC:

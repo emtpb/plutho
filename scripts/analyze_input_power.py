@@ -31,7 +31,7 @@ def plot_power(excitation, charge, delta_t):
 if __name__ == "__main__":
 
     #MODEL_NAME = "real_model_20k_check_energy"
-    MODEL_NAME = "real_model_20k_check_energy"
+    MODEL_NAME = "energy_check_sinusoidal_20k_200kHz"
     load_dotenv()
 
     CWD = os.getenv("piezo_fem_simulation_path")
@@ -41,10 +41,9 @@ if __name__ == "__main__":
 
     SIM_FOLDER = os.path.join(CWD, MODEL_NAME)
 
-    sim = pfem.Simulation.load_simulation_settings(
+    sim = pfem.PiezoSimulation.load_simulation_settings(
         os.path.join(SIM_FOLDER, f"{MODEL_NAME}.cfg")
     )
     sim.load_simulation_results()
-    sim.create_post_processing_views()
 
     plot_power(sim.excitation, sim.solver.q, sim.simulation_data.delta_t)

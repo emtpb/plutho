@@ -39,7 +39,7 @@ if __name__ == "__main__":
     )
 
     # Load piezo simulation
-    piezo_sim = pfem.Simulation.load_simulation_settings(CONFIG_FILE_PATH)
+    piezo_sim = pfem.PiezoSimulation.load_simulation_settings(CONFIG_FILE_PATH)
 
     if not isinstance(piezo_sim.solver, pfem.PiezoSimTherm):
         raise IOError("Please load thermal-piezoelecrtic simulation.")

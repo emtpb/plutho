@@ -19,7 +19,7 @@ def run_ring_simulation(base_directory):
         base_directory: Directory where the simulation directory is created.
     """
     sim_directory = os.path.join(base_directory, "ring_sim")
-    sim = pfem.Simulation(sim_directory, pfem.pic255, "Ring sim")
+    sim = pfem.PiezoSimulation(sim_directory, pfem.pic255, "Ring sim")
     sim.create_ring_mesh(0.002, 0.005, 0.001, 0.00015)
     sim.set_simulation(
         delta_t=1e-8,
@@ -44,7 +44,7 @@ def run_disc_simulation(base_directory):
         base_directory: Directory where the simulation directory is created.
     """
     sim_directory = os.path.join(base_directory, "disc_sim")
-    sim = pfem.Simulation(sim_directory, pfem.pic255, "Disc sim")
+    sim = pfem.PiezoSimulation(sim_directory, pfem.pic255, "Disc sim")
     sim.create_disc_mesh(0.005, 0.001, 0.00015)
     sim.set_simulation(
         delta_t=1e-8,
@@ -69,7 +69,7 @@ def run_thermal_simulation(base_directory, name):
         base_directory: Directory where the simulation directory is created.
     """
     sim_directory = os.path.join(base_directory, name)
-    sim = pfem.Simulation(sim_directory, pfem.pic255, name)
+    sim = pfem.PiezoSimulation(sim_directory, pfem.pic255, name)
     sim.create_disc_mesh(0.005, 0.001, 0.00015)
     sim.set_simulation(
         delta_t=1e-8,
@@ -87,7 +87,7 @@ def run_thermal_simulation(base_directory, name):
     post_processing_temp(sim)
 
 
-def post_processing_temp(sim: pfem.Simulation):
+def post_processing_temp(sim: pfem.PiezoSimulation):
     """Runs post processing for the given simulation object.
 
     Parameters:
@@ -106,7 +106,7 @@ def post_processing_temp(sim: pfem.Simulation):
     # plot_impedance_with_opencfs(sim, os.path.)
 
 
-def plot_impedance_with_opencfs(sim: pfem.Simulation, open_cfs_hist_file: str):
+def plot_impedance_with_opencfs(sim: pfem.PiezoSimulation, open_cfs_hist_file: str):
     """Calculates and plots the impedence curves of the given FEM simulation
     together with OpenCFS results.
 

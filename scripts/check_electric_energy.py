@@ -111,7 +111,7 @@ def model(sim_directory, sim_name):
     Parameters:
         base_directory: Directory where the simulation directory is created.
     """
-    sim = pfem.Simulation(
+    sim = pfem.PiezoSimulation(
         sim_directory,
         pfem.pic255,
         sim_name)
@@ -177,7 +177,7 @@ if __name__ == "__main__":
         )
     else:
         # Load data
-        simulation = pfem.Simulation.load_simulation_settings(CONFIG_FILE_PATH)
+        simulation = pfem.PiezoSimulation.load_simulation_settings(CONFIG_FILE_PATH)
         simulation.solver.q = np.load(CHARGE_FILE_PATH)
         simulation.solver.u = np.load(DISPLACEMENT_FILE_PATH)
     exit(0)
