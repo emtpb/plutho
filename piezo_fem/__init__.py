@@ -6,4 +6,4 @@ from .io import parse_charge_hist_file, parse_displacement_hist_file, \
 from .postprocessing import calculate_impedance, \
     calculate_electrical_input_energy
 from .materials import pic255
-from .piezo_fem import Simulation, SimulationType
+from .piezo_fem import PiezoSimulation, SimulationType

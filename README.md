@@ -13,7 +13,6 @@ Gmsh is internally used to create the mesh.
 - Add tests for the solvers
 - Fix importing structure
 - Test simulation class
-- Add possibility to load simulation settings without creating a mesh
 - Refactor whole project -> Base classes for thermal (and 
 maybe electrical and mechanical sim)
     -> Different api to use
@@ -22,6 +21,7 @@ maybe electrical and mechanical sim)
 - Simulation can be made much faster when calculating all the element nodes and
     jacobians beforehand and reusing
     - Maybe lru caches can be utilized?
+- Creating post processing views takes a very long time
 
 ## Developer
 

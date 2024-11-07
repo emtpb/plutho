@@ -13,23 +13,7 @@ from dotenv import load_dotenv
 import piezo_fem as pfem
 
 
-def compare_energies(sim: pfem.Simulation):
-    """Prints the input energy and the energy stored in the thermal field
-    at the end of the simulation.
-
-    Parameters:
-        sim: Simulation object where the simulation is already done.
-    """
-    if isinstance(sim.solver, pfem.PiezoSimTherm):
-        input_energy = pfem.calculate_electrical_input_energy(
-            sim.excitation, sim.solver.q, sim.simulation_data.delta_t)
-        thermal_energy = sim.solver.temp_field_energy
-
-        print("Input energy:", input_energy)
-        print("Energy in thermal field at last time step:", thermal_energy[-2])
-
-
-def compare_loss_energies(sim: pfem.Simulation):
+def compare_loss_energies(sim: pfem.PiezoSimulation):
     """Prints the input energy and the loss energy of the simulation.
 
     Parameters:
@@ -79,10 +63,18 @@ def compare_loss_energies(sim: pfem.Simulation):
             sim.material_data.density
         )
 
+        time_duration = sim.simulation_data.delta_t * \
+            sim.simulation_data.number_of_time_steps
+
+        max_duration = 1
+        max_factor = max_duration/time_duration
+        print("Time duration")
+
         print("Input energy:", input_energy)
         print("Loss energy:", loss_energy)
         print("Energy in thermal field at last time step:", thermal_energy)
 
+        print("Input energy 1s:", input_energy*max_factor)
 
 def model(sim_directory, sim_name):
     """Real thermo piezoelectric simulation of a disc.
@@ -90,7 +82,7 @@ def model(sim_directory, sim_name):
     Parameters:
         base_directory: Directory where the simulation directory is created.
     """
-    sim = pfem.Simulation(
+    sim = pfem.PiezoSimulation(
         sim_directory,
         pfem.pic255,
         sim_name)
@@ -124,8 +116,12 @@ if __name__ == "__main__":
     if CWD is None:
         print("Couldn't find simulation path.")
         exit(1)
-    MODEL_NAME = "energy_check"
-    CONFIG_FILE_PATH = os.path.join(CWD, f"{MODEL_NAME}.cfg")
+    MODEL_NAME = "real_model_20k_check_energy"
+    CONFIG_FILE_PATH = os.path.join(
+        CWD,
+        MODEL_NAME,
+        f"{MODEL_NAME}.cfg"
+    )
 
     if False:
         # Run simulation
@@ -143,7 +139,7 @@ if __name__ == "__main__":
         )
     else:
         # Load data
-        simulation = pfem.Simulation.load_simulation_settings(CONFIG_FILE_PATH)
+        simulation = pfem.PiezoSimulation.load_simulation_settings(CONFIG_FILE_PATH)
         simulation.load_simulation_results()
 
     compare_loss_energies(simulation)

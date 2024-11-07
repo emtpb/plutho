@@ -16,9 +16,9 @@ def real_model(base_directory):
     Parameters:
         base_directory: Directory where the simulation directory is created.
     """
-    sim_name = "real_model_20k_check_energy"
+    sim_name = "impedance_alpha_m_zero"
     sim_directory = os.path.join(base_directory, sim_name)
-    sim = pfem.Simulation(
+    sim = pfem.PiezoSimulation(
         sim_directory,
         pfem.pic255,
         sim_name)
@@ -26,20 +26,20 @@ def real_model(base_directory):
     sim.create_disc_mesh(0.005, 0.001, 0.0001)
     sim.set_simulation(
         delta_t=1e-8,
-        number_of_time_steps=20000,
+        number_of_time_steps=8192,
         gamma=0.5,
         beta=0.25,
-        simulation_type=pfem.SimulationType.THERMOPIEZOELECTRIC,
+        simulation_type=pfem.SimulationType.PIEZOELECTRIC,
     )
-    sim.set_sinusoidal_excitation(20, 2e6)
-    #sim.set_triangle_pulse_excitation(1)
+    #sim.set_sinusoidal_excitation(20, 2e5)
+    sim.set_triangle_pulse_excitation(1)
     sim.set_boundary_conditions()
     sim.save_simulation_settings(
-        "Simulation for steady state mechanical losses.")
+        "Simulate impedance but with alpha_m=0.")
     sim.simulate()
 
     sim.save_simulation_results()
-    #sim.create_post_processing_views()
+    sim.create_post_processing_views()
 
 
 if __name__ == "__main__":

@@ -118,7 +118,7 @@ if __name__ == "__main__":
         CWD,
         f"{MODEL_NAME}_u.npy"
     )
-    sim = pfem.Simulation.load_simulation_settings(CONFIG_FILE)
+    sim = pfem.PiezoSimulation.load_simulation_settings(CONFIG_FILE)
     frequency = sim.excitation_info.frequency
     mech_loss = np.load(LOSS_FILE)
     u = np.load(DISPLACEMENT_FILE)
