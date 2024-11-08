@@ -27,21 +27,21 @@ if __name__ == "__main__":
     number_of_time_steps = mech_loss_density.shape[1]
     element_indices = [379, 1079]
     for element_index in element_indices:
-        plt.figure(figsize=(12,6))
+        plt.figure(figsize=(12, 6))
         plt.plot(
             np.arange(number_of_time_steps)*DELTA_T,
             mech_loss_density[element_index, :],
             label=f"Element {element_index}")
-        plt.xlabel("Zeit / s")
-        plt.ylabel("Verlustleistungsdichte / $\\frac{\\mathrm{W}}{\\mathrm{m}^{3}}$")
+        plt.xlabel("Zeit $t$ / s")
+        plt.ylabel("Verlustleistungsdichte $\\dot{W}$ / $\\frac{\\mathrm{W}}{\\mathrm{m}^{3}}$")
         plt.grid()
         plt.legend()
-        #plt.show()
-        plt.savefig(os.path.join(
-            PLOT_FOLDER,
-            f"mech_loss_density_{element_index}.png"
-        ))
-        tikzplotlib.save(os.path.join(
-            PLOT_FOLDER,
-            f"mech_loss_density_{element_index}.tex"
-        ))
+        plt.show()
+        #plt.savefig(os.path.join(
+        #    PLOT_FOLDER,
+        #    f"mech_loss_density_{element_index}.png"
+        #))
+        #tikzplotlib.save(os.path.join(
+        #    PLOT_FOLDER,
+        #    f"mech_loss_density_{element_index}.tex"
+        #))
