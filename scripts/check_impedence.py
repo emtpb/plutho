@@ -37,13 +37,13 @@ def plot_impedance_with_opencfs(
     plt.rcParams.update({'font.size': 18})
 
     # Plot FEM and OpenCfs
-    plt.figure(figsize=(12,6))
-    #plt.plot(frequencies_fem, np.abs(impedence_fem), label="Piezo FEM")
+    plt.figure(figsize=(12, 6))
+    plt.plot(frequencies_fem, np.abs(impedance_fem), label="Piezo FEM")
     #plt.plot(frequencies_cfs, np.abs(impedence_cfs), "--", label="OpenCFS")
-    plt.plot(frequencies_fem, np.angle(impedance_fem), label="Phase piezo fem")
+    #plt.plot(frequencies_fem, np.angle(impedance_fem), label="Phase piezo fem")
     plt.xlabel("Frequenz f / Hz")
     plt.ylabel("Impedanz |Z| / $\\Omega$")
-    #plt.yscale("log")
+    plt.yscale("log")
     #plt.xlim(0, 0.8e7)
     #plt.ylim(20, 2*1e4)
     plt.legend()
@@ -66,10 +66,11 @@ def plot_impedance_with_opencfs(
 
 if __name__ == "__main__":
     load_dotenv()
-    MODEL_NAME = "impedance_alpha_m_zero"
+    MODEL_NAME = "impedance_alpha_m_zero_double"
     CWD = os.path.join(
         os.environ["piezo_fem_simulation_path"],
-        MODEL_NAME)
+        MODEL_NAME
+    )
     OPENCFS_FILE = os.path.join(CWD, "cfs_charge.hist")
     fem_sim = pfem.PiezoSimulation.load_simulation_settings(
         os.path.join(CWD, f"{MODEL_NAME}.cfg")

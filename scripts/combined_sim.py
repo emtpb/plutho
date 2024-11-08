@@ -21,7 +21,7 @@ def run_piezo_thermal_simulation(base_directory, name):
         base_directory: Directory where the simulation directory is created.
     """
     piezo_delta_t = 1e-8
-    frequency = 2e6
+    frequency = 2e5
 
     sim_directory = os.path.join(base_directory, name)
     sim = pfem.PiezoSimulation(sim_directory, pfem.pic255, name)
@@ -39,8 +39,7 @@ def run_piezo_thermal_simulation(base_directory, name):
     )
     sim.set_boundary_conditions()
     sim.save_simulation_settings(
-        "An example for a thermal piezo-electric simulation."
-        "With convective boundary condition for iron.")
+        "An example for a thermal piezo-electric simulation.")
     sim.simulate()
 
     sim.save_simulation_results()

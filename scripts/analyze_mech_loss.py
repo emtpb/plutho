@@ -3,6 +3,7 @@
 # Python standard libraries
 import os
 import numpy as np
+import numpy.typing as npt
 import scipy
 import scipy.integrate
 import scipy.signal
@@ -97,8 +98,30 @@ def interpolate_mech_loss(
     return fits
 
 
+def plot_mech_losses(
+        sim: pfem.PiezoSimulation,
+        element_indices: npt.NDArray):
+    time_values = np.arange(sim.simulation_data.number_of_time_steps) \
+        * sim.simulation_data.delta_t
+    mech_loss = sim.solver.mech_loss
+
+    for element_index in element_indices:
+        plt.plot(
+            time_values,
+            mech_loss[element_index, :],
+            label=f"{element_index}"
+        )
+
+    plt.grid()
+    plt.legend()
+    plt.xlabel("Zeit $t$ / s")
+    plt.ylabel(
+        "Verlustleistungsdichte $\\dot{W}$ / $\\mathrm{\\frac{W}{m^3}}$"
+    )
+    plt.show()
+
 if __name__ == "__main__":
-    MODEL_NAME = "real_model_30k_sinus"
+    MODEL_NAME = "energy_check_sinusoidal_20k_200kHz"
     load_dotenv()
 
     CWD = os.getenv("piezo_fem_simulation_path")
@@ -106,22 +129,14 @@ if __name__ == "__main__":
         print("Couldn't find simulation path.")
         exit(1)
 
-    LOSS_FILE = os.path.join(
-        CWD,
-        f"{MODEL_NAME}_mech_loss.npy"
-    )
     CONFIG_FILE = os.path.join(
         CWD,
+        "2kHz",
+        MODEL_NAME,
         f"{MODEL_NAME}.cfg"
     )
-    DISPLACEMENT_FILE = os.path.join(
-        CWD,
-        f"{MODEL_NAME}_u.npy"
-    )
-    sim = pfem.PiezoSimulation.load_simulation_settings(CONFIG_FILE)
-    frequency = sim.excitation_info.frequency
-    mech_loss = np.load(LOSS_FILE)
-    u = np.load(DISPLACEMENT_FILE)
-    frequency = sim.excitation_info.frequency
-    delta_t = sim.simulation_data.delta_t
-    number_of_time_steps = sim.simulation_data.number_of_time_steps
+
+    piezo_sim = pfem.PiezoSimulation.load_simulation_settings(CONFIG_FILE)
+    piezo_sim.load_simulation_results()
+
+    plot_mech_losses(piezo_sim, [379, 1197, 1139, 626])

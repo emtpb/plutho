@@ -14,12 +14,14 @@ class GmshHandler:
     """Class to handle the mesh generation and the accessing of the nodes
     and elements of the mesh.
 
-    Attributs:
+    Attributes:
         width: Width of the model.
         height: Height of the model.
         mesh_size: Mesh size of the mesh.
         x_offset: Also called inner radius of the model. How far the model
-            is offset along the x direction."""
+            is offset along the x direction.
+        model_type: Type of the mesh model.
+    """
 
     width: float
     height: float

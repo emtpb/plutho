@@ -22,6 +22,9 @@ maybe electrical and mechanical sim)
     jacobians beforehand and reusing
     - Maybe lru caches can be utilized?
 - Creating post processing views takes a very long time
+- When creating the simulation results folder the simulation name can be 
+removed from the file names
+- Check if code can made faster using jfit from numba
 
 ## Developer
 

@@ -116,7 +116,7 @@ if __name__ == "__main__":
     if CWD is None:
         print("Couldn't find simulation path.")
         exit(1)
-    MODEL_NAME = "real_model_20k_check_energy"
+    MODEL_NAME = "energy_check_sinusoidal_20k_200kHz"
     CONFIG_FILE_PATH = os.path.join(
         CWD,
         MODEL_NAME,
