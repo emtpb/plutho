@@ -188,11 +188,11 @@ if __name__ == "__main__":
         print("Couldn't find simulation path.")
         exit(1)
 
-    PIEZO_SIM_NAME = "energy_check_sinusoidal_20k_200kHz"
+    PIEZO_SIM_NAME = "real_model_1_889kHz_20k"
     # run_piezo_thermal_simulation(CWD, PIEZO_SIM_NAME)
 
     # Load data from piezo sim
-    piezo_sim_folder = os.path.join(CWD, PIEZO_SIM_NAME)
+    piezo_sim_folder = os.path.join(CWD, "2kHz", PIEZO_SIM_NAME)
     piezo_sim = pfem.PiezoSimulation.load_simulation_settings(
         os.path.join(piezo_sim_folder, f"{PIEZO_SIM_NAME}.cfg")
     )
@@ -206,11 +206,11 @@ if __name__ == "__main__":
     TIME_STEPS_PER_PERIOD = 25  # Empirically
 
     # Simulation time of the heat conduction simulation
-    SIMULATION_TIME = 1  # In seconds
+    SIMULATION_TIME = 20 # In seconds
 
     # Number of periods of the piezo sim which are simulated in one time step
     # in the heat conduction simulation
-    SKIPPED_TIME_STEPS = 100000
+    SKIPPED_TIME_STEPS = 400000
 
     # Set heat conduction simulation settings
     heat_cond_delta_t = SKIPPED_TIME_STEPS*piezo_sim.simulation_data.delta_t
@@ -281,4 +281,4 @@ if __name__ == "__main__":
     )
 
     # Show the results in gmsh
-    # gmsh.fltk.run()
+    gmsh.fltk.run()

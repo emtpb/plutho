@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 # Local libraries
 import piezo_fem as pfem
 
+
 def plot_power(excitation, charge, delta_t):
     current = np.gradient(charge, delta_t)
 
@@ -28,10 +29,11 @@ def plot_power(excitation, charge, delta_t):
     plt.legend()
     plt.show()
 
+
 if __name__ == "__main__":
 
     #MODEL_NAME = "real_model_20k_check_energy"
-    MODEL_NAME = "energy_check_sinusoidal_20k"
+    MODEL_NAME = "real_model_1_889kHz_20k"
     load_dotenv()
 
     CWD = os.getenv("piezo_fem_simulation_path")
@@ -39,7 +41,7 @@ if __name__ == "__main__":
         print("Couldn't find simulation path.")
         exit(1)
 
-    SIM_FOLDER = os.path.join(CWD, "2MHz", MODEL_NAME)
+    SIM_FOLDER = os.path.join(CWD, "2kHz", MODEL_NAME)
 
     sim = pfem.PiezoSimulation.load_simulation_settings(
         os.path.join(SIM_FOLDER, f"{MODEL_NAME}.cfg")

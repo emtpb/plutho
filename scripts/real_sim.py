@@ -16,7 +16,7 @@ def real_model(base_directory):
     Parameters:
         base_directory: Directory where the simulation directory is created.
     """
-    sim_name = "real_model_1_889kHz_20k"
+    sim_name = "real_model_1_889kHz_40k"
     sim_directory = os.path.join(base_directory, sim_name)
     sim = pfem.PiezoSimulation(
         sim_directory,
@@ -26,7 +26,7 @@ def real_model(base_directory):
     sim.create_disc_mesh(0.005, 0.001, 0.0001)
     sim.set_simulation(
         delta_t=1e-8,
-        number_of_time_steps=20000,
+        number_of_time_steps=40000,
         gamma=0.5,
         beta=0.25,
         simulation_type=pfem.SimulationType.THERMOPIEZOELECTRIC,
@@ -39,7 +39,7 @@ def real_model(base_directory):
     sim.simulate()
 
     sim.save_simulation_results()
-    sim.create_post_processing_views()
+    # sim.create_post_processing_views()
 
 
 if __name__ == "__main__":

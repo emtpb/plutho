@@ -10,7 +10,7 @@ import scipy.signal
 import matplotlib.pyplot as plt
 
 # Third party libraries
-from dotenv import load_dotenv 
+from dotenv import load_dotenv
 
 # Local libraries
 import piezo_fem as pfem
@@ -121,7 +121,7 @@ def plot_mech_losses(
     plt.show()
 
 if __name__ == "__main__":
-    MODEL_NAME = "energy_check_sinusoidal_20k_200kHz"
+    MODEL_NAME = "real_model_1_889kHz_20k"
     load_dotenv()
 
     CWD = os.getenv("piezo_fem_simulation_path")

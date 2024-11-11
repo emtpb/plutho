@@ -25,6 +25,7 @@ maybe electrical and mechanical sim)
 - When creating the simulation results folder the simulation name can be 
 removed from the file names
 - Check if code can made faster using jfit from numba
+- Implement temperature-dependent material properties
 
 ## Developer
 
@@ -35,7 +36,7 @@ and add the following vscode setting:
 ```json
 "python.envFile": "${workspaceFolder}/.env"
 ```
-The .env file needs to contain the following variables
+The .env file needs be in the workspace directory and has to contain the following variables
 ```
 piezo_fem_simulation_path=path-to-file
 piezo_fem_plot_path=path-to-file
