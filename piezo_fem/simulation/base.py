@@ -29,20 +29,6 @@ class SimulationType(Enum):
 
 
 @dataclass
-class MaterialData:
-    """Contains material data used for the simulation."""
-    elasticity_matrix: npt.NDArray
-    permittivity_matrix: npt.NDArray
-    piezo_matrix: npt.NDArray
-    density: float
-    thermal_conductivity: float
-    heat_capacity: float
-    alpha_m: float
-    alpha_k: float
-    name: str
-
-
-@dataclass
 class SimulationData:
     """Contains data for the simulation itself."""
     delta_t: float
@@ -87,6 +73,228 @@ class LocalElementData():
     jacobian: npt.NDArray
     jacobian_inverted_t: npt.NDArray
     jacobian_det: float
+
+
+class MaterialData:
+    """Contains the data for temperature (in)dependent materials.
+    Currently all parameters except density, thermal_conductivity and
+    heat_capacity can be set temperature independent.
+    For the temperature independent parameters an array must be given where
+    the index corresponds to the index of the temperature array.
+    For example:
+        temperatures = [10, 20, 30]
+        c11 = [15, 30, 60]
+    In this case the c11 value of 15 is taken at temperature 10.
+
+    Attributes:
+        name: Name of the material.
+        c11: Array of c11 values or single value.
+        c12: Array of c12 values or single value.
+        c13: Array of c13 values or single value.
+        c33: Array of c33 values or single value.
+        c44: Array of c44 values or single value.
+        e15: Array of e15 values or single value.
+        e31: Array of e31 values or single value.
+        e33: Array of e33 values or single value.
+        eps11: Array of eps11 values or single value.
+        eps33: Array of eps33 values or single value.
+        alpha_m_values: Array of alpha_M values or single value.
+        alpha_k_values: Array of alpha_K values or single value.
+        density: Density material parameter.
+        thermal_conductivity: Thermal conductivity material paremeter.
+        heat_capacity: Heat capacity material parameter.
+        temperatures: Array of temperatures or single temperature value.
+        current_temperature: Current temperature used to get the material
+            parameters.
+        is_temperature_dependent: Boolean which states if the material data
+            is temperature dependent or not.
+    """
+
+    def __init__(self, material_name, material_data):
+        self.name = material_name
+        self.is_temperature_dependent = False
+
+        # Check if all elements exists
+        needed_elements = [
+            "c11", "c12", "c13", "c33", "c44", "e15", "e31", "e33", "eps11",
+            "eps33", "alpha_m", "alpha_k", "density", "thermal_conductivity",
+            "temperatures"
+        ]
+
+        # Check if all needed alements exist
+        for el in needed_elements:
+            if el not in material_data:
+                raise KeyError(f"Material parameter {el} is missing.")
+
+        # Temperature dependent parameters
+        self.c11 = material_data["c11"]
+        self.c12 = material_data["c12"]
+        self.c13 = material_data["c13"]
+        self.c33 = material_data["c33"]
+        self.c44 = material_data["c44"]
+        self.e15 = material_data["e15"]
+        self.e31 = material_data["e31"]
+        self.e33 = material_data["e33"]
+        self.eps11 = material_data["eps11"]
+        self.eps33 = material_data["eps33"]
+        self.alpha_m_values = material_data["alpha_m"]
+        self.alpha_k_values = material_data["alpha_k"]
+
+        # Temperature independent parameters
+        self.density = material_data["density"]
+        self.thermal_conductivity = material_data["thermal_conductivity"]
+        self.heat_capacity = material_data["heat_capacity"]
+
+        # Set temperatures and start temperature
+        self.temperatures = material_data["temperatures"]
+        if isinstance(self.temperatures, np.ndarray) and \
+                self.temperatures.shape[0] > 1:
+            self.is_temperature_dependent = True
+
+        self.current_temperature = np.min(self.temperatures)
+
+    @property
+    def alpha_m(self):
+        """Temperature dependent alpha_M material property."""
+        return self._get_value_at(
+            self.current_temperature,
+            self.alpha_m_values
+        )
+
+    @property
+    def alpha_k(self):
+        """Temperature dependent alpha_K material property."""
+        return self._get_value_at(
+            self.current_temperature,
+            self.alpha_k_values
+        )
+
+    @property
+    def permittivity_matrix(self):
+        """Temperature dependent permittivity matrix."""
+        eps11 = self._get_value_at(
+            self.current_temperature,
+            self.eps11
+        )
+        eps33 = self._get_value_at(
+            self.current_temperature,
+            self.eps33
+        )
+
+        return np.diag([eps11, eps33])
+
+    @property
+    def piezo_matrix(self):
+        """Temperature dependent piezo matrix."""
+        e15 = self._get_value_at(
+            self.current_temperature,
+            self.e15
+        )
+        e31 = self._get_value_at(
+            self.current_temperature,
+            self.e31
+        )
+        e33 = self._get_value_at(
+            self.current_temperature,
+            self.e33
+        )
+
+        return np.array([
+            [  0,   0, e15,   0],
+            [e31, e33,   0, e31]
+        ])
+
+    @property
+    def elasticity_matrix(self):
+        """Temperature dependent elasticity matrix."""
+        c11 = self._get_value_at(
+            self.current_temperature,
+            self.c11
+        )
+        c12 = self._get_value_at(
+            self.current_temperature,
+            self.c12
+        )
+        c13 = self._get_value_at(
+            self.current_temperature,
+            self.c13
+        )
+        c33 = self._get_value_at(
+            self.current_temperature,
+            self.c33
+        )
+        c44 = self._get_value_at(
+            self.current_temperature,
+            self.c44
+        )
+
+        return np.array([
+            [c11, c13,   0, c12],
+            [c13, c33,   0, c13],
+            [  0,   0, c44,   0],
+            [c12, c13,   0, c11]
+        ])
+
+    def set_temperature(self, temperature):
+        """Set the temperature for the material properties."""
+        self.current_temperature = temperature
+
+
+    def _get_value_at(self, temperature, values):
+        """Get value of given list at the given temperature. If the value
+        is not given directly it is interpolated using a linear interpolation
+        between the surrounding 2 values."""
+        # TODO Can this function be made faster?
+
+        # If a single number is given just return it
+        if not self.is_temperature_dependent:
+            if isinstance(values, int) or isinstance(values, float):
+                return values
+            else:
+                raise ValueError(
+                    "Although the material data is set to temperature"
+                    "independent, the given material parameter is not a"
+                    "scalar."
+                )
+
+        # Check if value can be accessed directly
+        if temperature in self.temperatures:
+            index = np.argwhere(self.temperatures == temperature)[0][0]
+            return values[index]
+
+        # Otherwise linear interpolation is done
+        # It is assumed that the temepratures array is sorted and all other
+        # material data arrays are sorted accordig to temepratures
+        # Find the indices which are closest to the given temperature
+        first_index = -1
+        second_index = -1
+        for index, t in enumerate(self.temperatures):
+            if t > temperature:
+                first_index = index-1
+                second_index = index
+                break
+
+        if first_index == -1 or second_index == -1:
+            raise KeyError(
+                "Couldn't find according values to given temperature "
+                f"{temperature} in the set temperature array."
+            )
+
+        print(first_index)
+        print(second_index)
+        # Do the interpolation
+        fit = np.polyfit(
+            [
+                self.temperatures[first_index],
+                self.temperatures[second_index],
+            ],
+            [
+                values[first_index],
+                values[second_index]
+            ],
+            1
+        )
+        return np.poly1d(fit)(temperature)
 
 
 ### Local functions and integrals

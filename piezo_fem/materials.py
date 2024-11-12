@@ -1,28 +1,27 @@
 """Contains different materials which can be used in the simulations."""
 
-# Python standard libraries
-import numpy as np
-
 # Local libraries
 from .simulation.base import MaterialData
 
+
 pic255 = MaterialData(
-    elasticity_matrix=np.array([
-        [1.19e11, 0.83e11, 0, 0.84e11],
-        [0.83e11, 1.17e11, 0, 0.83e11],
-        [0, 0, 0.21e11, 0],
-        [0.84e11, 0.83e11, 0, 1.19e11]
-    ]),
-    permittivity_matrix=np.diag([8.15e-9, 6.58e-9]),
-    piezo_matrix=np.array([
-        [0, 0, 12.09, 0],
-        [-6.03, 15.49, 0, -6.03]
-    ]),
-    density=7800,
-    thermal_conductivity=1.1,
-    heat_capacity=350,
-    alpha_k=6.259e-10,
-    #alpha_m=1.267e5,
-    alpha_m=0,
-    name="pic255"
+    "pic255",
+    {
+        "c11": 1.19e11,
+        "c12": 0.84e11,
+        "c13": 0.83e11,
+        "c33": 1.17e11,
+        "c44": 0.21e11,
+        "e15": 12.09,
+        "e31": -6.03,
+        "e33": 15.49,
+        "eps11": 8.15e-9,
+        "eps33": 6.58e-9,
+        "alpha_m": 0,
+        "alpha_k": 6.259e-10,
+        "density": 7800,
+        "heat_capacity": 350,
+        "thermal_conductivity": 1.1,
+        "temperatures": 20
+    }
 )
