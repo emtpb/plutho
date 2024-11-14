@@ -43,7 +43,7 @@ class CoupledSimulation:
         # Create heat conduction sim
         self.heat_conduction_sim = HeatConductionSim(
             piezo_simulation.mesh_data,
-            piezo_simulation.material_data,
+            piezo_simulation.material_manager,
             heat_conduction_sim_data
         )
 

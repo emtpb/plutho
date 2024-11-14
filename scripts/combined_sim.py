@@ -104,8 +104,8 @@ def analyze_energies(
         heat_sim.theta[:, -1],
         piezo_sim.mesh_data.nodes,
         piezo_sim.mesh_data.elements,
-        piezo_sim.material_data.heat_capacity,
-        piezo_sim.material_data.density
+        piezo_sim.material_manager.heat_capacity,
+        piezo_sim.material_manager.density
     )
 
     print("Stored energy in thermal field:", thermal_stored_energy)
@@ -227,7 +227,7 @@ if __name__ == "__main__":
     # Create heat conduction sim
     heat_sim = pfem.HeatConductionSim(
         piezo_sim.mesh_data,
-        piezo_sim.material_data,
+        piezo_sim.material_manager,
         heat_simulation_data
     )
 

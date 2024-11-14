@@ -16,7 +16,7 @@ from .simulation.base import MeshData, MaterialData, SimulationData, \
 from .simulation.fem_piezo_temp_time import PiezoSimTherm
 from .simulation.fem_piezo_time import PiezoSim
 from .gmsh_handler import GmshHandler
-from .materials import pic255
+from .materials import pic255, MaterialManager
 from .postprocessing import calculate_impedance
 
 class SimulationException(Exception):
@@ -49,7 +49,7 @@ class PiezoSimulation:
         solver: Either PiezoSim or PiezoSimTherm depending on the
             simulation_type.
         mesh_data: Contains information about the used mesh.
-        material_data: Contains information about the used material.
+        material_handler: Contains information about the used material.
         simulation_data: Contains information about the simulation itself.
         excitation: Excitation function.
         excitation_info: Information about the edxcitation used to store in the
@@ -69,17 +69,41 @@ class PiezoSimulation:
     simulation_data: SimulationData
     excitation: npt.NDArray
     excitation_info: ExcitationInfo
+    material_manager: MaterialManager
 
     def __init__(self,
                  workspace_directory: str,
-                 material_data: MaterialData,
                  simulation_name: str):
         self.workspace_directory = workspace_directory
-        self.material_data = material_data
         self.simulation_name = simulation_name
 
         if not os.path.exists(self.workspace_directory):
             os.makedirs(self.workspace_directory)
+
+    def set_material_data(
+            self,
+            material_name: str,
+            material_data: MaterialData,
+            starting_temperature: Union[float, npt.NDArray] = 0):
+        """Sets the material data for the model.
+
+        Parameters:
+            material_name: Name of the material, used in .cfg file.
+            material_data: MaterialData object.
+            starting_temperature: Only needed if the material data is
+                temperature dependent. If its a float the value will be set
+                constant for the whole model. If its a np.ndarray it must have
+                the size of number of elements.
+        """
+        if not hasattr(self, "mesh_data"):
+            raise SimulationException("Please set mesh data first.")
+
+        self.material_manager = MaterialManager(
+            material_name,
+            material_data,
+            len(self.mesh_data.elements),
+            starting_temperature
+        )
 
     def create_disc_mesh(self,
                          radius: float,
@@ -123,7 +147,10 @@ class PiezoSimulation:
         """
         if not hasattr(self, "gmsh_handler"):
             self.gmsh_handler = GmshHandler(
-                os.path.join(self.workspace_directory, "ring.msh")
+                os.path.join(
+                    self.workspace_directory,
+                    f"{self.simulation_name}_ring.msh"
+                )
             )
 
         self.gmsh_handler.generate_rectangular_mesh(
@@ -199,7 +226,7 @@ class PiezoSimulation:
         # Check if everything is set up.
         if not hasattr(self, "mesh_data"):
             raise SimulationException("Please set mesh data first.")
-        if not hasattr(self, "material_data"):
+        if not hasattr(self, "material_manager"):
             raise SimulationException("Please set material data first.")
 
         self.simulation_data = SimulationData(
@@ -212,13 +239,13 @@ class PiezoSimulation:
         if simulation_type is SimulationType.PIEZOELECTRIC:
             self.solver = PiezoSim(
                 self.mesh_data,
-                self.material_data,
+                self.material_manager,
                 self.simulation_data
             )
         elif simulation_type is SimulationType.THERMOPIEZOELECTRIC:
             self.solver = PiezoSimTherm(
                 self.mesh_data,
-                self.material_data,
+                self.material_manager,
                 self.simulation_data
             )
         else:
@@ -272,7 +299,7 @@ class PiezoSimulation:
         settings = configparser.ConfigParser()
         general_settings = {
                 "name": self.simulation_name,
-                "material_name": self.material_data.name
+                "material_name": self.material_manager.name
         }
         if description != "":
             general_settings["description"] = description
@@ -341,6 +368,9 @@ class PiezoSimulation:
         material_name = config["general"]["material_name"]
         if material_name == "pic255":
             material_data = pic255
+        elif material_name == "pic181_temp":
+            print("For simplicity wrong material used.")
+            material_data = pic255
         else:
             raise SimulationException(
                 f"Unknown material given {material_name}")
@@ -376,7 +406,7 @@ class PiezoSimulation:
             if new_working_diretory != "" \
                 else os.path.dirname(os.path.abspath(config_file_path))
 
-        sim = PiezoSimulation(workspace_directory, material_data, simulation_name)
+        sim = PiezoSimulation(workspace_directory, simulation_name)
 
         model_type = ModelType(config["model"]["model_type"])
         if model_type is ModelType.DISC:
@@ -402,6 +432,11 @@ class PiezoSimulation:
             raise IOError(f"Cannot deserialize ModelType {model_type}")
         nodes, elements = sim.gmsh_handler.get_mesh_nodes_and_elements()
         sim.mesh_data = MeshData(nodes, elements)
+
+        sim.set_material_data(
+            material_name,
+            material_data
+        )
 
         sim.set_simulation(
             delta_t=simulation_data.delta_t,

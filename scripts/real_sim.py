@@ -16,23 +16,27 @@ def real_model(base_directory):
     Parameters:
         base_directory: Directory where the simulation directory is created.
     """
-    sim_name = "real_model_1_889kHz_40k"
+    sim_name = "check_impedance_test"
     sim_directory = os.path.join(base_directory, sim_name)
     sim = pfem.PiezoSimulation(
         sim_directory,
-        pfem.pic255,
         sim_name)
     #sim.material_data.alpha_m = 1.267e5
     sim.create_disc_mesh(0.005, 0.001, 0.0001)
+    sim.set_material_data(
+        "pic255",
+        pfem.pic255,
+    )
+    sim.material_manager.material_data.alpha_m = 1.267e5
     sim.set_simulation(
         delta_t=1e-8,
-        number_of_time_steps=40000,
+        number_of_time_steps=8192,
         gamma=0.5,
         beta=0.25,
-        simulation_type=pfem.SimulationType.THERMOPIEZOELECTRIC,
+        simulation_type=pfem.SimulationType.PIEZOELECTRIC,
     )
-    sim.set_sinusoidal_excitation(20, 1.889e5)
-    #sim.set_triangle_pulse_excitation(1)
+    #sim.set_sinusoidal_excitation(20, 1.889e5)
+    sim.set_triangle_pulse_excitation(1)
     sim.set_boundary_conditions()
     sim.save_simulation_settings(
         "Simulate for combined sim with anti-resonance frequency.")

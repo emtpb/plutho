@@ -8,12 +8,14 @@ import scipy.sparse as sparse
 import scipy.sparse.linalg as slin
 
 # Local libraries
-from .base import MaterialData, SimulationData, MeshData, \
+from .base import SimulationData, MeshData, \
     gradient_local_shape_functions, \
     local_to_global_coordinates, b_operator_global, integral_m, \
     integral_ku, integral_kuv, integral_kve, apply_dirichlet_bc, \
-    line_quadrature, create_local_element_data, LocalElementData
+    line_quadrature, create_local_element_data, LocalElementData, \
+    get_avg_temp_field_per_element
 
+from ..materials import MaterialManager
 
 def charge_integral_u(
         node_points: npt.NDArray,
@@ -81,24 +83,21 @@ def charge_integral_v(
 
 def calculate_charge(
         u: npt.NDArray,
-        permittivity_matrix: npt.NDArray,
-        piezo_matrix: npt.NDArray,
+        material_manager: MaterialManager,
         elements: npt.NDArray,
         nodes) -> float:
     """Calculates the charge of the given elements.
 
     Parameters:
         u: List of u values for every node.
-        permittivity_matrix: Permittivity matrix for the
-            current element (epsilon matrix).
-        piezo_matrix: Piezo matrix for the current element (e matrix).
+        material_manager: MaterialManager object.
         elements: Elements for which the charge shall be calculated.
         nodes: All nodes used in the simulation.
     """
     number_of_nodes = len(nodes)
     q = 0
 
-    for element in elements:
+    for element_index, element in enumerate(elements):
         dn = gradient_local_shape_functions()
         node_points = np.array([
             [nodes[element[0]][0],
@@ -137,13 +136,13 @@ def calculate_charge(
         q_u = charge_integral_u(
             node_points,
             u_e,
-            piezo_matrix,
+            material_manager.get_piezo_matrix(element_index),
             jacobian_inverted_t
         ) * 2 * np.pi * jacobian_det
         q_v = charge_integral_v(
             node_points,
             ve_e,
-            permittivity_matrix,
+            material_manager.get_permittivity_matrix(element_index),
             jacobian_inverted_t
         ) * 2 * np.pi * jacobian_det
 
@@ -157,12 +156,12 @@ class PiezoSim:
 
     Parameters:
         mesh_data: MeshData format.
-        material_data: MaterialData format.
+        material_manager: MaterialManager object.
         simulation_data: SimulationData format.
 
     Attributes:
         mesh_data: Contains the mesh information.
-        material_data: Contains the information about the materials.
+        material_manager: Contains the information about the materials.
         simulation_data: Contains the information about the simulation.
         dirichlet_nodes: List of nodes for which dirichlet values are set.
         dirichlet_values: List of values of the corresponding dirichlet nodes
@@ -181,7 +180,7 @@ class PiezoSim:
     """
     # Simulation parameters
     mesh_data: MeshData
-    material_data: MaterialData
+    material_manager: MaterialManager
     simulation_data: SimulationData
 
     # Dirichlet boundary condition
@@ -203,10 +202,10 @@ class PiezoSim:
     def __init__(
             self,
             mesh_data: MeshData,
-            material_data: MaterialData,
+            material_manager: MaterialManager,
             simulation_data: SimulationData):
         self.mesh_data = mesh_data
-        self.material_data = material_data
+        self.material_manager = material_manager
         self.simulation_data = simulation_data
 
     def assemble(self):
@@ -251,7 +250,7 @@ class PiezoSim:
             # local coordinates.
             # Mutiply with 2*pi because theta is integrated from 0 to 2*pi
             mu_e = (
-                self.material_data.density
+                self.material_manager.get_density()
                 * integral_m(node_points)
                 * jacobian_det * 2 * np.pi
             )
@@ -259,21 +258,26 @@ class PiezoSim:
                 integral_ku(
                     node_points,
                     jacobian_inverted_t,
-                    self.material_data.elasticity_matrix)
+                    self.material_manager.get_elasticity_matrix(element_index)
+                )
                 * jacobian_det * 2 * np.pi
             )
             kuv_e = (
                 integral_kuv(
                     node_points,
                     jacobian_inverted_t,
-                    self.material_data.piezo_matrix)
+                    self.material_manager.get_piezo_matrix(element_index)
+                )
                 * jacobian_det * 2 * np.pi
             )
             kve_e = (
                 integral_kve(
                     node_points,
                     jacobian_inverted_t,
-                    self.material_data.permittivity_matrix)
+                    self.material_manager.get_permittivity_matrix(
+                        element_index
+                    )
+                )
                 * jacobian_det * 2 * np.pi
             )
 
@@ -301,7 +305,10 @@ class PiezoSim:
                     kve[global_p, global_q] += kve_e[local_p, local_q]
 
         # Calculate damping matrix
-        cu = self.material_data.alpha_m * mu + self.material_data.alpha_k * ku
+        cu = (
+            self.material_manager.get_alpha_m() * mu
+            + self.material_manager.get_alpha_k() * ku
+        )
 
         # Calculate block matrices
         zeros1x1 = np.zeros((number_of_nodes, number_of_nodes))
@@ -421,8 +428,7 @@ class PiezoSim:
             # Calculate charge
             q[time_index+1] = calculate_charge(
                 u[:, time_index+1],
-                self.material_data.permittivity_matrix,
-                self.material_data.piezo_matrix,
+                self.material_manager,
                 electrode_elements,
                 self.mesh_data.nodes
             )

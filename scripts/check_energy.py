@@ -59,8 +59,8 @@ def compare_loss_energies(sim: pfem.PiezoSimulation):
             sim.solver.u[3*len(nodes):, -2],
             sim.mesh_data.nodes,
             sim.mesh_data.elements,
-            sim.material_data.heat_capacity,
-            sim.material_data.density
+            sim.material_manager.heat_capacity,
+            sim.material_manager.density
         )
 
         time_duration = sim.simulation_data.delta_t * \

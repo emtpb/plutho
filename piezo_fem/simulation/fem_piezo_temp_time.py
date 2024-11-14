@@ -9,14 +9,15 @@ import scipy.sparse.linalg as slin
 from scipy import sparse
 
 # Local libraries
-from .base import MaterialData, SimulationData, MeshData, \
+from .base import SimulationData, MeshData, \
     gradient_local_shape_functions, create_local_element_data, \
     local_to_global_coordinates, b_operator_global, integral_m, \
     integral_ku, integral_kuv, integral_kve, apply_dirichlet_bc, \
-    quadratic_quadrature, LocalElementData, calculate_volumes
+    quadratic_quadrature, LocalElementData, calculate_volumes, \
+    get_avg_temp_field_per_element
 from .fem_piezo_time import calculate_charge
 from .fem_heat_conduction_time import integral_ktheta, integral_theta_load
-
+from ..materials import MaterialManager
 
 def loss_integral_scs(
         node_points: npt.NDArray,
@@ -133,7 +134,7 @@ class PiezoSimTherm:
     """
     # Simulation parameters
     mesh_data: MeshData
-    material_data: MaterialData
+    material_manager: MaterialManager
     simulation_data: SimulationData
 
     # Dirichlet boundary condition
@@ -156,10 +157,10 @@ class PiezoSimTherm:
     def __init__(
             self,
             mesh_data: MeshData,
-            material_data: MaterialData,
+            material_manager: MaterialManager,
             simulation_data: SimulationData):
         self.mesh_data = mesh_data
-        self.material_data = material_data
+        self.material_manager = material_manager
         self.simulation_data = simulation_data
 
     def assemble(self):
@@ -206,7 +207,7 @@ class PiezoSimTherm:
             # to local coordinates.
             # Mutiply with 2*pi because theta is integrated from 0 to 2*pi
             mu_e = (
-                self.material_data.density
+                self.material_manager.get_density()
                 * integral_m(node_points)
                 * jacobian_det * 2 * np.pi
             )
@@ -214,34 +215,37 @@ class PiezoSimTherm:
                 integral_ku(
                     node_points,
                     jacobian_inverted_t,
-                    self.material_data.elasticity_matrix)
+                    self.material_manager.get_elasticity_matrix(element_index))
                 * jacobian_det * 2 * np.pi
             )
             kuv_e = (
                 integral_kuv(
                     node_points,
                     jacobian_inverted_t,
-                    self.material_data.piezo_matrix)
+                    self.material_manager.get_piezo_matrix(element_index))
                 * jacobian_det * 2 * np.pi
             )
             kve_e = (
                 integral_kve(
                     node_points,
                     jacobian_inverted_t,
-                    self.material_data.permittivity_matrix)
+                    self.material_manager.get_permittivity_matrix(
+                        element_index
+                    )
+                )
                 * jacobian_det * 2 * np.pi
             )
             ctheta_e = (
                 integral_m(node_points)
-                * self.material_data.density
-                * self.material_data.heat_capacity
+                * self.material_manager.get_density()
+                * self.material_manager.get_heat_capacity()
                 * jacobian_det * 2 * np.pi
             )
             ktheta_e = (
                 integral_ktheta(
                     node_points,
                     jacobian_inverted_t)
-                * self.material_data.thermal_conductivity
+                * self.material_manager.get_thermal_conductivity()
                 * jacobian_det * 2 * np.pi
             )
 
@@ -273,7 +277,10 @@ class PiezoSimTherm:
                     ktheta[global_p, global_q] += ktheta_e[local_p, local_q]
 
         # Calculate damping matrix
-        cu = self.material_data.alpha_m * mu + self.material_data.alpha_k * ku
+        cu = (
+            self.material_manager.get_alpha_m() * mu
+            + self.material_manager.get_alpha_k() * ku
+        )
 
         # Calculate block matrices
         zeros1x1 = np.zeros((number_of_nodes, number_of_nodes))
@@ -363,6 +370,34 @@ class PiezoSimTherm:
 
         print("Starting simulation")
         for time_index in range(number_of_time_steps-1):
+            # Check if new assembly is needed when temperature dependent
+            # material parameters are used
+            if self.material_manager.is_temperature_dependent:
+                temp_field_per_elements = get_avg_temp_field_per_element(
+                    u[3*number_of_nodes:, time_index],
+                    self.mesh_data.elements
+                )
+                update = self.material_manager.update_temperature(
+                    temp_field_per_elements
+                )
+                if update:
+                    # Assemble the matrices with new parameters
+                    print(f"Assemble new (time step: {time_index})")
+                    self.assemble()
+                    m, c, k = apply_dirichlet_bc(
+                        self.m,
+                        self.c,
+                        self.k,
+                        self.dirichlet_nodes[0],
+                        self.dirichlet_nodes[1],
+                        number_of_nodes
+                    )
+                    k_star = (
+                        k
+                        + gamma/(beta*delta_t)*c
+                        + 1/(beta*delta_t**2)*m
+                    ).tocsr()
+
             # Calculate load vector and add dirichlet boundary conditions
             if set_symmetric_bc:
                 f = self.get_load_vector(
@@ -406,8 +441,7 @@ class PiezoSimTherm:
 
             q[time_index+1] = calculate_charge(
                 u[:, time_index+1],
-                self.material_data.permittivity_matrix,
-                self.material_data.piezo_matrix,
+                self.material_manager,
                 electrode_elements,
                 nodes
             )
@@ -454,9 +488,12 @@ class PiezoSimTherm:
                             u_e_t_minus_2,
                             delta_t,
                             jacobian_inverted_t,
-                            self.material_data.elasticity_matrix)
+                            self.material_manager.get_elasticity_matrix(
+                                element_index
+                            )
+                        )
                         * 2 * np.pi * jacobian_det
-                        * self.material_data.alpha_k
+                        * self.material_manager.get_alpha_k()
                         * 1/volumes[element_index]
                     )
 
