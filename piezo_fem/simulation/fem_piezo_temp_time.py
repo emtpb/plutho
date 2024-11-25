@@ -378,7 +378,7 @@ class PiezoSimTherm:
 
         print("Material data:")
         self.material_manager.print_material_data(0)
-        print(self.material_manager.material_data)
+
         print("Starting simulation")
         for time_index in range(number_of_time_steps-1):
             # Check if new assembly is needed when temperature dependent

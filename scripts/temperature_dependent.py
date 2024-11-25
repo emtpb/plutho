@@ -99,7 +99,7 @@ def simulation_model(base_directory, temp_dep_material_data):
             created
         temp_dep_material_data: Temperature dependent material data.
     """
-    sim_name = "temp_dep_mat_sim_16k"
+    sim_name = "temp_dep_mat_sim_130k"
     sim_directory = os.path.join(base_directory, sim_name)
     starting_temperature = 25
     sim = pfem.PiezoSimulation(
@@ -120,7 +120,7 @@ def simulation_model(base_directory, temp_dep_material_data):
     # Set the starting theta field to starting temperature too
     sim.set_simulation(
         delta_t=1e-8,
-        number_of_time_steps=9000,
+        number_of_time_steps=130000,
         gamma=0.5,
         beta=0.25,
         simulation_type=pfem.SimulationType.THERMOPIEZOELECTRIC
@@ -130,6 +130,7 @@ def simulation_model(base_directory, temp_dep_material_data):
 
     sim.save_simulation_settings(
         "Simulation with temperature dependent material properties."
+        "Alpha_k is constant 1.289813815258054e-10. Alpha_m is constant 0."
     )
     sim.simulate(
         np.ones(len(sim.mesh_data.nodes))*starting_temperature
