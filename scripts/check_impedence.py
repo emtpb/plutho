@@ -32,7 +32,7 @@ def plot_impedance_with_opencfs(
     # Get OpenCFS data
     _, charge_cfs = pfem.parse_charge_hist_file(open_cfs_hist_file)
     frequencies_cfs, impedence_cfs = pfem.calculate_impedance(
-        charge_cfs, sim.excitation, sim.simulation_data.delta_t)
+        charge_cfs, sim.excitation[:len(charge_cfs)], sim.simulation_data.delta_t)
 
     plt.rcParams.update({'font.size': 18})
 
@@ -66,7 +66,7 @@ def plot_impedance_with_opencfs(
 
 if __name__ == "__main__":
     load_dotenv()
-    MODEL_NAME = "temp_dep_mat_sim_2"
+    MODEL_NAME = "temp_dep_mat_sim_16k"
     CWD = os.path.join(
         os.environ["piezo_fem_simulation_path"],
         MODEL_NAME

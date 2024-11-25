@@ -287,6 +287,27 @@ class MaterialManager:
         ])
 
 
+    def print_material_data(self, element_index: int):
+        """Prints the current material data."""
+        print(
+            "Elasticity matrix:",
+            self.get_elasticity_matrix(element_index)
+        )
+        print(
+            "Piezo matrix:",
+            self.get_piezo_matrix(element_index)
+        )
+        print(
+            "Permittivity matrix:",
+            self.get_permittivity_matrix(element_index)
+        )
+        print("Alpha_k:", self.get_alpha_k())
+        print("Alpha_m:", self.get_alpha_m())
+        print("Density:", self.get_density())
+        print("Heat capacity:", self.get_heat_capacity())
+        print("Thermal conductivity:", self.get_thermal_conductivity())
+
+
 pic255 = MaterialData(
     **{
         "c11": 1.19e11,

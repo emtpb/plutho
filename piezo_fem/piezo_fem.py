@@ -270,7 +270,7 @@ class PiezoSimulation:
         self.solver.dirichlet_nodes = dirichlet_nodes
         self.solver.dirichlet_values = dirichlet_values
 
-    def simulate(self):
+    def simulate(self, theta_start=None):
         """Executes the simulation. Results can be accessed using
         self.solver."""
         if not hasattr(self, "gmsh_handler"):
@@ -283,11 +283,19 @@ class PiezoSimulation:
         electrode_triangles = pg_elements["Electrode"]
 
         self.solver.assemble()
-        self.solver.solve_time(
-            electrode_triangles,
-            self.gmsh_handler.model_type is ModelType.DISC
-        )
-
+        if isinstance(self.solver, PiezoSim):
+            self.solver.solve_time(
+                electrode_triangles,
+                self.gmsh_handler.model_type is ModelType.DISC,
+            )
+        elif isinstance(self.solver, PiezoSimTherm):
+            self.solver.solve_time(
+                electrode_triangles,
+                self.gmsh_handler.model_type is ModelType.DISC,
+                theta_start
+            )
+        else:
+            raise ValueError("Unknown solver set")
     def save_simulation_settings(self,
                                  description: str = ""):
         """Saves the current simulation setup in a config file in the

@@ -79,7 +79,7 @@ def load_temperature_dependent_material_data_pic181(files):
             "eps33": np.array(eps33),
             #"alpha_m": alpha_m,
             "alpha_m": 0,
-            "alpha_k": np.mean(alpha_k),
+            "alpha_k": 1.289813815258054e-10,
             "temperatures": np.array(temperatures),
             "heat_capacity": heat_capacity,
             "density": density,
@@ -101,6 +101,7 @@ def simulation_model(base_directory, temp_dep_material_data):
     """
     sim_name = "temp_dep_mat_sim_16k"
     sim_directory = os.path.join(base_directory, sim_name)
+    starting_temperature = 25
     sim = pfem.PiezoSimulation(
         sim_directory,
         sim_name
@@ -114,11 +115,12 @@ def simulation_model(base_directory, temp_dep_material_data):
     sim.set_material_data(
         material_name="pic181_temp",
         material_data=temp_dep_material_data,
-        starting_temperature=20
+        starting_temperature=starting_temperature
     )
+    # Set the starting theta field to starting temperature too
     sim.set_simulation(
         delta_t=1e-8,
-        number_of_time_steps=16000,
+        number_of_time_steps=9000,
         gamma=0.5,
         beta=0.25,
         simulation_type=pfem.SimulationType.THERMOPIEZOELECTRIC
@@ -129,7 +131,9 @@ def simulation_model(base_directory, temp_dep_material_data):
     sim.save_simulation_settings(
         "Simulation with temperature dependent material properties."
     )
-    sim.simulate()
+    sim.simulate(
+        np.ones(len(sim.mesh_data.nodes))*starting_temperature
+    )
 
     sim.save_simulation_results()
 

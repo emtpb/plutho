@@ -309,7 +309,8 @@ class PiezoSimTherm:
 
     def solve_time(self,
                    electrode_elements: npt.NDArray,
-                   set_symmetric_bc: bool = False):
+                   set_symmetric_bc: bool = False,
+                   theta_start = None):
         """Runs the simulation using the assembled m, c and k matrices as well
         as the set excitation.
         Calculates the displacement field, potential field and the thermal
@@ -368,6 +369,16 @@ class PiezoSimTherm:
 
         volumes = calculate_volumes(self.local_elements)
 
+        if theta_start is not None:
+            if len(theta_start) != number_of_nodes:
+                raise ValueError(
+                    "theta start must have the size of number of nodes"
+                )
+            u[3*number_of_nodes:, 0] = theta_start
+
+        print("Material data:")
+        self.material_manager.print_material_data(0)
+        print(self.material_manager.material_data)
         print("Starting simulation")
         for time_index in range(number_of_time_steps-1):
             # Check if new assembly is needed when temperature dependent

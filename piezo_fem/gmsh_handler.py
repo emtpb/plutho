@@ -369,7 +369,7 @@ class GmshHandler:
         corner_points = [[x_offset, 0],
                          [width+x_offset, 0],
                          [width+x_offset, height],
-                         [0+x_offset, height]]
+                         [x_offset, height]]
 
         gmsh_point_indices = []
         for point in corner_points:
