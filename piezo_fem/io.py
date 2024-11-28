@@ -3,8 +3,14 @@
 # Python standard libraries
 from typing import Tuple
 import os
+
+# Third party libraries
 import numpy as np
 import numpy.typing as npt
+import yaml
+
+# Local libraries
+from piezo_fem import MaterialData
 
 
 def parse_charge_hist_file(file_path: str) -> Tuple[npt.NDArray, npt.NDArray]:
@@ -134,3 +140,82 @@ def create_vector_field_as_csv(
 
         with open(current_file_path, "w", encoding="UTF-8") as fd:
             fd.write(text)
+
+def load_temperature_dependent_material_data_pic181(files):
+    """From the given file paths load the material data.
+    Extract the temperatures from the file names.
+    Expects that the files are already sorted after the temperature.
+
+    Parameters:
+        files: List of file paths.
+    
+    Returns:
+        MaterialData object.
+    """
+    c11 = []
+    c12 = []
+    c13 = []
+    c33 = []
+    c44 = []
+    e15 = []
+    e31 = []
+    e33 = []
+    eps11 = []
+    eps33 = []
+    alpha_m = []
+    alpha_k = []
+    temperatures = []
+    density = 7850
+    thermal_conductivity = 1.1
+    heat_capacity = 350
+
+    material_name = "pic181"
+
+    for file in files:
+        file_name, ext = os.path.splitext(os.path.basename(file))
+        if ext != ".yaml":
+            raise IOError(f"*.yaml file is expected but {ext} is given.")
+
+        _, _, _, temperature = file_name.split("_")
+
+        data = None
+        with open(file, "r", encoding="UTF-8") as fd:
+            data = yaml.safe_load(fd)
+
+        c11.append(data["c11"])
+        c12.append(data["c12"])
+        c13.append(data["c13"])
+        c33.append(data["c33"])
+        c44.append(data["c44"])
+        e15.append(data["e15"])
+        e31.append(data["e31"])
+        e33.append(data["e33"])
+        eps11.append(data["eps11"])
+        eps33.append(data["eps33"])
+        alpha_m.append(data["alpha_M"])
+        alpha_k.append(data["alpha_K"])
+        temperatures.append(float(temperature))
+
+    mat_data = MaterialData(
+        **{
+            "c11": np.array(c11),
+            "c12": np.array(c12),
+            "c13": np.array(c13),
+            "c33": np.array(c33),
+            "c44": np.array(c44),
+            "e15": np.array(e15),
+            "e31": np.array(e31),
+            "e33": np.array(e33),
+            "eps11": np.array(eps11),
+            "eps33": np.array(eps33),
+            #"alpha_m": alpha_m,
+            "alpha_m": 0,
+            "alpha_k": 1.289813815258054e-10,
+            "temperatures": np.array(temperatures),
+            "heat_capacity": heat_capacity,
+            "density": density,
+            "thermal_conductivity": thermal_conductivity
+        }
+    )
+
+    return mat_data

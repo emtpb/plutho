@@ -156,50 +156,70 @@ class MaterialManager:
         if not self.is_temperature_dependent:
             return None
 
+        threshold = 0.01
+
         # When for any element the material parameter change is greater
         # than 10 % update material parameters
         update = False
 
         c11_updated = self.c11_interp(local_temperatures)
-        if np.any(np.abs(self.c11_local - c11_updated)/self.c11_local > 0.1):
+        # print(np.max(np.abs(self.c11_local - c11_updated)/self.c11_local))
+        if np.any(np.abs(self.c11_local - c11_updated)/ \
+                  self.c11_local > threshold):
             update = True
 
         c12_updated = self.c12_interp(local_temperatures)
-        if np.any(np.abs(self.c12_local - c12_updated)/self.c12_local > 0.1):
+        # print(np.max(np.abs(self.c12_local - c12_updated)/self.c12_local))
+        if np.any(np.abs(self.c12_local - c12_updated)/ \
+                  self.c12_local > threshold):
             update = True
 
         c13_updated = self.c13_interp(local_temperatures)
-        if np.any(np.abs(self.c13_local - c13_updated)/self.c13_local > 0.1):
+        # print(np.max(np.abs(self.c13_local - c13_updated)/self.c13_local))
+        if np.any(np.abs(self.c13_local - c13_updated)/ \
+                  self.c13_local > threshold):
             update = True
 
         c33_updated = self.c33_interp(local_temperatures)
-        if np.any(np.abs(self.c33_local - c33_updated)/self.c33_local > 0.1):
+        # print(np.max(np.abs(self.c33_local - c33_updated)/self.c33_local))
+        if np.any(np.abs(self.c33_local - c33_updated)/ \
+                  self.c33_local > threshold):
             update = True
 
         c44_updated = self.c44_interp(local_temperatures)
-        if np.any(np.abs(self.c44_local - c44_updated)/self.c44_local > 0.1):
+        # print(np.max(np.abs(self.c44_local - c44_updated)/self.c44_local))
+        if np.any(np.abs(self.c44_local - c44_updated)/ \
+                  self.c44_local > threshold):
             update = True
 
         e15_updated = self.e15_interp(local_temperatures)
-        if np.any(np.abs(self.e15_local - e15_updated)/self.e15_local > 0.1):
+         #print(np.max(np.abs(self.e15_local - e15_updated)/self.e15_local))
+        if np.any(np.abs(self.e15_local - e15_updated)/ \
+                  self.e15_local > threshold):
             update = True
 
         e31_updated = self.e31_interp(local_temperatures)
-        if np.any(np.abs(self.e31_local - e31_updated)/self.e31_local > 0.1):
+        # print(np.max(np.abs(self.e31_local - e31_updated)/self.e31_local))
+        if np.any(np.abs(self.e31_local - e31_updated)/ \
+                  self.e31_local > threshold):
             update = True
 
         e33_updated = self.e33_interp(local_temperatures)
-        if np.any(np.abs(self.e33_local - e33_updated)/self.e33_local > 0.1):
+        # print(np.max(np.abs(self.e33_local - e33_updated)/self.e33_local))
+        if np.any(np.abs(self.e33_local - e33_updated)/ \
+                  self.e33_local > threshold):
             update = True
 
         eps11_updated = self.eps11_interp(local_temperatures)
+        # print(np.max(np.abs(self.eps11_local - eps11_updated)/self.eps11_local))
         if np.any(np.abs(self.eps11_local - eps11_updated)/ \
-                  self.eps11_local > 0.1):
+                  self.eps11_local > threshold):
             update = True
 
         eps33_updated = self.eps33_interp(local_temperatures)
+        # print(np.max(np.abs(self.eps33_local - eps33_updated)/self.eps33_local))
         if np.any(np.abs(self.eps33_local - eps33_updated)/ \
-                  self.eps33_local > 0.1):
+                  self.eps33_local > threshold):
             update = True
 
         # If any value changed enough, all values can be updated
