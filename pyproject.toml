@@ -13,7 +13,8 @@ dependencies = [
     "matplotlib",
     "scipy",
     "gmsh",
-    "python-dotenv"
+    "python-dotenv",
+    "yaml"
 ]
 
 [proect.urls]

@@ -9,8 +9,8 @@ import numpy as np
 # Local libraries
 import piezo_fem as pfem
 
-def load_material_data():
-    td_dir = "/upb/departments/emt/Student/jonasho/Masterarbeit/pic181_time_dependent/"
+def load_material_data(td_mat_data_path):
+    td_dir = os.path.join(td_mat_data_path, "pic181_time_dependent")
 
     # Load temperature dependent material parameters
     temp_file_names = [
@@ -38,6 +38,7 @@ def load_material_data():
 
     return material_data
 
+
 if __name__ == "__main__":
     load_dotenv()
 
@@ -45,7 +46,7 @@ if __name__ == "__main__":
     if CWD is None:
         print("Couldn't find simulation path.")
         exit(1)
-
+    TD_MATERIAL_DATA_PATH = os.getenv("time_dep_material_data_path")
     MODEL_NAME = "temp_dep_mat_sim_250k"
     fem_sim = pfem.PiezoSimulation.load_simulation_settings(
         os.path.join(CWD, MODEL_NAME, f"{MODEL_NAME}.cfg")
@@ -54,7 +55,7 @@ if __name__ == "__main__":
 
     material_manager = pfem.materials.MaterialManager(
         "pic181",
-        load_material_data(),
+        load_material_data(TD_MATERIAL_DATA_PATH),
         len(fem_sim.mesh_data.elements),
         25
     )
@@ -73,5 +74,15 @@ if __name__ == "__main__":
     update = material_manager.update_temperature(
         avg_temperatures
     )
+    print(fem_sim.solver.u.shape)
 
-    print("Update?", update)
+    _, number_of_time_steps = fem_sim.solver.u.shape
+    SKIPPED_TIME_STEPS = 1000
+    new_number_of_time_steps = number_of_time_steps//SKIPPED_TIME_STEPS
+    fem_sim.gmsh_handler.create_u_default_post_processing_view(
+        fem_sim.solver.u[:, ::SKIPPED_TIME_STEPS],
+        new_number_of_time_steps,
+        fem_sim.simulation_data.delta_t,
+        True,
+        False
+    )

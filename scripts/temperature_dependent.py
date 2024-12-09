@@ -25,7 +25,7 @@ def simulation_model(base_directory, temp_dep_material_data):
     result = StringIO()
     sys.stdout = result
 
-    sim_name = "temp_dep_mat_sim_250k"
+    sim_name = "temp_dep_mat_sim_500k"
     sim_directory = os.path.join(base_directory, sim_name)
     starting_temperature = 25
 
@@ -47,8 +47,8 @@ def simulation_model(base_directory, temp_dep_material_data):
     )
     # Set the starting theta field to starting temperature too
     sim.set_simulation(
-        delta_t=2e-8,
-        number_of_time_steps=250000,
+        delta_t=4e-8,
+        number_of_time_steps=500000,
         gamma=0.5,
         beta=0.25,
         simulation_type=pfem.SimulationType.THERMOPIEZOELECTRIC
