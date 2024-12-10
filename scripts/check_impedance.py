@@ -31,7 +31,7 @@ def plot_impedance_with_opencfs(
 
     # Get OpenCFS data
     _, charge_cfs = pfem.parse_charge_hist_file(open_cfs_hist_file)
-    frequencies_cfs, impedence_cfs = pfem.calculate_impedance(
+    frequencies_cfs, impedance_cfs = pfem.calculate_impedance(
         charge_cfs, sim.excitation[:len(charge_cfs)], sim.simulation_data.delta_t)
 
     plt.rcParams.update({'font.size': 18})
@@ -39,7 +39,7 @@ def plot_impedance_with_opencfs(
     # Plot FEM and OpenCfs
     plt.figure(figsize=(12, 6))
     plt.plot(frequencies_fem, np.abs(impedance_fem), label="Piezo FEM")
-    plt.plot(frequencies_cfs, np.abs(impedence_cfs), "--", label="OpenCFS")
+    plt.plot(frequencies_cfs, np.abs(impedance_cfs), "--", label="OpenCFS")
     #plt.plot(frequencies_fem, np.angle(impedance_fem), label="Phase piezo fem")
     plt.xlabel("Frequenz f / Hz")
     plt.ylabel("Impedanz |Z| / $\\Omega$")

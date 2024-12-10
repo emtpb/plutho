@@ -145,7 +145,6 @@ def calculate_charge(
             material_manager.get_permittivity_matrix(element_index),
             jacobian_inverted_t
         ) * 2 * np.pi * jacobian_det
-
         q += q_u - q_v
 
     return q
@@ -388,7 +387,7 @@ class PiezoSim:
             if set_symmetric_bc:
                 f = self.get_load_vector(
                         self.dirichlet_nodes[0],
-                        self.dirichlet_values[0][time_index+1],
+                        self.dirichlet_values[0][0],
                         self.dirichlet_nodes[1],
                         self.dirichlet_values[1][time_index+1]
                 )
@@ -439,6 +438,7 @@ class PiezoSim:
         self.q = q
         self.u = u
 
+
     def get_load_vector(
             self,
             nodes_u: npt.NDArray,
@@ -476,3 +476,4 @@ class PiezoSim:
             f[node+offset] = value
 
         return f
+

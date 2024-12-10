@@ -30,7 +30,7 @@ def real_model(base_directory):
     sim.material_manager.material_data.alpha_m = 1.267e5
     sim.set_simulation(
         delta_t=1e-8,
-        number_of_time_steps=8192,
+        number_of_time_steps=2*8192,
         gamma=0.5,
         beta=0.25,
         simulation_type=pfem.SimulationType.PIEZOELECTRIC,

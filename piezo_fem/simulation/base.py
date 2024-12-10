@@ -26,6 +26,7 @@ class SimulationType(Enum):
     a simulation with or without thermal field."""
     PIEZOELECTRIC = "piezoelectric"
     THERMOPIEZOELECTRIC = "thermo-piezoelectric"
+    FREQPIEZOELECTRIC = "frequency-piezoelectric"
 
 
 @dataclass
@@ -54,8 +55,8 @@ class ExcitationType(Enum):
 class ExcitationInfo:
     """Contains information about the excitation. Is used to save the
     excitation data in the simulation config file."""
-    amplitude: float
-    frequency: float
+    amplitude: Union[float, npt.NDArray]
+    frequency: Union[float, npt.NDArray]
     excitation_type: ExcitationType
 
     def asdict(self):
@@ -426,6 +427,41 @@ def apply_dirichlet_bc(
 
     return m, c, k
 
+
+def create_dirichlet_bc_nodes_freq(
+        gmsh_handler,
+        amplitudes: npt.NDArray,
+        number_of_frequencies: int,
+        set_symmetric_bc: bool = True):
+
+    # Get nodes from gmsh handler
+    pg_nodes = gmsh_handler.get_nodes_by_physical_groups(
+        ["Electrode", "Symaxis", "Ground"])
+
+    electrode_nodes = pg_nodes["Electrode"]
+    symaxis_nodes = pg_nodes["Symaxis"]
+    ground_nodes = pg_nodes["Ground"]
+
+    if set_symmetric_bc:
+        dirichlet_nodes_u = symaxis_nodes
+        dirichlet_values_u = np.zeros(
+            (number_of_frequencies, len(dirichlet_nodes_u), 2))
+    else:
+        dirichlet_nodes_u = np.array([])
+        dirichlet_values_u = np.array([])
+
+    # For potential v set electrode to excitation and ground to 0
+    dirichlet_nodes_v = np.concatenate((electrode_nodes, ground_nodes))
+    dirichlet_values_v = np.zeros(
+        (number_of_frequencies, len(dirichlet_nodes_v)))
+
+    # Set excitation value for electrode nodes points
+    for freq_index, amplitude in enumerate(amplitudes):
+        dirichlet_values_v[freq_index, :len(electrode_nodes)] = \
+            amplitude
+
+    return [dirichlet_nodes_u, dirichlet_nodes_v], \
+        [dirichlet_values_u, dirichlet_values_v]
 
 def create_dirichlet_bc_nodes(
         gmsh_handler,

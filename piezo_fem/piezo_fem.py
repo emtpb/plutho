@@ -12,9 +12,10 @@ import matplotlib.pyplot as plt
 # Local libraries
 from .simulation.base import MeshData, MaterialData, SimulationData, \
     SimulationType, ModelType, create_dirichlet_bc_nodes, \
-    ExcitationInfo, ExcitationType
+    ExcitationInfo, ExcitationType, create_dirichlet_bc_nodes_freq
 from .simulation.fem_piezo_temp_time import PiezoSimTherm
 from .simulation.fem_piezo_time import PiezoSim
+from .simulation.fem_piezo_freq import PiezoFreqSim
 from .gmsh_handler import GmshHandler
 from .materials import pic255, MaterialManager
 from .postprocessing import calculate_impedance
@@ -63,13 +64,14 @@ class PiezoSimulation:
     simulation_name: str
 
     # Simulation parameters
-    solver: Union[PiezoSim, PiezoSimTherm]
+    solver: Union[PiezoSim, PiezoSimTherm, PiezoFreqSim]
     mesh_data: Union[Any, MeshData]
     material_data: MaterialData
     simulation_data: SimulationData
     excitation: npt.NDArray
     excitation_info: ExcitationInfo
     material_manager: MaterialManager
+    frequencies: npt.NDArray  # Only used in frequency simulation
 
     def __init__(self,
                  workspace_directory: str,
@@ -171,7 +173,10 @@ class PiezoSimulation:
             amplitude: Sets the amplitude of the triangle pulse."""
         if not hasattr(self, "simulation_data"):
             raise SimulationException("Please set simulation data first.")
-
+        if isinstance(self.solver, PiezoFreqSim):
+            raise SimulationException(
+                "Can not be set on frequency simulation."
+        )
         self.excitation_info = ExcitationInfo(
             amplitude,
             0.0,
@@ -185,27 +190,49 @@ class PiezoSimulation:
 
         self.excitation = excitation
 
-    def set_sinusoidal_excitation(self,
-                                  amplitude: float,
-                                  frequency: float):
+    def set_sinusoidal_excitation(
+            self,
+            amplitude: Union[float, npt.NDArray],
+            frequency: Union[float, npt.NDArray]):
         """Sets a sin function as excitation.
 
         Parameters:
             amplitude: Amplitude of the sin function.
             frequency: Frequency of the sin function in Hz."""
-        if not hasattr(self, "simulation_data"):
-            raise SimulationException("Please set simulation data first.")
-
         self.excitation_info = ExcitationInfo(
             amplitude,
             frequency,
             ExcitationType.SINUSOIDAL
         )
-        time_values = (
-            np.arange(self.simulation_data.number_of_time_steps)
-            * self.simulation_data.delta_t
+        if self.simulation_type == SimulationType.FREQPIEZOELECTRIC:
+            if isinstance(amplitude, float) or isinstance(frequency, float):
+                raise SimulationException(
+                    "The given amplitude and frequency must be a numpy array"
+                    "in case of a frequency simulation."
+                )
+            self.excitation = amplitude
+            self.freqencies = frequency
+        else:
+            if not hasattr(self, "simulation_data"):
+                raise SimulationException("Please set simulation data first.")
+            time_values = (
+                np.arange(self.simulation_data.number_of_time_steps)
+                * self.simulation_data.delta_t
+            )
+            self.excitation = amplitude*np.sin(2*np.pi*time_values*frequency)
+
+    def set_frequency_simulation(
+            self):
+        if not hasattr(self, "mesh_data"):
+            raise SimulationException("Please set mesh data first.")
+        if not hasattr(self, "material_manager"):
+            raise SimulationException("Please set material data first.")
+
+        self.solver = PiezoFreqSim(
+            self.mesh_data,
+            self.material_manager
         )
-        self.excitation = amplitude*np.sin(2*np.pi*time_values*frequency)
+        self.simulation_type = SimulationType.FREQPIEZOELECTRIC
 
     def set_simulation(
             self,
@@ -259,16 +286,26 @@ class PiezoSimulation:
             raise SimulationException("Please setup mesh first.")
         if not hasattr(self, "excitation_info"):
             raise SimulationException("Please setup excitation first.")
-        if not hasattr(self, "simulation_data"):
-            raise SimulationException("Please setup simulation data first.")
-        dirichlet_nodes, dirichlet_values = create_dirichlet_bc_nodes(
-            self.gmsh_handler,
-            self.excitation,
-            self.simulation_data.number_of_time_steps,
-            self.gmsh_handler.model_type is ModelType.DISC
-        )
-        self.solver.dirichlet_nodes = dirichlet_nodes
-        self.solver.dirichlet_values = dirichlet_values
+        if self.simulation_type is SimulationType.FREQPIEZOELECTRIC:
+            dirichlet_nodes, dirichlet_values = create_dirichlet_bc_nodes_freq(
+                self.gmsh_handler,
+                self.excitation,
+                len(self.freqencies),
+                self.gmsh_handler.model_type is ModelType.DISC
+            )
+            self.solver.dirichlet_nodes = dirichlet_nodes
+            self.solver.dirichlet_values = dirichlet_values
+        else:
+            if not hasattr(self, "simulation_data"):
+                raise SimulationException("Please setup simulation data first.")
+            dirichlet_nodes, dirichlet_values = create_dirichlet_bc_nodes(
+                self.gmsh_handler,
+                self.excitation,
+                self.simulation_data.number_of_time_steps,
+                self.gmsh_handler.model_type is ModelType.DISC
+            )
+            self.solver.dirichlet_nodes = dirichlet_nodes
+            self.solver.dirichlet_values = dirichlet_values
 
     def simulate(self, theta_start=None):
         """Executes the simulation. Results can be accessed using
@@ -294,8 +331,16 @@ class PiezoSimulation:
                 self.gmsh_handler.model_type is ModelType.DISC,
                 theta_start
             )
+        elif isinstance(self.solver, PiezoFreqSim):
+            self.solver.solve_frequency(
+                self.freqencies,
+                self.excitation,
+                electrode_triangles,
+                self.gmsh_handler.model_type is ModelType.DISC
+            )
         else:
             raise ValueError("Unknown solver set")
+
     def save_simulation_settings(self,
                                  description: str = ""):
         """Saves the current simulation setup in a config file in the
@@ -313,7 +358,8 @@ class PiezoSimulation:
             general_settings["description"] = description
         general_settings["simulation_type"] = self.simulation_type.value
         settings["general"] = general_settings
-        settings["simulation"] = self.simulation_data.__dict__
+        if self.simulation_type is not SimulationType.FREQPIEZOELECTRIC:
+            settings["simulation"] = self.simulation_data.__dict__
         settings["excitation"] = self.excitation_info.asdict()
         settings["model"] = self.gmsh_handler.as_dict()
 
@@ -383,32 +429,52 @@ class PiezoSimulation:
             raise SimulationException(
                 f"Unknown material given {material_name}")
 
-        simulation_data = SimulationData(
-            delta_t=float(config["simulation"]["delta_t"]),
-            number_of_time_steps=int(
-                config["simulation"]["number_of_time_steps"]),
-            gamma=float(config["simulation"]["gamma"]),
-            beta=float(config["simulation"]["beta"])
-        )
-        excitation_type = ExcitationType(
-            config["excitation"]["excitation_type"]
-        )
-        if excitation_type is ExcitationType.SINUSOIDAL:
-            excitation_info = ExcitationInfo(
-                amplitude=float(config["excitation"]["amplitude"]),
-                frequency=float(config["excitation"]["frequency"]),
-                excitation_type=excitation_type
+        if simulation_type is SimulationType.FREQPIEZOELECTRIC:
+            excitation_type = ExcitationType(
+                config["excitation"]["excitation_type"]
             )
-
-        elif excitation_type is ExcitationType.TRIANGULAR_PULSE:
-            excitation_info = ExcitationInfo(
-                amplitude=float(config["excitation"]["amplitude"]),
-                excitation_type=excitation_type,
-                frequency=0
-            )
+            if excitation_type is ExcitationType.SINUSOIDAL:
+                excitation_info = ExcitationInfo(
+                    amplitude=np.fromstring(
+                        config["excitation"]["amplitude"].strip('[]'),
+                        sep=',',
+                        dtype=float),
+                    frequency=np.fromstring(
+                        config["excitation"]["frequency"].strip('[]'),
+                        sep=',',
+                        dtype=float),
+                    excitation_type=excitation_type
+                )
+            else:
+                raise SimulationException(
+                    f"Unknown excitation type given {excitation_type}")
         else:
-            raise SimulationException(
-                f"Unknown excitation type given {excitation_type}")
+            simulation_data = SimulationData(
+                delta_t=float(config["simulation"]["delta_t"]),
+                number_of_time_steps=int(
+                    config["simulation"]["number_of_time_steps"]),
+                gamma=float(config["simulation"]["gamma"]),
+                beta=float(config["simulation"]["beta"])
+            )
+            excitation_type = ExcitationType(
+                config["excitation"]["excitation_type"]
+            )
+            if excitation_type is ExcitationType.SINUSOIDAL:
+                excitation_info = ExcitationInfo(
+                    amplitude=float(config["excitation"]["amplitude"]),
+                    frequency=float(config["excitation"]["frequency"]),
+                    excitation_type=excitation_type
+                )
+
+            elif excitation_type is ExcitationType.TRIANGULAR_PULSE:
+                excitation_info = ExcitationInfo(
+                    amplitude=float(config["excitation"]["amplitude"]),
+                    excitation_type=excitation_type,
+                    frequency=0
+                )
+            else:
+                raise SimulationException(
+                    f"Unknown excitation type given {excitation_type}")
 
         workspace_directory = new_working_diretory \
             if new_working_diretory != "" \
@@ -446,13 +512,16 @@ class PiezoSimulation:
             material_data
         )
 
-        sim.set_simulation(
-            delta_t=simulation_data.delta_t,
-            number_of_time_steps=simulation_data.number_of_time_steps,
-            gamma=simulation_data.gamma,
-            beta=simulation_data.beta,
-            simulation_type=simulation_type
-        )
+        if simulation_type is SimulationType.FREQPIEZOELECTRIC:
+            sim.set_frequency_simulation()
+        else:
+            sim.set_simulation(
+                delta_t=simulation_data.delta_t,
+                number_of_time_steps=simulation_data.number_of_time_steps,
+                gamma=simulation_data.gamma,
+                beta=simulation_data.beta,
+                simulation_type=simulation_type
+            )
 
         if excitation_info.excitation_type is ExcitationType.SINUSOIDAL:
             sim.set_sinusoidal_excitation(
@@ -461,6 +530,11 @@ class PiezoSimulation:
             )
         elif excitation_info.excitation_type is \
                 ExcitationType.TRIANGULAR_PULSE:
+            if not isinstance(excitation_info.amplitude, float):
+                raise SimulationException(
+                    "For time domain simulation the"
+                    "excitation amplitude must be a float"
+                )
             sim.set_triangle_pulse_excitation(excitation_info.amplitude)
         else:
             raise IOError(
