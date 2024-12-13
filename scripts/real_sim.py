@@ -16,12 +16,11 @@ def real_model(base_directory):
     Parameters:
         base_directory: Directory where the simulation directory is created.
     """
-    sim_name = "check_impedance_test"
+    sim_name = "impedance_pic255_thesis"
     sim_directory = os.path.join(base_directory, sim_name)
     sim = pfem.PiezoSimulation(
         sim_directory,
         sim_name)
-    #sim.material_data.alpha_m = 1.267e5
     sim.create_disc_mesh(0.005, 0.001, 0.0001)
     sim.set_material_data(
         "pic255",
@@ -30,7 +29,7 @@ def real_model(base_directory):
     sim.material_manager.material_data.alpha_m = 1.267e5
     sim.set_simulation(
         delta_t=1e-8,
-        number_of_time_steps=2*8192,
+        number_of_time_steps=8192,
         gamma=0.5,
         beta=0.25,
         simulation_type=pfem.SimulationType.PIEZOELECTRIC,

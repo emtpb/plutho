@@ -28,7 +28,7 @@ if __name__ == "__main__":
     plt.figure(figsize=(10, 8))
     plt.plot(time_values, excitation)
     plt.xlabel("Zeit $t$ / s")
-    plt.ylabel("Spannung $u$ / V")
+    plt.ylabel("Anregung $\Phi_{\mathrm{ex}}$ / V")
     plt.grid()
 
     plt.savefig(os.path.join(
