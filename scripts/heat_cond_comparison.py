@@ -20,7 +20,7 @@ if __name__ == "__main__":
         print("Couldn't find simulation path.")
         exit(1)
 
-    SIM_NAME = "heat_cond_comparison"
+    SIM_NAME = "heat_cond_sim_check_model"
     SIM_DIR = os.path.join(CWD, SIM_NAME)
 
     if not os.path.exists(SIM_DIR):
@@ -40,8 +40,8 @@ if __name__ == "__main__":
     el = gmsh_handler.get_elements_by_physical_groups(["Electrode", "Ground"])
     boundary_elements = np.concatenate([el["Electrode"], el["Ground"]])
 
-    DELTA_T = 0.001
-    NUMBER_OF_TIME_STEPS = 1000
+    DELTA_T = 0.0001
+    NUMBER_OF_TIME_STEPS = 10000
     simulation_data = pfem.SimulationData(
         delta_t=DELTA_T,
         number_of_time_steps=NUMBER_OF_TIME_STEPS,
@@ -58,13 +58,13 @@ if __name__ == "__main__":
     electrode_nodes = gmsh_handler.get_nodes_by_physical_groups(["Electrode"])["Electrode"]
 
     heat_sim.set_constant_volume_heat_source(
-        0*np.ones(len(heat_sim.mesh_data.elements)),
+        1*np.ones(len(heat_sim.mesh_data.elements)),
         NUMBER_OF_TIME_STEPS
     )
-    theta_start = 30*np.ones(len(nodes))
+    theta_start = 30*np.zeros(len(nodes))
     heat_sim.solve_time(
         theta_start=theta_start,
-        boundary_elements=boundary_elements
+        boundary_elements=None #  boundary_elements
     )
 
     #pfem.create_scalar_field_as_csv(
@@ -74,14 +74,16 @@ if __name__ == "__main__":
     #    os.path.join(SIM_DIR, "field")
     #)
 
-    gmsh_handler.create_theta_post_processing_view(
-        heat_sim.theta,
-        NUMBER_OF_TIME_STEPS,
-        DELTA_T,
-        False
-    )
-    np.save(os.path.join(SIM_DIR, "theta"), heat_sim.theta)
+    #gmsh_handler.create_theta_post_processing_view(
+    #    heat_sim.theta,
+    #    NUMBER_OF_TIME_STEPS,
+    #    DELTA_T,
+    #    False
+    #)
+    #np.save(os.path.join(SIM_DIR, "theta"), heat_sim.theta)
     print("Average temperature", np.mean(heat_sim.theta[:, -1]))
+
+    np.save(os.path.join(SIM_DIR, "theta_field.npy"), heat_sim.theta)
 
     # Check if the thermal energy integral is working
     temp_field_energy = pfem.postprocessing.calculate_stored_thermal_energy(
@@ -93,5 +95,5 @@ if __name__ == "__main__":
     )
     print("Calculated temperature field energy", temp_field_energy)
 
-    import gmsh
-    gmsh.fltk.run()
+    #import gmsh
+    #gmsh.fltk.run()

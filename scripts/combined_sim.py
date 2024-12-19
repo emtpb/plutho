@@ -104,8 +104,8 @@ def analyze_energies(
         heat_sim.theta[:, -1],
         piezo_sim.mesh_data.nodes,
         piezo_sim.mesh_data.elements,
-        piezo_sim.material_manager.heat_capacity,
-        piezo_sim.material_manager.density
+        piezo_sim.material_manager.material_data.heat_capacity,
+        piezo_sim.material_manager.material_data.density
     )
 
     print("Stored energy in thermal field:", thermal_stored_energy)
@@ -188,11 +188,11 @@ if __name__ == "__main__":
         print("Couldn't find simulation path.")
         exit(1)
 
-    PIEZO_SIM_NAME = "real_model_1_889kHz_20k"
+    PIEZO_SIM_NAME = "energy_check_sinusoidal_20k"
     # run_piezo_thermal_simulation(CWD, PIEZO_SIM_NAME)
 
     # Load data from piezo sim
-    piezo_sim_folder = os.path.join(CWD, "2kHz", PIEZO_SIM_NAME)
+    piezo_sim_folder = os.path.join(CWD, "2MHz", PIEZO_SIM_NAME)
     piezo_sim = pfem.PiezoSimulation.load_simulation_settings(
         os.path.join(piezo_sim_folder, f"{PIEZO_SIM_NAME}.cfg")
     )
@@ -203,23 +203,22 @@ if __name__ == "__main__":
     piezo_sim.load_simulation_results()
     u = piezo_sim.solver.u
 
-    TIME_STEPS_PER_PERIOD = 25  # Empirically
-
     # Simulation time of the heat conduction simulation
-    SIMULATION_TIME = 20 # In seconds
+    SIMULATION_TIME = 1 # In seconds
 
     # Number of periods of the piezo sim which are simulated in one time step
     # in the heat conduction simulation
-    SKIPPED_TIME_STEPS = 400000
+    # SKIPPED_TIME_STEPS = 400000
 
     # Set heat conduction simulation settings
-    heat_cond_delta_t = SKIPPED_TIME_STEPS*piezo_sim.simulation_data.delta_t
-    number_of_time_steps = int(SIMULATION_TIME/heat_cond_delta_t)
-    print("Total number of heat conduction time steps:", number_of_time_steps)
+    # heat_cond_delta_t = SKIPPED_TIME_STEPS*piezo_sim.simulation_data.delta_t
+    HEAT_COND_DELTA_T = 0.001
+    NUMBER_OF_TIME_STEPS = int(SIMULATION_TIME/HEAT_COND_DELTA_T)
+    print("Total number of heat conduction time steps:", NUMBER_OF_TIME_STEPS)
 
     heat_simulation_data = pfem.SimulationData(
-        delta_t=heat_cond_delta_t,
-        number_of_time_steps=number_of_time_steps,
+        delta_t=HEAT_COND_DELTA_T,
+        number_of_time_steps=NUMBER_OF_TIME_STEPS,
         gamma=0.5,
         beta=0  # Doesnt matter in heat conduction sim
     )
@@ -227,19 +226,19 @@ if __name__ == "__main__":
     # Create heat conduction sim
     heat_sim = pfem.HeatConductionSim(
         piezo_sim.mesh_data,
-        piezo_sim.material_manager,
+        piezo_sim.material_manager.material_data,
         heat_simulation_data
     )
 
     # Set constant heat source
-    import matplotlib.pyplot as plt
-    plt.plot(piezo_sim.solver.mech_loss[342, :])
-    plt.plot(piezo_sim.solver.mech_loss[566, :])
-    plt.show()
+    #import matplotlib.pyplot as plt
+    #plt.plot(piezo_sim.solver.mech_loss[342, :])
+    #plt.plot(piezo_sim.solver.mech_loss[566, :])
+    #plt.show()
     avg_mech_loss = np.mean(piezo_sim.solver.mech_loss[:, -100:], axis=1)
     heat_sim.set_constant_volume_heat_source(
         avg_mech_loss,
-        number_of_time_steps,
+        NUMBER_OF_TIME_STEPS,
     )
 
     # Get boundary elements for convection boundary condition
@@ -270,15 +269,15 @@ if __name__ == "__main__":
     )
     gmsh_handler.create_theta_post_processing_view(
         heat_sim.theta,
-        number_of_time_steps,
-        heat_cond_delta_t,
+        NUMBER_OF_TIME_STEPS,
+        HEAT_COND_DELTA_T,
         False
     )
 
-    print_temperature_at_right_boundary(
-        piezo_sim.mesh_data.nodes,
-        heat_sim.theta
-    )
+    #print_temperature_at_right_boundary(
+    #    piezo_sim.mesh_data.nodes,
+    #    heat_sim.theta
+    #)
 
     # Show the results in gmsh
-    gmsh.fltk.run()
+    # gmsh.fltk.run()

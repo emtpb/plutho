@@ -36,16 +36,18 @@ def plot_impedance_with_opencfs(
 
     plt.rcParams.update({'font.size': 18})
 
+    max_size=1000
+
     # Plot FEM and OpenCfs
     plt.figure(figsize=(12, 6))
-    plt.plot(frequencies_fem, np.abs(impedance_fem), label="Piezo FEM")
-    plt.plot(frequencies_cfs, np.abs(impedance_cfs), "--", label="OpenCFS")
+    plt.plot((frequencies_fem/1e6)[:max_size], np.abs(impedance_fem)[:max_size], label="Python FEM")
+    plt.plot((frequencies_cfs/1e6)[:max_size], np.abs(impedance_cfs)[:max_size], "--", label="OpenCFS")
     #plt.plot(frequencies_fem, np.angle(impedance_fem), label="Phase piezo fem")
-    plt.xlabel("Frequenz f / Hz")
-    plt.ylabel("Impedanz |Z| / $\\Omega$")
+    plt.xlabel("Frequenz $f$ / MHz")
+    plt.ylabel("Impedanz $|Z|$ / $\\Omega$")
     plt.yscale("log")
-    #plt.xlim(0, 0.8e7)
-    #plt.ylim(20, 2*1e4)
+    plt.xlim(0, 10)
+    plt.ylim(15, 2*1e4)
     plt.legend()
     plt.grid()
     plt.show()
@@ -58,15 +60,18 @@ def plot_impedance_with_opencfs(
     #    ),
     #    bbox_inches='tight'
     #)
-    #tikzplotlib.save(os.path.join(
-    #    plot_folder,
-    #    "compare_impedance.tex"
-    #))
+    #tikzplotlib.save(
+    #    os.path.join(
+    #        plot_folder,
+    #        "default_impedance_comparison.tex"
+    #    ),
+    #    axis_width='12cm'
+    #)
 
 
 if __name__ == "__main__":
     load_dotenv()
-    MODEL_NAME = "temp_dep_mat_sim_16k"
+    MODEL_NAME = "impedance_pic255_thesis_fine_mesh"
     CWD = os.path.join(
         os.environ["piezo_fem_simulation_path"],
         MODEL_NAME
@@ -76,5 +81,12 @@ if __name__ == "__main__":
         os.path.join(CWD, f"{MODEL_NAME}.cfg")
     )
     fem_sim.load_simulation_results()
+
+    #pfem.io.create_vector_field_as_csv(
+    #    fem_sim.solver.u,
+    #    fem_sim.mesh_data.nodes,
+    #    os.path.join(CWD, "csv_data"),
+    #    False
+    #)
 
     plot_impedance_with_opencfs(fem_sim, OPENCFS_FILE)

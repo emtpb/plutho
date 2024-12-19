@@ -12,7 +12,7 @@ if __name__ == "__main__":
     load_dotenv()
 
     PLOT_FOLDER = os.environ["piezo_fem_plot_path"]
-    NUMBER_OF_TIME_STEPS = 20
+    NUMBER_OF_TIME_STEPS = 101
     DELTA_T = 1e-8
     FREQUENCY = 2e6
 
@@ -24,18 +24,19 @@ if __name__ == "__main__":
         1
         * np.array([0.2, 0.4, 0.6, 0.8, 1, 0.8, 0.6, 0.4, 0.2])
     )
-    #excitation = 20*np.sin(2*np.pi*time_values*FREQUENCY)
+    excitation = 20*np.sin(2*np.pi*time_values*FREQUENCY)
     plt.figure(figsize=(10, 8))
     plt.plot(time_values, excitation)
     plt.xlabel("Zeit $t$ / s")
     plt.ylabel("Anregung $\Phi_{\mathrm{ex}}$ / V")
     plt.grid()
+    #plt.show()
 
     plt.savefig(os.path.join(
         PLOT_FOLDER,
-        "excitation_triangle.png"
+        "excitation_sin.png"
     ))
     tikzplotlib.save(os.path.join(
         PLOT_FOLDER,
-        "excitation_triangle.tex"
+        "excitation_sin.tex"
     ))

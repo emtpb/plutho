@@ -26,6 +26,7 @@ maybe electrical and mechanical sim)
 removed from the file names
 - Check if code can made faster using jfit from numba
 - Implement temperature-dependent material properties
+- Use vtk to visualize data directly
 
 ## Developer
 

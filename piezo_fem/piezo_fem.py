@@ -66,7 +66,10 @@ class PiezoSimulation:
     # Simulation parameters
     solver: Union[PiezoSim, PiezoSimTherm, PiezoFreqSim]
     mesh_data: Union[Any, MeshData]
+
+    # TODO Remove this since its already in material manager
     material_data: MaterialData
+
     simulation_data: SimulationData
     excitation: npt.NDArray
     excitation_info: ExcitationInfo
