@@ -377,9 +377,7 @@ def apply_dirichlet_bc(
         m: npt.NDArray,
         c: npt.NDArray,
         k: npt.NDArray,
-        nodes_u: npt.NDArray,
-        nodes_v: npt.NDArray,
-        number_of_nodes: int) -> Tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+        nodes: npt.NDArray) -> Tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     """Prepares the given matrices m, c and k for the dirichlet boundary
     conditions. This is done by setting the corresponding rows to 0
     excepct for the node which will contain the specific value (this is set
@@ -390,10 +388,8 @@ def apply_dirichlet_bc(
         m: Mass matrix M.
         c: Damping matrix C.
         k: Stiffness matrix K.
-        nodes_u: List of node indices of dirichlet nodes of the displacement
-            field (u_r and u_z).
-        nodes_v: List of node indices of the dirichlet nodes of the electric
-            field (electric potential).
+        nodes: List of nodes at which a dirichlet boundary condition 
+            shall be applied.
         number_of_nodes: Total number of nodes of the simulation.
     Returns:
         Modified mass, damping and stiffness matrix.
@@ -401,29 +397,14 @@ def apply_dirichlet_bc(
     # Set rows of matrices to 0 and diagonal of K to 1 (at node points)
 
     # Matrices for u_r component
-    for node in nodes_u:
+    for node in nodes:
         # Set rows to 0
-        m[2*node, :] = 0
-        c[2*node, :] = 0
-        k[2*node, :] = 0
+        m[node, :] = 0
+        c[node, :] = 0
+        k[node, :] = 0
 
         # Set diagonal values to 1
-        k[2*node, 2*node] = 1
-
-    # Set bc for v
-    # Offset because the V values are set in the latter part of the matrix
-    offset = 2*number_of_nodes
-
-    for node in nodes_v:
-        # Set rows to 0
-        m[node+offset, :] = 0
-        c[node+offset, :] = 0
-        k[node+offset, :] = 0
-
-        # Set diagonal values to 1
-        k[node+offset, node+offset] = 1
-
-    # Currently no dirichlet bc for the temperature field -> TODO?
+        k[node, node] = 1
 
     return m, c, k
 

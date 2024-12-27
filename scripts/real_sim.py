@@ -4,10 +4,268 @@
 import os
 
 # Third party libraries
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy import interpolate
 from dotenv import load_dotenv
 
 # Local libraries
 import piezo_fem as pfem
+
+
+def plot_scalar_field(
+        field,
+        nodes):
+    """Plots the given field using matplotlib.
+
+    Parameters:
+        theta: Scalar field defined on every node.
+        nodes: List of node coordinates."""
+    cmap = "plasma"
+    # Bigger mesh
+    r_grid = np.linspace(nodes[:, 0].min(), nodes[:, 0].max(), 150)
+    z_grid = np.linspace(nodes[:, 1].min(), nodes[:, 1].max(), 150)
+    r_grid, z_grid = np.meshgrid(r_grid, z_grid)
+
+    field_grid = interpolate.griddata(
+        nodes,
+        field,
+        (r_grid, z_grid),
+        method="linear"
+    )
+
+    # Plot
+    plt.figure(figsize=(8, 6))
+    plt.pcolormesh(r_grid, z_grid, field_grid, cmap=cmap)
+
+    # Add colorbar with specific ticks
+    cbar = plt.colorbar()
+    colorbar_ticks = np.linspace(
+        np.min(field),
+        np.max(field),
+        10,
+        endpoint=True
+    )
+    cbar.set_ticks(colorbar_ticks)
+
+    plt.xlabel("Radius $r$ / m")
+    plt.ylabel("Höhe $z$ / m")
+    plt.show()
+
+
+def example_heat_cond(base_directory):
+    """Example for a heat conduction simulation."""
+    sim_name = "heat_cond_test_new_model"
+    mesh = pfem.Mesh(
+        os.path.join(base_directory, "disc_mesh.msh"),
+        True
+    )
+
+    delta_t = 0.01
+    number_of_time_steps = 100
+
+    # Create single simulation object
+    sim = pfem.SingleSimulation(
+        base_directory,
+        sim_name,
+        mesh
+    )
+
+    # Setup heat cond sim
+    sim.setup_heat_conduction_time_domain(
+        delta_t,
+        number_of_time_steps,
+        0.5
+    )
+
+    # Add materials
+    sim.add_material(
+        "pic255",
+        pfem.materials.pic255,
+        None
+    )
+
+    # Add boundary condition
+    #sim.add_dirichlet_bc(
+    #    pfem.VariableType.THETA,
+    #    "Electrode",
+    #    np.ones(number_of_time_steps)
+    #)
+    sim.solver.set_constant_volume_heat_source(
+        np.ones(len(sim.mesh_data.elements)),
+        number_of_time_steps
+    )
+
+    # Run simulation
+    sim.simulate()
+    print(np.max(sim.solver.theta[:, -1]))
+    print(np.min(sim.solver.theta[:, -1]))
+    plot_scalar_field(sim.solver.theta[:, -1], sim.mesh_data.nodes)
+
+
+def example_piezo_sim(base_directory):
+    sim_name = "piezo_sim_test_new_model"
+    mesh = pfem.Mesh(
+        os.path.join(base_directory, "disc_mesh.msh"),
+        True
+    )
+
+    delta_t = 1e-8
+    number_of_time_steps = 100
+
+    # Create single simulation object
+    sim = pfem.SingleSimulation(
+        base_directory,
+        sim_name,
+        mesh
+    )
+
+    # Setup piezo sim
+    sim.setup_piezo_time_domain(
+        pfem.SimulationData(
+            delta_t,
+            number_of_time_steps,
+            0.5,
+            0.25
+        )
+    )
+
+    # Add materials
+    sim.add_material(
+        "pic255",
+        pfem.materials.pic255,
+        None
+    )
+
+    # Add boundary conditions
+    excitation = np.zeros(number_of_time_steps)
+    excitation[1:10] = (
+        1 * np.array([0.2, 0.4, 0.6, 0.8, 1, 0.8, 0.6, 0.4, 0.2])
+    )
+    sim.add_dirichlet_bc(
+        pfem.VariableType.PHI,
+        "Electrode",
+        excitation
+    )
+    sim.add_dirichlet_bc(
+        pfem.VariableType.PHI,
+        "Ground",
+        np.zeros(number_of_time_steps)
+    )
+    sim.add_dirichlet_bc(
+        pfem.VariableType.U_R,
+        "Symaxis",
+        np.zeros(number_of_time_steps)
+    )
+
+    # Run simulation
+    sim.simulate()
+
+
+def example_piezo_freq_sim(base_directory):
+    sim_name = "piezo_sim_freq_test_new_model"
+    mesh = pfem.Mesh(
+        os.path.join(base_directory, "disc_mesh.msh"),
+        True
+    )
+
+    frequencies = np.linspace(0, 1e7, 250)
+
+    # Create single simulation object
+    sim = pfem.SingleSimulation(
+        base_directory,
+        sim_name,
+        mesh
+    )
+
+    # Setup piezo sim
+    sim.setup_piezo_freq_domain()
+
+    # Add materials
+    sim.add_material(
+        "pic255",
+        pfem.materials.pic255,
+        None
+    )
+
+    # Add boundary conditions
+    sim.add_dirichlet_bc(
+        pfem.VariableType.PHI,
+        "Electrode",
+        np.ones(len(frequencies))
+    )
+    sim.add_dirichlet_bc(
+        pfem.VariableType.PHI,
+        "Ground",
+        np.zeros(len(frequencies))
+    )
+    sim.add_dirichlet_bc(
+        pfem.VariableType.U_R,
+        "Symaxis",
+        np.zeros(len(frequencies))
+    )
+
+    # Run simulation
+    sim.simulate(frequencies=frequencies)
+
+
+def example_therm_piezo_sim(base_directory):
+    sim_name = "therm_piezo_sim_test_new_model"
+    mesh = pfem.Mesh(
+        os.path.join(base_directory, "disc_mesh.msh"),
+        True
+    )
+
+    delta_t = 1e-8
+    number_of_time_steps = 100
+
+    # Create single simulation object
+    sim = pfem.SingleSimulation(
+        base_directory,
+        sim_name,
+        mesh
+    )
+
+    # Setup piezo sim
+    sim.setup_thermal_piezo_time_domain(
+        pfem.SimulationData(
+            delta_t,
+            number_of_time_steps,
+            0.5,
+            0.25
+        )
+    )
+
+    # Add materials
+    sim.add_material(
+        "pic255",
+        pfem.materials.pic255,
+        None
+    )
+
+    # Add boundary conditions
+    excitation = np.zeros(number_of_time_steps)
+    excitation[1:10] = (
+        1 * np.array([0.2, 0.4, 0.6, 0.8, 1, 0.8, 0.6, 0.4, 0.2])
+    )
+    sim.add_dirichlet_bc(
+        pfem.VariableType.PHI,
+        "Electrode",
+        excitation
+    )
+    sim.add_dirichlet_bc(
+        pfem.VariableType.PHI,
+        "Ground",
+        np.zeros(number_of_time_steps)
+    )
+    sim.add_dirichlet_bc(
+        pfem.VariableType.U_R,
+        "Symaxis",
+        np.zeros(number_of_time_steps)
+    )
+
+    # Run simulation
+    sim.simulate()
 
 
 def real_model(base_directory):
@@ -53,4 +311,8 @@ if __name__ == "__main__":
         print("Couldn't find simulation path.")
         exit(1)
 
-    real_model(CWD)
+    # real_model(CWD)
+    # example_heat_cond(CWD)
+    # example_piezo_sim(CWD)
+    # example_piezo_freq_sim(CWD)
+    example_therm_piezo_sim(CWD)

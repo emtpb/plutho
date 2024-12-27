@@ -12,10 +12,9 @@ from .base import SimulationData, MeshData, \
     gradient_local_shape_functions, \
     local_to_global_coordinates, b_operator_global, integral_m, \
     integral_ku, integral_kuv, integral_kve, apply_dirichlet_bc, \
-    line_quadrature, create_local_element_data, LocalElementData, \
-    get_avg_temp_field_per_element
-
+    line_quadrature, create_local_element_data, LocalElementData
 from ..materials import MaterialManager
+
 
 def charge_integral_u(
         node_points: npt.NDArray,
@@ -126,12 +125,12 @@ def calculate_charge(
                         u[2*element[1]],
                         u[2*element[1]+1],
                         u[2*element[2]],
-                        u[2*element[2]+1]
-        ])
+                        u[2*element[2]+1]]
+                        )
         ve_e = np.array([u[element[0]+2*number_of_nodes],
                          u[element[1]+2*number_of_nodes],
-                         u[element[2]+2*number_of_nodes]
-        ])
+                         u[element[2]+2*number_of_nodes]]
+                         )
 
         q_u = charge_integral_u(
             node_points,
@@ -249,7 +248,7 @@ class PiezoSim:
             # local coordinates.
             # Mutiply with 2*pi because theta is integrated from 0 to 2*pi
             mu_e = (
-                self.material_manager.get_density()
+                self.material_manager.get_density(element_index)
                 * integral_m(node_points)
                 * jacobian_det * 2 * np.pi
             )
@@ -304,9 +303,12 @@ class PiezoSim:
                     kve[global_p, global_q] += kve_e[local_p, local_q]
 
         # Calculate damping matrix
+        # Currently in the simulations only one material is used
+        # TODO Add algorithm to calculate cu for every element on its own
+        # in order to use multiple materials
         cu = (
-            self.material_manager.get_alpha_m() * mu
-            + self.material_manager.get_alpha_k() * ku
+            self.material_manager.get_alpha_m(0) * mu
+            + self.material_manager.get_alpha_k(0) * ku
         )
 
         # Calculate block matrices
@@ -370,36 +372,23 @@ class PiezoSim:
             m,
             c,
             k,
-            self.dirichlet_nodes[0],
-            self.dirichlet_nodes[1],
-            number_of_nodes
+            self.dirichlet_nodes
         )
 
         k_star = (k+gamma/(beta*delta_t)*c+1/(beta*delta_t**2)*m).tocsr()
 
         # Set initial value of potential at electrode nodes to given excitation
-        for index, node in enumerate(self.dirichlet_nodes[1]):
-            u[node+2*number_of_nodes, 0] = self.dirichlet_values[1][0][index]
+        # TODO Could be removed?
+        for index, node in enumerate(self.dirichlet_nodes):
+            u[node, 0] = self.dirichlet_values[index, 0]
 
         print("Starting simulation")
         for time_index in range(number_of_time_steps-1):
             # Calculate load vector and add dirichlet boundary conditions
-            if set_symmetric_bc:
-                f = self.get_load_vector(
-                        self.dirichlet_nodes[0],
-                        self.dirichlet_values[0][0],
-                        self.dirichlet_nodes[1],
-                        self.dirichlet_values[1][time_index+1]
-                )
-            else:
-                # If it is a ring there are no boundary conditions for u_r
-                # or u_z.
-                f = self.get_load_vector(
-                        np.array([]),
-                        np.array([]),
-                        self.dirichlet_nodes[1],
-                        self.dirichlet_values[1][time_index+1]
-                )
+            f = self.get_load_vector(
+                    self.dirichlet_nodes,
+                    self.dirichlet_values[:, time_index+1]
+            )
 
             # Perform Newmark method
             # Predictor step
@@ -425,12 +414,13 @@ class PiezoSim:
             v[:, time_index+1] = v_tilde + gamma*delta_t*a[:, time_index+1]
 
             # Calculate charge
-            q[time_index+1] = calculate_charge(
-                u[:, time_index+1],
-                self.material_manager,
-                electrode_elements,
-                self.mesh_data.nodes
-            )
+            if electrode_elements:
+                q[time_index+1] = calculate_charge(
+                    u[:, time_index+1],
+                    self.material_manager,
+                    electrode_elements,
+                    self.mesh_data.nodes
+                )
 
             if (time_index + 1) % 100 == 0:
                 print(f"Finished time step {time_index+1}")
@@ -438,22 +428,16 @@ class PiezoSim:
         self.q = q
         self.u = u
 
-
     def get_load_vector(
             self,
-            nodes_u: npt.NDArray,
-            values_u: npt.NDArray,
-            nodes_v: npt.NDArray,
-            values_v: npt.NDArray) -> npt.NDArray:
+            nodes: npt.NDArray,
+            values: npt.NDArray) -> npt.NDArray:
         """Calculates the load vector (right hand side) vector for the
         simulation.
 
         Parameters:
-            nodes_u: Nodes where the dirichlet bc for u is set.
-            values_u: Values of the u boundary condition for the nodes.
-                Contains a tuple of values [u_r, u_z].
-            nodes_v: Nodes where the dirichlet bc for v is set.
-            values_v: Value of the v boundary condition for the nodes.
+            nodes: Nodes at which the dirichlet value shall be set.
+            values: Dirichlet value which is set at the corresponding node.
 
         Returns:
             Right hand side vector for the simulation.
@@ -464,16 +448,8 @@ class PiezoSim:
         # charge density is 0.
         f = np.zeros(3*number_of_nodes, dtype=np.float64)
 
-        # Set dirichlet values for u_r only
-        for node, value in zip(nodes_u, values_u):
-            f[2*node] = value[0]
-
-        # Set dirichlet values for v
-        # Use offset because v nodes have higher index than u nodes
-        offset = 2*number_of_nodes
-
-        for node, value in zip(nodes_v, values_v):
-            f[node+offset] = value
+        for node, value in zip(nodes, values):
+            f[node] = value
 
         return f
 

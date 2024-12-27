@@ -63,7 +63,7 @@ if __name__ == "__main__":
     number_of_nodes = len(fem_sim.mesh_data.nodes)
 
     theta_field = fem_sim.solver.u[3*number_of_nodes:, -1]
-    avg_temperatures = pfem.simulation.fem_piezo_temp_time. \
+    avg_temperatures = pfem.simulation.piezo_temp_time. \
         get_avg_temp_field_per_element(
             theta_field,
             fem_sim.mesh_data.elements

@@ -90,8 +90,8 @@ if __name__ == "__main__":
         heat_sim.theta[:, -1],
         nodes,
         elements,
-        heat_sim.material_data.heat_capacity,
-        heat_sim.material_data.density
+        heat_sim.material_manager.heat_capacity,
+        heat_sim.material_manager.density
     )
     print("Calculated temperature field energy", temp_field_energy)
 

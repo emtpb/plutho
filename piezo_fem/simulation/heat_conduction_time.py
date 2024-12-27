@@ -1,16 +1,21 @@
 """Extra module for the simulation of heat conduction over time."""
 
 # Python standard libraries
+from typing import List
+
+# Third party libraries
 import numpy as np
 import numpy.typing as npt
 import scipy.sparse.linalg as slin
 from scipy import sparse
 
 # Local libraries
-from .base import MaterialData, SimulationData, MeshData, \
+from .base import SimulationData, MeshData, \
     local_shape_functions, gradient_local_shape_functions, \
-    local_to_global_coordinates, integral_m, \
-    quadratic_quadrature, line_quadrature
+    local_to_global_coordinates, integral_m, LocalElementData, \
+    quadratic_quadrature, line_quadrature, create_local_element_data, \
+    apply_dirichlet_bc
+from ..materials import MaterialManager
 
 
 def integral_heat_flux(
@@ -31,6 +36,7 @@ def integral_heat_flux(
         return n*heat_flux*r
 
     return line_quadrature(inner)
+
 
 def integral_ktheta(
         node_points: npt.NDArray,
@@ -90,7 +96,7 @@ class HeatConductionSim:
         f: Load vector for the temperature field contains the information
             from the given losses."""
     mesh_data: MeshData
-    material_data: MaterialData
+    material_manager: MaterialManager
     simulation_data: SimulationData
 
     c: npt.NDArray
@@ -99,14 +105,34 @@ class HeatConductionSim:
     theta: npt.NDArray
     f: npt.NDArray
 
+    # Convective bc
+    enable_convection_bc: bool
+    convective_b_e: List[int]
+    convective_alpha: float
+    convective_outer_temp: float
+
+    # Internal simulation data
+    local_elements: List[LocalElementData]
+
+    # Dirichlet data
+    dirichlet_nodes: npt.NDArray
+    dirichlet_values: npt.NDArray
+
     def __init__(
             self,
             mesh_data: MeshData,
-            material_data: MaterialData,
+            material_manager: MaterialManager,
             simulation_data: SimulationData):
         self.mesh_data = mesh_data
-        self.material_data = material_data
+        self.material_manager = material_manager
         self.simulation_data = simulation_data
+        self.f = np.zeros(
+            (
+                len(self.mesh_data.nodes),
+                self.simulation_data.number_of_time_steps
+            )
+        )
+        self.enable_convection_bc = False
 
     def assemble(self):
         """Assembles the FEM matrices based on the set mesh_data and
@@ -116,6 +142,8 @@ class HeatConductionSim:
         # TODO Assembly takes long rework this algorithm?
         # Maybe the 2x2 matrix slicing is not very fast
         nodes = self.mesh_data.nodes
+        elements = self.mesh_data.elements
+        self.local_elements = create_local_element_data(nodes, elements)
 
         number_of_nodes = len(nodes)
         c = sparse.lil_matrix(
@@ -144,15 +172,15 @@ class HeatConductionSim:
 
             ctheta_e = (
                 integral_m(node_points)
-                * self.material_data.density
-                * self.material_data.heat_capacity
+                * self.material_manager.get_density(element)
+                * self.material_manager.get_heat_capacity(element)
                 * jacobian_det * 2 * np.pi
             )
             ktheta_e = (
                 integral_ktheta(
                     node_points,
                     jacobian_inverted_t)
-                * self.material_data.thermal_conductivity
+                * self.material_manager.get_thermal_conductivity(element)
                 * jacobian_det * 2 * np.pi
             )
 
@@ -168,19 +196,19 @@ class HeatConductionSim:
     def set_volume_heat_source(
             self,
             mech_loss_density,
-            number_of_time_steps,
-            delta_t):
+            number_of_time_steps):
         """Sets the excitation for the heat conduction simulation.
         The mech_losses are set for every time step.
 
         Parameters:
-            mech_losses: The mechanical losses for each element.
+            mech_losses: The mechanical losses for each element for every
+                time step.
+            number_of_time_steps: Total number of time steps.
         """
-        time_values = np.arange(number_of_time_steps)*delta_t
         nodes = self.mesh_data.nodes
         number_of_nodes = len(nodes)
         f = np.zeros(shape=(number_of_nodes, number_of_time_steps))
-        for time_step, _ in enumerate(time_values):
+        for time_step in range(number_of_time_steps):
             for element_index, element in enumerate(self.mesh_data.elements):
                 dn = gradient_local_shape_functions()
                 node_points = np.array([
@@ -197,12 +225,13 @@ class HeatConductionSim:
                 # TODO Maybe the outer time step loop can be removed
                 f_theta_e = integral_theta_load(
                     node_points,
-                    mech_loss_density[element_index, time_step])*2*np.pi*jacobian_det
+                    mech_loss_density[element_index, time_step]
+                ) * 2 * np.pi * jacobian_det
 
                 for local_p, global_p in enumerate(element):
                     f[global_p, time_step] += f_theta_e[local_p]
 
-        self.f = f
+        self.f += f
 
     def set_constant_volume_heat_source(
             self,
@@ -212,7 +241,9 @@ class HeatConductionSim:
         The mech_loss_density are set for every time step.
 
         Parameters:
-            mech_loss_density: The mechanical losses for each element.
+            mech_loss_density: The mechanical losses for each element. They
+                will be applied for every time step.
+            number_of_time_steps: Total number of time steps
         """
         nodes = self.mesh_data.nodes
         number_of_nodes = len(nodes)
@@ -239,26 +270,9 @@ class HeatConductionSim:
                 f[global_p] += f_theta_e[local_p]
 
         # Repeat it for n time steps
-        self.f = np.tile(f.reshape(-1, 1), (1, number_of_time_steps))
+        self.f += np.tile(f.reshape(-1, 1), (1, number_of_time_steps))
 
-    def set_fixed_temperature(self, nodes, values):
-        """Sets a fixed temperature of value at node (dirichlet boundary
-        condition).
-    
-        Parameters:
-            nodes: Nodes at which the values shall be set.
-            values: Values which are set at the corresponding node (same index)
-        """
-        self.f = np.zeros(
-            shape=(len(self.mesh_data.nodes),
-                   self.simulation_data.number_of_time_steps))
-        for node, value in zip(nodes, values):
-            self.c[node, :] = 0
-            self.k[node, :] = 0
-            self.k[node, node] = 1
-            self.f[node, :] = value
-
-    def calculate_convection_bc(
+    def _calculate_convection_bc(
             self,
             nodes: npt.NDArray,
             boundary_elements: npt.NDArray,
@@ -266,7 +280,8 @@ class HeatConductionSim:
             alpha: float,
             outer_temperature: float) -> npt.NDArray:
         """Calculates the load vector for the convection boundary condition.
-        The condition is calculated using the temeprature at the given boundary,
+        The condition is calculated using the temeprature at the given
+        boundary.
         The heat transfer coefficient alpha and the temeprature outside of the
         model.
 
@@ -310,12 +325,50 @@ class HeatConductionSim:
 
         return f
 
+    def set_convection_bc(
+            self,
+            convective_boundary_elements,
+            alpha,
+            outer_temperature):
+        """Adds a convection boundary condition to the current simulation.
+
+        Parameters:
+            convective_boundary_elements: List of element indicies at the
+                boundary for which the convective bc is implemented.
+            alpha: Heat transfer coefficient to the outer fluid.
+            outer_temperature: Fixed temperature outside of the model.
+        """
+        self.convective_b_e = convective_boundary_elements
+        self.convective_alpha = alpha
+        self.convective_outer_temp = outer_temperature
+        self.enable_convection_bc = True
+
+    def set_dirichlet_bc_load_vector(
+            self,
+            f: npt.NDArray,
+            nodes: npt.NDArray,
+            values: npt.NDArray,
+            time_step: int) -> npt.NDArray:
+        """Adds the dirichlet values for the given load vector.
+
+        Parameters:
+            f: Existing load vector. Could be empty or contain already set
+                boundary conditions, which will be overwritten at
+                dirichlet nodes.
+            nodes: Nodes at which the dirichlet bc shall be set.
+            values: Values which shall be set at the corresponding node.
+
+        Returns:
+            Right hand side vector for the simulation.
+        """
+        for node, value in zip(nodes, values):
+            f[node] = value[time_step]
+
+        return f
+
     def solve_time(
             self,
-            theta_start=None,
-            boundary_elements=None,
-            alpha=80,
-            outer_temeprature=20):
+            theta_start=None):
         """Runs the simulation using the assembled c and k matrices as well
         as the set excitation.
         Calculates the temperature field and saves it in theta.
@@ -328,7 +381,6 @@ class HeatConductionSim:
         k = self.k
 
         # Init arrays
-        # Temperature theta which is calculated
         theta = np.zeros((k.shape[0], number_of_time_steps), dtype=np.float64)
         if theta_start is not None:
             theta[:, 0] = theta_start
@@ -337,18 +389,35 @@ class HeatConductionSim:
             (k.shape[0], number_of_time_steps),
             dtype=np.float64)
 
+        _, c, k = apply_dirichlet_bc(
+            np.zeros(c.shape),
+            c,
+            k,
+            self.dirichlet_nodes
+        )
+
         k_star = (k+1/(gamma*delta_t)*c).tocsr()
 
         print("Starting heat conduction simulation")
         for time_index in range(number_of_time_steps-1):
-            f = self.f[:, time_index]
-            if boundary_elements is not None:
-                f += self.calculate_convection_bc(
+            # Set dirichlet nodes for the load vector
+            # The load vector could already contain e.g. energy sources
+            # which are overwritten at the points where a dirichlet bc is set.
+            f = self.set_dirichlet_bc_load_vector(
+                self.f[:, time_index],
+                self.dirichlet_nodes,
+                self.dirichlet_values,
+                time_index+1
+            )
+
+            # Add a convection boundary condition if it set
+            if self.enable_convection_bc:
+                f += self._calculate_convection_bc(
                     self.mesh_data.nodes,
-                    boundary_elements,
+                    self.convective_b_e,
                     theta[:, time_index],
-                    alpha,
-                    outer_temeprature
+                    self.convective_alpha,
+                    self.convective_outer_temp
                 )
 
             # Perform Newmark method

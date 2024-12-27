@@ -16,8 +16,8 @@ def plot_scalar_field(
         theta,
         nodes,
         tikz_output_path: str = None):
-    label="Temperatur $\\vartheta$ / K"
-    cmap="plasma"
+    label = "Temperatur $\\vartheta$ / K"
+    cmap = "plasma"
     # Bigger mesh
     r_grid = np.linspace(nodes[:, 0].min(), nodes[:, 0].max(), 300)
     z_grid = np.linspace(nodes[:, 1].min(), nodes[:, 1].max(), 300)
@@ -49,9 +49,6 @@ def plot_scalar_field(
     plt.xlabel("Radius $r$ / m")
     plt.ylabel("Höhe $z$ / m")
     plt.show()
-    exit(0)
-    if tikz_output_path is not None:
-        tikzplotlib.save(tikz_output_path)
 
 
 if __name__ == "__main__":

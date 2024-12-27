@@ -7,3 +7,5 @@ from .postprocessing import calculate_impedance, \
     calculate_electrical_input_energy
 from .materials import pic255, MaterialData
 from .piezo_fem import PiezoSimulation, SimulationType
+from .simulation_handler import SingleSimulation, VariableType
+from .mesh import Mesh

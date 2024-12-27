@@ -1,5 +1,6 @@
-from .fem_piezo_temp_time import PiezoSimTherm
-from .fem_piezo_time import PiezoSim
+from .piezo_temp_time import PiezoSimTherm
+from .piezo_time import PiezoSim
 from .base import MaterialData, SimulationData, MeshData, ModelType, \
     SimulationType
-from .fem_heat_conduction_time import HeatConductionSim
+from .heat_conduction_time import HeatConductionSim
+from .piezo_freq import PiezoFreqSim
