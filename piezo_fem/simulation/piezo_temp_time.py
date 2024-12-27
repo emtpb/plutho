@@ -394,7 +394,7 @@ class PiezoSimTherm:
             a[:, time_index+1] = (u[:, time_index+1]-u_tilde)/(beta*delta_t**2)
             v[:, time_index+1] = v_tilde + gamma*delta_t*a[:, time_index+1]
 
-            if electrode_elements:
+            if electrode_elements is not None:
                 q[time_index+1] = calculate_charge(
                     u[:, time_index+1],
                     self.material_manager,

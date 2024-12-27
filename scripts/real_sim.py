@@ -98,6 +98,7 @@ def example_heat_cond(base_directory):
 
     # Run simulation
     sim.simulate()
+    sim.save_simulation_results()
     print(np.max(sim.solver.theta[:, -1]))
     print(np.min(sim.solver.theta[:, -1]))
     plot_scalar_field(sim.solver.theta[:, -1], sim.mesh_data.nodes)
@@ -111,7 +112,7 @@ def example_piezo_sim(base_directory):
     )
 
     delta_t = 1e-8
-    number_of_time_steps = 100
+    number_of_time_steps = 8192
 
     # Create single simulation object
     sim = pfem.SingleSimulation(
@@ -133,7 +134,7 @@ def example_piezo_sim(base_directory):
     # Add materials
     sim.add_material(
         "pic255",
-        pfem.materials.pic255,
+        pfem.materials.pic255_alpha_m_nonzero,
         None
     )
 
@@ -158,8 +159,13 @@ def example_piezo_sim(base_directory):
         np.zeros(number_of_time_steps)
     )
 
+    electrode_elements = mesh.get_elements_by_physical_groups(
+        ["Electrode"]
+    )["Electrode"]
+
     # Run simulation
-    sim.simulate()
+    sim.simulate(electrode_elements=electrode_elements)
+    sim.save_simulation_results()
 
 
 def example_piezo_freq_sim(base_directory):
@@ -169,7 +175,7 @@ def example_piezo_freq_sim(base_directory):
         True
     )
 
-    frequencies = np.linspace(0, 1e7, 250)
+    frequencies = np.linspace(0, 1e7, 1000)
 
     # Create single simulation object
     sim = pfem.SingleSimulation(
@@ -184,7 +190,7 @@ def example_piezo_freq_sim(base_directory):
     # Add materials
     sim.add_material(
         "pic255",
-        pfem.materials.pic255,
+        pfem.materials.pic255_alpha_m_nonzero,
         None
     )
 
@@ -205,8 +211,16 @@ def example_piezo_freq_sim(base_directory):
         np.zeros(len(frequencies))
     )
 
+    electrode_elements = mesh.get_elements_by_physical_groups(
+        ["Electrode"]
+    )["Electrode"]
+
     # Run simulation
-    sim.simulate(frequencies=frequencies)
+    sim.simulate(
+        frequencies=frequencies,
+        electrode_elements=electrode_elements
+    )
+    sim.save_simulation_results()
 
 
 def example_therm_piezo_sim(base_directory):
@@ -217,7 +231,7 @@ def example_therm_piezo_sim(base_directory):
     )
 
     delta_t = 1e-8
-    number_of_time_steps = 100
+    number_of_time_steps = 8192
 
     # Create single simulation object
     sim = pfem.SingleSimulation(
@@ -239,7 +253,7 @@ def example_therm_piezo_sim(base_directory):
     # Add materials
     sim.add_material(
         "pic255",
-        pfem.materials.pic255,
+        pfem.materials.pic255_alpha_m_nonzero,
         None
     )
 
@@ -264,8 +278,13 @@ def example_therm_piezo_sim(base_directory):
         np.zeros(number_of_time_steps)
     )
 
+    electrode_elements = mesh.get_elements_by_physical_groups(
+        ["Electrode"]
+    )["Electrode"]
+
     # Run simulation
-    sim.simulate()
+    sim.simulate(electrode_elements=electrode_elements)
+    sim.save_simulation_results()
 
 
 def real_model(base_directory):
@@ -313,6 +332,6 @@ if __name__ == "__main__":
 
     # real_model(CWD)
     # example_heat_cond(CWD)
-    # example_piezo_sim(CWD)
-    # example_piezo_freq_sim(CWD)
+    example_piezo_sim(CWD)
+    example_piezo_freq_sim(CWD)
     example_therm_piezo_sim(CWD)

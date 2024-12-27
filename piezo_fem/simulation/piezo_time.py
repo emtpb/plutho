@@ -414,7 +414,7 @@ class PiezoSim:
             v[:, time_index+1] = v_tilde + gamma*delta_t*a[:, time_index+1]
 
             # Calculate charge
-            if electrode_elements:
+            if electrode_elements is not None:
                 q[time_index+1] = calculate_charge(
                     u[:, time_index+1],
                     self.material_manager,

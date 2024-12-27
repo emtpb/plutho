@@ -274,7 +274,7 @@ class PiezoFreqSim:
 
             u[:, index] = slin.spsolve(a, f)
 
-            if electrode_elements:
+            if electrode_elements is not None:
                 q[index] = calculate_charge(
                     u[:, index],
                     self.material_manager,

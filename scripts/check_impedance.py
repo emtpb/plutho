@@ -5,6 +5,7 @@ openCFS simulation.
 # Python standard libraries
 import os
 import numpy as np
+import numpy.typing as npt
 import matplotlib.pyplot as plt
 
 # Third party libraries
@@ -16,8 +17,10 @@ import piezo_fem as pfem
 
 
 def plot_impedance_with_opencfs(
-        sim: pfem.PiezoSimulation,
-        open_cfs_hist_file: str):
+        charge: npt.NDArray,
+        open_cfs_hist_file: str,
+        excitation: npt.NDArray,
+        delta_t: float):
     """Calculates and plots the impedence curves of the given FEM simulation
     together with OpenCFS results.
 
@@ -27,12 +30,15 @@ def plot_impedance_with_opencfs(
             simulation.
     """
     frequencies_fem, impedance_fem = pfem.calculate_impedance(
-        sim.solver.q, sim.excitation, sim.simulation_data.delta_t)
+        charge,
+        excitation,
+        delta_t
+    )
 
     # Get OpenCFS data
     _, charge_cfs = pfem.parse_charge_hist_file(open_cfs_hist_file)
     frequencies_cfs, impedance_cfs = pfem.calculate_impedance(
-        charge_cfs, sim.excitation[:len(charge_cfs)], sim.simulation_data.delta_t)
+        charge_cfs, excitation[:len(charge_cfs)], delta_t)
 
     plt.rcParams.update({'font.size': 18})
 
@@ -46,7 +52,7 @@ def plot_impedance_with_opencfs(
     plt.xlabel("Frequenz $f$ / MHz")
     plt.ylabel("Impedanz $|Z|$ / $\\Omega$")
     plt.yscale("log")
-    plt.xlim(0, 10)
+    plt.xlim(0, 1e8)
     plt.ylim(15, 2*1e4)
     plt.legend()
     plt.grid()
@@ -77,10 +83,13 @@ if __name__ == "__main__":
         MODEL_NAME
     )
     OPENCFS_FILE = os.path.join(CWD, "cfs_charge.hist")
-    fem_sim = pfem.PiezoSimulation.load_simulation_settings(
-        os.path.join(CWD, f"{MODEL_NAME}.cfg")
+
+    NUMBER_OF_TIME_STEPS = 8192
+    DELTA_T = 1e-8
+    excitation = np.zeros(NUMBER_OF_TIME_STEPS)
+    excitation[1:10] = (
+        1 * np.array([0.2, 0.4, 0.6, 0.8, 1, 0.8, 0.6, 0.4, 0.2])
     )
-    fem_sim.load_simulation_results()
 
     #pfem.io.create_vector_field_as_csv(
     #    fem_sim.solver.u,
@@ -89,4 +98,9 @@ if __name__ == "__main__":
     #    False
     #)
 
-    plot_impedance_with_opencfs(fem_sim, OPENCFS_FILE)
+    plot_impedance_with_opencfs(
+        np.load(os.path.join(CWD, "q.npy")),
+        OPENCFS_FILE,
+        excitation,
+        DELTA_T
+    )

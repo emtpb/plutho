@@ -216,3 +216,35 @@ class SingleSimulation:
             )
         else:
             return
+
+    def save_simulation_results(self):
+        if isinstance(self.solver, HeatConductionSim):
+            np.save(
+                os.path.join(self.simulation_directory, "theta.npy"),
+                self.solver.theta
+            )
+        elif (isinstance(self.solver, PiezoFreqSim) or
+              isinstance(self.solver, PiezoSim)):
+            np.save(
+                os.path.join(self.simulation_directory, "u.npy"),
+                self.solver.u
+            )
+            if np.any(self.solver.q != 0):
+                np.save(
+                    os.path.join(self.simulation_directory, "q.npy"),
+                    self.solver.q
+                )
+        elif isinstance(self.solver, PiezoSimTherm):
+            np.save(
+                os.path.join(self.simulation_directory, "u.npy"),
+                self.solver.u
+            )
+            np.save(
+                os.path.join(self.simulation_directory, "mech_loss.npy"),
+                self.solver.mech_loss
+            )
+            if np.any(self.solver.q != 0):
+                np.save(
+                    os.path.join(self.simulation_directory, "q.npy"),
+                    self.solver.q
+                )
