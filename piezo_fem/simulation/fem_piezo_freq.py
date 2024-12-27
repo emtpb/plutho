@@ -8,13 +8,43 @@ import scipy.sparse as sparse
 import scipy.sparse.linalg as slin
 
 # Local libraries
-from .base import SimulationData, MeshData, \
-    gradient_local_shape_functions, \
-    local_to_global_coordinates, b_operator_global, integral_m, \
-    integral_ku, integral_kuv, integral_kve, apply_dirichlet_bc, \
-    line_quadrature, create_local_element_data, LocalElementData
+from .base import MeshData, local_to_global_coordinates, b_operator_global, \
+    integral_m, integral_ku, integral_kuv, integral_kve, apply_dirichlet_bc, \
+    create_local_element_data, LocalElementData, quadratic_quadrature, \
+    calculate_volumes
 from .fem_piezo_time import calculate_charge
 from ..materials import MaterialManager
+
+
+def loss_integral_scs(
+        node_points: npt.NDArray,
+        u_e: npt.NDArray,
+        angular_frequency: float,
+        jacobian_inverted_t: npt.NDArray,
+        elasticity_matrix: npt.NDArray):
+    """Calculate sthe integral of dS/dt*c*dS/dt over one triangle in the
+    frequency domain for the given frequency.
+
+    Parameters:
+        node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of one
+            triangle.
+        u_e: Displacement at this element [u1_r, u1_z, u_2r, u_2z, u_3r, u_3z].
+        angular_frequency: Angular frequency at which the loss shall be
+            calculated.
+        jacobian_inverted_t: Jacobian matrix inverted and transposed, needed
+            for calculation of global derivates.
+        elasticity_matrix: Elasticity matrix for the current element (c matrix)
+    """
+    def inner(s, t):
+        r = local_to_global_coordinates(node_points, s, t, )[0]
+        b_opt = b_operator_global(node_points, s, t, jacobian_inverted_t)
+
+        s_e = np.dot(b_opt, u_e)
+        dt_s = 1j*angular_frequency*s_e
+
+        return np.dot(dt_s.T, np.dot(elasticity_matrix.T, dt_s))*r
+
+    return quadratic_quadrature(inner)
 
 
 class PiezoFreqSim:
@@ -60,6 +90,7 @@ class PiezoFreqSim:
     # Resulting fields
     u: npt.NDArray
     q: npt.NDArray
+    mech_loss: npt.NDArray
 
     # Internal simulation data
     local_elements: List[LocalElementData]
@@ -195,7 +226,6 @@ class PiezoFreqSim:
         self.c = c.tolil()
         self.k = k.tolil()
 
-
     def get_load_vector(
             self,
             nodes_u: npt.NDArray,
@@ -234,24 +264,21 @@ class PiezoFreqSim:
 
         return f
 
-
     def solve_frequency(
             self,
             frequencies,
-            excitation_amplitudes,
             electrode_elements,
             set_symmetric_bc):
-        if len(frequencies) != len(excitation_amplitudes):
-            raise ValueError(
-                "frequencies and excitation_elements must have the same length"
-            )
-
         m = self.m
         c = self.c
         k = self.k
 
         u = np.zeros((m.shape[0], len(frequencies)), dtype=np.complex128)
         q = np.zeros((len(frequencies)), dtype=np.complex128)
+        mech_loss = np.zeros(
+            (m.shape[0], len(frequencies)),
+            dtype=np.complex128
+        )
 
         m, c, k = apply_dirichlet_bc(
             m,
@@ -262,10 +289,9 @@ class PiezoFreqSim:
             len(self.mesh_data.nodes)
         )
 
-        for index, val in enumerate(zip(
-                frequencies, excitation_amplitudes
-            )):
-            frequency, amplitude = val
+        volumes = calculate_volumes(self.local_elements)
+
+        for index, frequency in enumerate(frequencies):
             angular_frequency = 2*np.pi*frequency
 
             a = (
@@ -299,5 +325,38 @@ class PiezoFreqSim:
                 self.mesh_data.nodes
             )
 
+            # Calculate mech_loss for every element
+            for element_index, element in enumerate(self.mesh_data.elements):
+                # Get local element data
+                local_element = self.local_elements[element_index]
+                node_points = local_element.node_points
+                jacobian_inverted_t = local_element.jacobian_inverted_t
+                jacobian_det = local_element.jacobian_det
+
+                # Get field values
+                u_e = np.array([
+                    u[2*element[0], index],
+                    u[2*element[0]+1, index],
+                    u[2*element[1], index],
+                    u[2*element[1]+1, index],
+                    u[2*element[2], index],
+                    u[2*element[2]+1, index]])
+
+                mech_loss[index] = (
+                    loss_integral_scs(
+                        node_points,
+                        u_e,
+                        angular_frequency,
+                        jacobian_inverted_t,
+                        self.material_manager.get_elasticity_matrix(
+                            element_index
+                        )
+                    )
+                    * 2 * np.pi * jacobian_det
+                    * self.material_manager.get_alpha_k()
+                    * 1/volumes[element_index]
+                )
+
         self.u = u
         self.q = q
+        self.mech_loss = mech_loss

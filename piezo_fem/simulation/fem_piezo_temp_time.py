@@ -19,6 +19,7 @@ from .fem_piezo_time import calculate_charge
 from .fem_heat_conduction_time import integral_ktheta, integral_theta_load
 from ..materials import MaterialManager
 
+
 def loss_integral_scs(
         node_points: npt.NDArray,
         u_e_t: npt.NDArray,
@@ -310,7 +311,7 @@ class PiezoSimTherm:
     def solve_time(self,
                    electrode_elements: npt.NDArray,
                    set_symmetric_bc: bool = False,
-                   theta_start = None):
+                   theta_start=None):
         """Runs the simulation using the assembled m, c and k matrices as well
         as the set excitation.
         Calculates the displacement field, potential field and the thermal
