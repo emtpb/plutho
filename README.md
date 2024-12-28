@@ -27,6 +27,7 @@ removed from the file names
 - Check if code can made faster using jfit from numba
 - Implement temperature-dependent material properties
 - Use vtk to visualize data directly
+- Is the boundary condition for u_r at the symmetry axis even needed?
 
 ## Developer
 

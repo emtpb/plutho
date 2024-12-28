@@ -1,4 +1,4 @@
-
+"""Basic module to handle single simulations."""
 # Python standard libraries
 import os
 from enum import Enum
@@ -17,6 +17,8 @@ from .mesh import Mesh
 
 
 class VariableType(Enum):
+    """Possible field types which are calculated using differnet simulations.
+    """
     U_R = 0
     U_Z = 1
     PHI = 2
@@ -24,7 +26,25 @@ class VariableType(Enum):
 
 
 class SingleSimulation:
+    """Base calss to handle single simulations. Multiple different simulation
+    types can be chosen.
 
+    Arguments:
+        simulation_name: Name of the current simulation.
+        simulation_directory: Directory where the results files are saved.
+            Combination of working_directory given to constructor and the
+            simulation name.
+        material_manager: MaterialManager object used to handle different
+            materials as well as temperature dependent material parameters.
+        mesh: Contains the mesh.
+        mesh_data: Contains the nodes and element arrays of the mesh.
+        dirichlet_nodes: Array of node indices at which a dirichlet boundary
+            shall be set.
+        dirichlet_values: Array of time dependent values which are set
+            at the corresponding dirichlet_node: [node_index, time_index].
+        solver: Contains the simulation solver class.
+        charge_calculated: Is True if a charge is calculated in the simulation.
+    """
     # Basic settings
     simulation_name: str
     simulation_directory: str
@@ -42,6 +62,7 @@ class SingleSimulation:
 
     # Simulation
     solver: Union[HeatConductionSim, PiezoFreqSim, PiezoSim, PiezoSimTherm]
+    charge_calculated: bool
 
     def __init__(
             self,
@@ -60,6 +81,7 @@ class SingleSimulation:
         nodes, elements = mesh.get_mesh_nodes_and_elements()
         self.mesh_data = MeshData(nodes, elements)
         self.material_manager = MaterialManager(len(elements))
+        self.charge_calculated = False
 
         # Initialize dirichlet bc arrays
         self.dirichlet_nodes = []
@@ -70,7 +92,7 @@ class SingleSimulation:
             material_name: str,
             material_data: MaterialData,
             physical_group_name: str):
-        if physical_group_name is None:
+        if physical_group_name is None or physical_group_name == "":
             element_indices = np.arange(len(self.mesh_data.elements))
         else:
             element_indices = self.mesh.get_elements_by_physical_groups(
@@ -189,15 +211,20 @@ class SingleSimulation:
             electrode_elements = None
             if "electrode_elements" in kwargs:
                 electrode_elements = kwargs["electrode_elements"]
-
+                self.charge_calculated = True
+            calculate_mech_loss = False
+            if "calculate_mech_loss" in kwargs:
+                calculate_mech_loss = True
             self.solver.solve_frequency(
                 kwargs["frequencies"],
-                electrode_elements
+                electrode_elements,
+                calculate_mech_loss
             )
         elif isinstance(self.solver, PiezoSim):
             electrode_elements = None
             if "electrode_elements" in kwargs:
                 electrode_elements = kwargs["electrode_elements"]
+                self.charge_calculated = True
 
             self.solver.solve_time(
                 electrode_elements
@@ -206,6 +233,7 @@ class SingleSimulation:
             electrode_elements = None
             if "electrode_elements" in kwargs:
                 electrode_elements = kwargs["electrode_elements"]
+                self.charge_calculated = True
             theta_start = None
             if "theta_start" in kwargs:
                 theta_start = kwargs["theta_start"]
@@ -229,7 +257,7 @@ class SingleSimulation:
                 os.path.join(self.simulation_directory, "u.npy"),
                 self.solver.u
             )
-            if np.any(self.solver.q != 0):
+            if self.charge_calculated:
                 np.save(
                     os.path.join(self.simulation_directory, "q.npy"),
                     self.solver.q
@@ -243,7 +271,7 @@ class SingleSimulation:
                 os.path.join(self.simulation_directory, "mech_loss.npy"),
                 self.solver.mech_loss
             )
-            if np.any(self.solver.q != 0):
+            if self.charge_calculated:
                 np.save(
                     os.path.join(self.simulation_directory, "q.npy"),
                     self.solver.q

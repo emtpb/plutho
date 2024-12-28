@@ -52,8 +52,8 @@ def plot_impedance_with_opencfs(
     plt.xlabel("Frequenz $f$ / MHz")
     plt.ylabel("Impedanz $|Z|$ / $\\Omega$")
     plt.yscale("log")
-    plt.xlim(0, 1e8)
-    plt.ylim(15, 2*1e4)
+    #plt.xlim(0, 1e8)
+    #plt.ylim(15, 2*1e4)
     plt.legend()
     plt.grid()
     plt.show()
@@ -99,7 +99,7 @@ if __name__ == "__main__":
     #)
 
     plot_impedance_with_opencfs(
-        np.load(os.path.join(CWD, "q.npy")),
+        np.load(os.path.join(CWD, f"{MODEL_NAME}_q.npy")),
         OPENCFS_FILE,
         excitation,
         DELTA_T

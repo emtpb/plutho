@@ -174,8 +174,9 @@ def example_piezo_freq_sim(base_directory):
         os.path.join(base_directory, "disc_mesh.msh"),
         True
     )
+    mesh.generate_rectangular_mesh()
 
-    frequencies = np.linspace(0, 1e7, 1000)
+    frequencies = np.linspace(0, 1e7, 1000)[1:]
 
     # Create single simulation object
     sim = pfem.SingleSimulation(
@@ -332,6 +333,6 @@ if __name__ == "__main__":
 
     # real_model(CWD)
     # example_heat_cond(CWD)
-    example_piezo_sim(CWD)
+    # example_piezo_sim(CWD)
     example_piezo_freq_sim(CWD)
-    example_therm_piezo_sim(CWD)
+    # example_therm_piezo_sim(CWD)

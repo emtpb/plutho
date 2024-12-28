@@ -228,8 +228,9 @@ class PiezoFreqSim:
 
     def solve_frequency(
             self,
-            frequencies,
-            electrode_elements):
+            frequencies: npt.NDArray,
+            electrode_elements: npt.NDArray,
+            calculate_mech_loss: bool):
         """Run the frequency simulation using the given frequencies.
         If electrode elements are given the charge at those elements is
         calculated.
@@ -242,10 +243,15 @@ class PiezoFreqSim:
         c = self.c
         k = self.k
 
-        u = np.zeros((m.shape[0], len(frequencies)), dtype=np.complex128)
+        number_of_nodes = len(self.mesh_data.nodes)
+        number_of_elements = len(self.mesh_data.elements)
+        u = np.zeros(
+            (3*number_of_nodes, len(frequencies)),
+            dtype=np.complex128
+        )
         q = np.zeros((len(frequencies)), dtype=np.complex128)
         mech_loss = np.zeros(
-            (m.shape[0], len(frequencies)),
+            (number_of_elements, len(frequencies)),
             dtype=np.complex128
         )
 
@@ -269,7 +275,8 @@ class PiezoFreqSim:
 
             f = self.get_load_vector(
                 self.dirichlet_nodes,
-                self.dirichlet_values[:, index]
+                self.dirichlet_values,
+                index
             )
 
             u[:, index] = slin.spsolve(a, f)
@@ -299,20 +306,21 @@ class PiezoFreqSim:
                     u[2*element[2], index],
                     u[2*element[2]+1, index]])
 
-                mech_loss[index] = (
-                    loss_integral_scs(
-                        node_points,
-                        u_e,
-                        angular_frequency,
-                        jacobian_inverted_t,
-                        self.material_manager.get_elasticity_matrix(
-                            element_index
+                if calculate_mech_loss:
+                    mech_loss[index] = (
+                        loss_integral_scs(
+                            node_points,
+                            u_e,
+                            angular_frequency,
+                            jacobian_inverted_t,
+                            self.material_manager.get_elasticity_matrix(
+                                element_index
+                            )
                         )
+                        * 2 * np.pi * jacobian_det
+                        * self.material_manager.get_alpha_k(element_index)
+                        * 1/volumes[element_index]
                     )
-                    * 2 * np.pi * jacobian_det
-                    * self.material_manager.get_alpha_k(element_index)
-                    * 1/volumes[element_index]
-                )
 
         self.u = u
         self.q = q
@@ -320,14 +328,16 @@ class PiezoFreqSim:
 
     def get_load_vector(
             self,
-            nodes: npt.NDArray,
-            values: npt.NDArray) -> npt.NDArray:
+            dirichlet_nodes: npt.NDArray,
+            dirichlet_values: npt.NDArray,
+            frequency_index: int) -> npt.NDArray:
         """Calculates the load vector (right hand side) vector for the
         simulation.
 
         Parameters:
-            nodes: Nodes at which the dirichlet value shall be set.
-            values: Dirichlet value which is set at the corresponding node.
+            dirichlet_nodes: Nodes at which the dirichlet value shall be set.
+            dirichlet_values: Dirichlet value which is set at the corresponding
+                node.
 
         Returns:
             Right hand side vector for the simulation.
@@ -338,7 +348,7 @@ class PiezoFreqSim:
         # charge density is 0.
         f = np.zeros(3*number_of_nodes, dtype=np.float64)
 
-        for node, value in zip(nodes, values):
-            f[node] = value
+        for node, value in zip(dirichlet_nodes, dirichlet_values):
+            f[node] = value[frequency_index]
 
         return f

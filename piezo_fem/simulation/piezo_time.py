@@ -125,12 +125,10 @@ def calculate_charge(
                         u[2*element[1]],
                         u[2*element[1]+1],
                         u[2*element[2]],
-                        u[2*element[2]+1]]
-                        )
+                        u[2*element[2]+1]])
         ve_e = np.array([u[element[0]+2*number_of_nodes],
                          u[element[1]+2*number_of_nodes],
-                         u[element[2]+2*number_of_nodes]]
-                         )
+                         u[element[2]+2*number_of_nodes]])
 
         q_u = charge_integral_u(
             node_points,
@@ -334,8 +332,7 @@ class PiezoSim:
         self.k = k.tolil()
 
     def solve_time(self,
-                   electrode_elements: npt.NDArray,
-                   set_symmetric_bc: bool = False):
+                   electrode_elements: npt.NDArray):
         """Runs the simulation using the assembled m, c and k matrices as well
         as the set excitation.
         Calculates the displacement field and potential field of the given
@@ -347,7 +344,6 @@ class PiezoSim:
             electrode_elements: List of all elements which are in
             the electrode.
         """
-        number_of_nodes = len(self.mesh_data.nodes)
         number_of_time_steps = self.simulation_data.number_of_time_steps
         beta = self.simulation_data.beta
         gamma = self.simulation_data.gamma
@@ -452,4 +448,3 @@ class PiezoSim:
             f[node] = value
 
         return f
-

@@ -388,9 +388,8 @@ def apply_dirichlet_bc(
         m: Mass matrix M.
         c: Damping matrix C.
         k: Stiffness matrix K.
-        nodes: List of nodes at which a dirichlet boundary condition 
+        nodes: List of nodes at which a dirichlet boundary condition
             shall be applied.
-        number_of_nodes: Total number of nodes of the simulation.
     Returns:
         Modified mass, damping and stiffness matrix.
     """

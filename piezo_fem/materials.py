@@ -170,7 +170,7 @@ class MaterialManager:
         self.heat_capacity_local = np.zeros(self.number_of_elements)
         self.thermal_conductivity_local = np.zeros(self.number_of_elements)
 
-        if starting_temperature is None:
+        if starting_temperature is None or not self.is_temperature_dependent:
             # Material is not temperature dependent
             for element_index in range(self.number_of_elements):
                 material_data = self.materials[
@@ -180,7 +180,7 @@ class MaterialManager:
                 self.c12_local[element_index] = material_data.c12
                 self.c13_local[element_index] = material_data.c13
                 self.c33_local[element_index] = material_data.c33
-                self.c44_local[element_index] = material_data.c33
+                self.c44_local[element_index] = material_data.c44
                 self.e15_local[element_index] = material_data.e15
                 self.e31_local[element_index] = material_data.e31
                 self.e33_local[element_index] = material_data.e33
