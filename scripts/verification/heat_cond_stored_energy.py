@@ -56,9 +56,9 @@ if __name__ == "__main__":
         raise ValueError("Wrong simulation type.")
 
     # Add boundary condition
-    input_power_density = 1
+    INPUT_POWER_DENSITY = 1
     sim.solver.set_constant_volume_heat_source(
-        input_power_density * np.ones(len(sim.mesh_data.elements)),
+        INPUT_POWER_DENSITY * np.ones(len(sim.mesh_data.elements)),
         NUMBER_OF_TIME_STEPS
     )
 
@@ -78,4 +78,4 @@ if __name__ == "__main__":
         pfem.simulation.base.calculate_volumes(sim.solver.local_elements)
     )
     print("Calculated temperature field energy", temp_field_energy)
-    print("Excpected field energy", input_power_density*volume)
+    print("Excpected field energy", INPUT_POWER_DENSITY*volume)

@@ -333,9 +333,6 @@ class PiezoSimTherm:
                 )
             u[3*number_of_nodes:, 0] = theta_start
 
-        print("Material data:")
-        self.material_manager.print_material_data(0)
-
         print("Starting simulation")
         for time_index in range(number_of_time_steps-1):
             # Check if new assembly is needed when temperature dependent

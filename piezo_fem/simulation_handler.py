@@ -73,10 +73,7 @@ class SingleSimulation:
             working_directory: str,
             simulation_name: str,
             mesh: Mesh):
-        # Check if working directory exists and if not create it
         simulation_directory = os.path.join(working_directory, simulation_name)
-        if not os.path.exists(simulation_directory):
-            os.makedirs(simulation_directory)
 
         self.simulation_directory = simulation_directory
         self.simulation_name = simulation_name
@@ -258,6 +255,9 @@ class SingleSimulation:
             return
 
     def save_simulation_results(self):
+        if not os.path.exists(self.simulation_directory):
+            os.makedirs(self.simulation_directory)
+
         if isinstance(self.solver, HeatConductionSim):
             np.save(
                 os.path.join(self.simulation_directory, "theta.npy"),
@@ -305,6 +305,9 @@ class SingleSimulation:
                 )
 
     def save_simulation_settings(self):
+        if not os.path.exists(self.simulation_directory):
+            os.makedirs(self.simulation_directory)
+
         settings = configparser.ConfigParser()
 
         if isinstance(self.solver, HeatConductionSim):
