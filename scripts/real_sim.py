@@ -144,17 +144,17 @@ def example_piezo_sim(base_directory):
         1 * np.array([0.2, 0.4, 0.6, 0.8, 1, 0.8, 0.6, 0.4, 0.2])
     )
     sim.add_dirichlet_bc(
-        pfem.VariableType.PHI,
+        pfem.FieldType.PHI,
         "Electrode",
         excitation
     )
     sim.add_dirichlet_bc(
-        pfem.VariableType.PHI,
+        pfem.FieldType.PHI,
         "Ground",
         np.zeros(number_of_time_steps)
     )
     sim.add_dirichlet_bc(
-        pfem.VariableType.U_R,
+        pfem.FieldType.U_R,
         "Symaxis",
         np.zeros(number_of_time_steps)
     )
@@ -174,7 +174,7 @@ def example_piezo_freq_sim(base_directory):
         os.path.join(base_directory, "disc_mesh.msh"),
         True
     )
-    mesh.generate_rectangular_mesh()
+    mesh.generate_rectangular_mesh(mesh_size=0.00004)
 
     frequencies = np.linspace(0, 1e7, 1000)[1:]
 
@@ -186,7 +186,7 @@ def example_piezo_freq_sim(base_directory):
     )
 
     # Setup piezo sim
-    sim.setup_piezo_freq_domain()
+    sim.setup_piezo_freq_domain(frequencies)
 
     # Add materials
     sim.add_material(
@@ -197,17 +197,17 @@ def example_piezo_freq_sim(base_directory):
 
     # Add boundary conditions
     sim.add_dirichlet_bc(
-        pfem.VariableType.PHI,
+        pfem.FieldType.PHI,
         "Electrode",
         np.ones(len(frequencies))
     )
     sim.add_dirichlet_bc(
-        pfem.VariableType.PHI,
+        pfem.FieldType.PHI,
         "Ground",
         np.zeros(len(frequencies))
     )
     sim.add_dirichlet_bc(
-        pfem.VariableType.U_R,
+        pfem.FieldType.U_R,
         "Symaxis",
         np.zeros(len(frequencies))
     )
@@ -218,10 +218,10 @@ def example_piezo_freq_sim(base_directory):
 
     # Run simulation
     sim.simulate(
-        frequencies=frequencies,
         electrode_elements=electrode_elements
     )
     sim.save_simulation_results()
+    sim.save_simulation_settings()
 
 
 def example_therm_piezo_sim(base_directory):
@@ -264,17 +264,17 @@ def example_therm_piezo_sim(base_directory):
         1 * np.array([0.2, 0.4, 0.6, 0.8, 1, 0.8, 0.6, 0.4, 0.2])
     )
     sim.add_dirichlet_bc(
-        pfem.VariableType.PHI,
+        pfem.FieldType.PHI,
         "Electrode",
         excitation
     )
     sim.add_dirichlet_bc(
-        pfem.VariableType.PHI,
+        pfem.FieldType.PHI,
         "Ground",
         np.zeros(number_of_time_steps)
     )
     sim.add_dirichlet_bc(
-        pfem.VariableType.U_R,
+        pfem.FieldType.U_R,
         "Symaxis",
         np.zeros(number_of_time_steps)
     )

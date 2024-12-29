@@ -77,6 +77,7 @@ class PiezoFreqSim:
     # Simulation parameters
     mesh_data: MeshData
     material_manager: MaterialManager
+    frequencies: npt.NDArray
 
     # Dirichlet boundary condition
     dirichlet_nodes: npt.NDArray
@@ -98,9 +99,11 @@ class PiezoFreqSim:
     def __init__(
             self,
             mesh_data: MeshData,
-            material_manager: MaterialManager):
+            material_manager: MaterialManager,
+            frequencies: npt.NDArray):
         self.mesh_data = mesh_data
         self.material_manager = material_manager
+        self.frequencies = frequencies
 
     def assemble(self):
         """Assembles the FEM matrices based on the set mesh_data and
@@ -228,7 +231,6 @@ class PiezoFreqSim:
 
     def solve_frequency(
             self,
-            frequencies: npt.NDArray,
             electrode_elements: npt.NDArray,
             calculate_mech_loss: bool):
         """Run the frequency simulation using the given frequencies.
@@ -243,6 +245,7 @@ class PiezoFreqSim:
         c = self.c
         k = self.k
 
+        frequencies = self.frequencies
         number_of_nodes = len(self.mesh_data.nodes)
         number_of_elements = len(self.mesh_data.elements)
         u = np.zeros(
@@ -264,6 +267,10 @@ class PiezoFreqSim:
 
         volumes = calculate_volumes(self.local_elements)
 
+        print(
+            f"Starting frequency simulation. There are {len(frequencies)} "
+            "frequency steps."
+        )
         for index, frequency in enumerate(frequencies):
             angular_frequency = 2*np.pi*frequency
 

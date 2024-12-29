@@ -24,13 +24,20 @@ class Material:
             dependent.
     """
 
+    material_name: str
+    material_data: MaterialData
+    is_temperature_dependent: bool
+    physical_group_name: str
+
     def __init__(
             self,
             material_name: str,
-            material_data):
+            material_data: MaterialData,
+            physical_group_name: str):
         self.material_name = material_name
         self.material_data = material_data
         self.is_temperature_dependent = False
+        self.physical_group_name = physical_group_name
 
         # Check if its temperature dependent
         if isinstance(material_data.temperatures, np.ndarray):
@@ -48,6 +55,13 @@ class Material:
                         )
 
             self.create_interpolations()
+
+    def to_dict(self):
+        return {
+            "temperature_dependent": self.is_temperature_dependent,
+            "physical_group_name": self.physical_group_name,
+            "material_data": self.material_data.__dict__
+        }
 
     def create_interpolations(self):
         """Prepares the interpolations for each material parameter for
@@ -126,10 +140,12 @@ class MaterialManager:
             self,
             material_name,
             material_data,
+            physical_group_name,
             element_indices):
         new_material = Material(
                 material_name,
                 material_data,
+                physical_group_name
             )
         self.materials.append(new_material)
         material_index = len(self.materials)-1

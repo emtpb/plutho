@@ -21,7 +21,7 @@ class Mesh:
             gmsh.initialize()
 
         self.mesh_file_path = file_path
-        if os.path.exists(file_path):
+        if os.path.isfile(file_path):
             if load:
                 gmsh.open(file_path)
             else:
