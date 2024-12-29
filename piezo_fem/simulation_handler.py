@@ -167,6 +167,7 @@ class SingleSimulation:
             delta_t: float,
             number_of_time_steps: int,
             gamma: float):
+        # TODO Change parameter to simulation data?
         self.solver = HeatConductionSim(
             self.mesh_data,
             self.material_manager,
@@ -254,53 +255,83 @@ class SingleSimulation:
         else:
             return
 
-    def save_simulation_results(self):
+    def save_simulation_results(self, file_prefix: str = ""):
         if not os.path.exists(self.simulation_directory):
             os.makedirs(self.simulation_directory)
 
+        if file_prefix != "":
+            file_prefix += "_"
+
         if isinstance(self.solver, HeatConductionSim):
             np.save(
-                os.path.join(self.simulation_directory, "theta.npy"),
+                os.path.join(
+                    self.simulation_directory,
+                    f"{file_prefix}theta.npy"
+                ),
                 self.solver.theta
             )
         elif isinstance(self.solver, PiezoFreqSim):
             np.save(
-                os.path.join(self.simulation_directory, "u.npy"),
+                os.path.join(
+                    self.simulation_directory,
+                    f"{file_prefix}u.npy"
+                ),
                 self.solver.u
             )
             if self.mech_loss_calculated:
                 np.save(
-                    os.path.join(self.simulation_directory, "mech_loss.npy"),
+                    os.path.join(
+                        self.simulation_directory,
+                        f"{file_prefix}mech_loss.npy"
+                    ),
                     self.solver.mech_loss
                 )
             if self.charge_calculated:
                 np.save(
-                    os.path.join(self.simulation_directory, "q.npy"),
+                    os.path.join(
+                        self.simulation_directory,
+                        f"{file_prefix}q.npy"
+                    ),
                     self.solver.q
                 )
         elif isinstance(self.solver, PiezoSim):
             np.save(
-                os.path.join(self.simulation_directory, "u.npy"),
+                os.path.join(
+                    self.simulation_directory,
+                    f"{file_prefix}u.npy"
+                ),
                 self.solver.u
             )
             if self.charge_calculated:
                 np.save(
-                    os.path.join(self.simulation_directory, "q.npy"),
+                    os.path.join(
+                        self.simulation_directory,
+                        f"{file_prefix}q.npy"
+                    ),
                     self.solver.q
                 )
         elif isinstance(self.solver, PiezoSimTherm):
             np.save(
-                os.path.join(self.simulation_directory, "u.npy"),
+                os.path.join(
+                    self.simulation_directory,
+                    f"{file_prefix}u.npy"
+                ),
                 self.solver.u
             )
             # Mech loss is always calculated in PiezoSimTherm
             np.save(
-                os.path.join(self.simulation_directory, "mech_loss.npy"),
+                os.path.join(
+                    self.simulation_directory,
+                    f"{file_prefix}mech_loss.npy"
+                ),
                 self.solver.mech_loss
             )
             if self.charge_calculated:
                 np.save(
-                    os.path.join(self.simulation_directory, "q.npy"),
+                    os.path.join(
+                        self.simulation_directory,
+                        f"{file_prefix}q.npy"
+                    ),
                     self.solver.q
                 )
 
@@ -386,6 +417,9 @@ class SingleSimulation:
 
     @staticmethod
     def load_simulation_settings(simulation_folder: str):
+        # TODO Right now in a coupled sim the simulation settings
+        # are overrwriding itself
+        # Add additional possible label to prevent this
         simulation_name = os.path.basename(simulation_folder)
 
         # Check if folder has all necessary files

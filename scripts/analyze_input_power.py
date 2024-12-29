@@ -22,7 +22,11 @@ def plot_power(excitation, charge, delta_t):
     plt.plot(time_values, current, label="Strom")
     plt.plot(time_values, excitation, label="Spannung")
     plt.plot(time_values, power, label="elektrische Leistung")
-    plt.plot(time_values[:len(running_avg)], running_avg, label="Gleitender Mittelwert elektrische Leistung")
+    plt.plot(
+        time_values[:len(running_avg)],
+        running_avg,
+        label="Gleitender Mittelwert elektrische Leistung"
+    )
     plt.xlabel("Zeit in s")
     plt.ylabel("Leistung in W")
     plt.grid()

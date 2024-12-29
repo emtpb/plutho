@@ -21,10 +21,13 @@ class Mesh:
             gmsh.initialize()
 
         self.mesh_file_path = file_path
-        if os.path.isfile(file_path):
-            if load:
+        if load:
+            if os.path.isfile(file_path):
                 gmsh.open(file_path)
             else:
+                raise IOError(f"Mesh file {file_path} not found.")
+        else:
+            if os.path.isfile(file_path):
                 raise IOError(
                     "Mesh file already exists. If the file shall be loaded,"
                     "set the load parameter to True."

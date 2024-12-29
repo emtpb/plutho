@@ -369,9 +369,11 @@ class PiezoSimulation:
         with open(
                 os.path.join(
                     self.workspace_directory,
-                    f"{self.simulation_name}.cfg"),
+                    f"{self.simulation_name}.cfg"
+                ),
                 "w",
-                encoding="UTF-8") as fd:
+                encoding="UTF-8"
+            ) as fd:
             settings.write(fd)
 
     def load_simulation_results(self):
