@@ -55,7 +55,7 @@ if __name__ == "__main__":
         os.environ["piezo_fem_simulation_path"],
     )
 
-    material_data_folder = os.getenv("time_dep_material_data_path")
+    material_data_folder = os.getenv("material_data_path")
     if material_data_folder is None:
         print("Couldn't find material data path.")
         exit(1)

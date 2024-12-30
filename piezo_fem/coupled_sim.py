@@ -288,6 +288,7 @@ class CoupledFreqPiezoHeatCond:
             self.piezo_freq.material_manager.update_temperature(
                 temp_field_per_element
             )
+            self.piezo_freq.solver.assemble()
 
             time_index += 1
 
