@@ -10,13 +10,14 @@ import matplotlib.pyplot as plt
 # Local libraries
 import piezo_fem as pfem
 
+
 def run_simulation(working_directory, sim_name, mesh):
 
     piezo_delta_t = 1e-8
-    piezo_number_of_time_steps = 200
+    piezo_number_of_time_steps = 20000
 
     heat_cond_delta_t = 0.001
-    heat_cond_number_of_time_steps = 100
+    heat_cond_number_of_time_steps = 1000
 
     coupled_sim = pfem.CoupledThermPiezoHeatCond(
         working_directory,
@@ -50,6 +51,7 @@ def run_simulation(working_directory, sim_name, mesh):
     )
 
     coupled_sim.simulate()
+    coupled_sim.save_simulation_results()
 
 
 if __name__ == "__main__":
@@ -59,12 +61,16 @@ if __name__ == "__main__":
         os.environ["piezo_fem_simulation_path"],
     )
 
-    mesh = pfem.Mesh(
-        os.path.join(
-            os.environ["piezo_fem_simulation_path"],
-            "disc_mesh_0DOT0001.msh"
-        ),
-        True
+    run_simulation(
+        CWD,
+        SIM_NAME,
+        pfem.Mesh(
+            os.path.join(
+                os.environ["piezo_fem_simulation_path"],
+                "disc_mesh_0DOT0001.msh"
+            ),
+            True
+        )
     )
 
-    run_simulation(CWD, SIM_NAME, mesh)
+    

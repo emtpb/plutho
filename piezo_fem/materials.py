@@ -186,7 +186,12 @@ class MaterialManager:
         self.heat_capacity_local = np.zeros(self.number_of_elements)
         self.thermal_conductivity_local = np.zeros(self.number_of_elements)
 
-        if starting_temperature is None or not self.is_temperature_dependent:
+        if starting_temperature is None:
+            if self.is_temperature_dependent:
+                raise ValueError(
+                    "Please give a starting temperature when using temperature"
+                    " dependent material parameters."
+                )
             # Material is not temperature dependent
             for element_index in range(self.number_of_elements):
                 material_data = self.materials[

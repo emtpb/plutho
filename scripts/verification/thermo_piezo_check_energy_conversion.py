@@ -22,7 +22,7 @@ def compare_loss_energies(sim: pfem.PiezoSimulation):
     if isinstance(sim.solver, pfem.PiezoSimTherm):
         mech_loss = sim.solver.mech_loss
 
-        number_of_time_steps = sim.simulation_data.number_of_time_steps
+        number_of_time_steps = sim.solver.simulation_data.number_of_time_steps
         total_power = np.zeros(number_of_time_steps)
         elements = sim.mesh_data.elements
         nodes = sim.mesh_data.nodes
@@ -53,26 +53,27 @@ def compare_loss_energies(sim: pfem.PiezoSimulation):
         for time_step in range(number_of_time_steps):
             total_power[time_step] = np.dot(mech_loss[:, time_step], volumes)
 
+        excitation = sim.boundary_conditions[0]["values"]
         input_energy = pfem.calculate_electrical_input_energy(
-            sim.excitation, sim.solver.q, sim.simulation_data.delta_t)
+            excitation, sim.solver.q, sim.solver.simulation_data.delta_t)
 
         loss_energy = np.trapezoid(
             total_power,
             None,
-            sim.simulation_data.delta_t
+            sim.solver.simulation_data.delta_t
         )
 
         # Calculate thermal energy in last time step
         thermal_energy = pfem.postprocessing.calculate_stored_thermal_energy(
             sim.solver.u[3*len(nodes):, -2],
-            sim.mesh_data.nodes,
-            sim.mesh_data.elements,
+            sim.solver.mesh_data.nodes,
+            sim.solver.mesh_data.elements,
             sim.material_manager.get_heat_capacity(0),
             sim.material_manager.get_density(0)
         )
 
-        time_duration = sim.simulation_data.delta_t * \
-            sim.simulation_data.number_of_time_steps
+        time_duration = sim.solver.simulation_data.delta_t * \
+            sim.solver.simulation_data.number_of_time_steps
 
         max_duration = 1
         max_factor = max_duration/time_duration
@@ -106,7 +107,7 @@ def model(working_directory, sim_name):
     number_of_time_steps = 20000
     delta_t = 1e-8
     amplitude = 20
-    frequency = 2e5
+    frequency = 2e6
 
     sim.setup_thermal_piezo_time_domain(
         pfem.SimulationData(
@@ -141,7 +142,11 @@ def model(working_directory, sim_name):
         np.zeros(number_of_time_steps)
     )
 
-    sim.simulate()
+    electrode_elements = mesh.get_elements_by_physical_groups(
+        ["Electrode"]
+    )["Electrode"]
+
+    sim.simulate(electrode_elements=electrode_elements)
     sim.save_simulation_settings()
     sim.save_simulation_results()
 
@@ -156,16 +161,15 @@ if __name__ == "__main__":
         print("Couldn't find simulation path.")
         exit(1)
     MODEL_NAME = "energy_check_sinusoidal_20k_200kHz"
-    CONFIG_FILE_PATH = os.path.join(
+    SIM_FOLDER = os.path.join(
         CWD,
-        MODEL_NAME,
-        f"{MODEL_NAME}.cfg"
+        MODEL_NAME
     )
 
-    model(CWD, MODEL_NAME)
+    # model(CWD, MODEL_NAME)
 
     # Load data
-    simulation = pfem.SingleSimulation.load_simulation_settings(CWD)
+    simulation = pfem.SingleSimulation.load_simulation_settings(SIM_FOLDER)
     simulation.load_simulation_results()
 
     compare_loss_energies(simulation)

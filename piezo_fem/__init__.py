@@ -9,4 +9,4 @@ from .materials import pic255, MaterialData
 from .piezo_fem import PiezoSimulation, SimulationType
 from .simulation_handler import SingleSimulation, FieldType
 from .mesh import Mesh
-from .coupled_sim import CoupledThermPiezoHeatCond
+from .coupled_sim import CoupledThermPiezoHeatCond, CoupledFreqPiezoHeatCond

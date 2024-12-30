@@ -205,7 +205,16 @@ class SingleSimulation:
         )
 
     def simulate(self, **kwargs):
-        self.material_manager.initialize_materials()
+        starting_temperature = None
+        if "starting_temperature" in kwargs:
+            start_temp = kwargs["starting_temperature"]
+            if isinstance(start_temp, int) or isinstance(start_temp, float):
+                starting_temperature = start_temp*np.ones(
+                    len(self.mesh_data.elements)
+                )
+            else:
+                starting_temperature = kwargs["starting_temperature"]
+        self.material_manager.initialize_materials(starting_temperature)
 
         self.solver.dirichlet_nodes = np.array(self.dirichlet_nodes)
         self.solver.dirichlet_values = np.array(self.dirichlet_values)
@@ -214,9 +223,15 @@ class SingleSimulation:
             theta_start = None
             if "theta_start" in kwargs:
                 theta_start = kwargs["theta_start"]
-            self.solver.solve_time(
-                theta_start
-            )
+            if "time_step" in kwargs:
+                return self.solver.solve_until_material_parameters_change(
+                    theta_start,
+                    kwargs["time_step"]
+                )
+            else:
+                self.solver.solve_time(
+                    theta_start
+                )
         elif isinstance(self.solver, PiezoFreqSim):
             electrode_elements = None
             if "electrode_elements" in kwargs:
@@ -496,6 +511,7 @@ class SingleSimulation:
                     ),
                     material_settings[material_name]["physical_group_name"]
                 )
+        simulation.material_manager.initialize_materials()
 
         # Read boundary conditions
         with open(necessary_files[2], "r", encoding="UTF-8") as fd:

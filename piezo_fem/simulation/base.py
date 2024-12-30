@@ -2,7 +2,7 @@
 
 # Python standard libraries
 from typing import Tuple, Callable, List, Any, Union
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from enum import Enum
 import numpy as np
 import numpy.typing as npt
@@ -99,6 +99,32 @@ class MaterialData:
     heat_capacity: float
     temperatures: Union[float, npt.NDArray]
     density: float
+
+    def to_dict(self):
+        """Convert the dataclass to dict for json serialization."""
+        json_dict = {}
+        for attribute in fields(self.__class__):
+            value = getattr(self, attribute.name)
+            if isinstance(value, float) or isinstance(value, int):
+                json_dict[attribute.name] = value
+            elif isinstance(value, np.ndarray):
+                json_dict[attribute.name] = value.tolist()
+            else:
+                raise ValueError(
+                    "Wrong type saved in MaterialData. Value is of type "
+                    f"{type(value)}"
+                )
+        return json_dict
+
+    @staticmethod
+    def from_dict(contents):
+        """Convert given dict, e.g. from a json deserialization, to a
+        MaterialData object."""
+        for key, value in contents.items():
+            if isinstance(value, List):
+                contents[key] = np.array(value)
+
+        return MaterialData(**contents)
 
 
 ### Local functions and integrals

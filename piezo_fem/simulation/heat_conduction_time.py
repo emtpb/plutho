@@ -14,7 +14,7 @@ from .base import SimulationData, MeshData, \
     local_shape_functions, gradient_local_shape_functions, \
     local_to_global_coordinates, integral_m, LocalElementData, \
     quadratic_quadrature, line_quadrature, create_local_element_data, \
-    apply_dirichlet_bc
+    apply_dirichlet_bc, get_avg_temp_field_per_element
 from ..materials import MaterialManager
 
 
@@ -443,3 +443,96 @@ class HeatConductionSim:
                 print(f"Finished time step {time_index+1}")
 
         self.theta = theta
+
+    def solve_until_material_parameters_change(
+            self,
+            theta_start,
+            start_index):
+        """Runs the simulation using the assembled c and k matrices as well
+        as the set excitation.
+        Calculates the temperature field and saves it in theta.
+        """
+        number_of_time_steps = self.simulation_data.number_of_time_steps
+        gamma = self.simulation_data.gamma
+        delta_t = self.simulation_data.delta_t
+
+        c = self.c
+        k = self.k
+
+        # Init arrays
+        if start_index == 0:
+            if theta_start is not None:
+                self.theta[:, start_index] = theta_start
+
+            self.theta = np.zeros(
+                (k.shape[0], number_of_time_steps),
+                dtype=np.float64
+            )
+            # theta derived after t (du/dt)
+            self.theta_dt = np.zeros(
+                (k.shape[0], number_of_time_steps),
+                dtype=np.float64)
+
+        _, c, k = apply_dirichlet_bc(
+            np.zeros(c.shape),
+            c,
+            k,
+            self.dirichlet_nodes
+        )
+
+        k_star = (k+1/(gamma*delta_t)*c).tocsr()
+
+        print("Starting heat conduction simulation")
+        for time_index in range(start_index, number_of_time_steps-1):
+            # Set dirichlet nodes for the load vector
+            # The load vector could already contain e.g. energy sources
+            # which are overwritten at the points where a dirichlet bc is set.
+            f = self.set_dirichlet_bc_load_vector(
+                self.f[:, time_index],
+                self.dirichlet_nodes,
+                self.dirichlet_values,
+                time_index+1
+            )
+
+            # Add a convection boundary condition if it set
+            if self.enable_convection_bc:
+                f += self._calculate_convection_bc(
+                    self.mesh_data.nodes,
+                    self.convective_b_e,
+                    self.theta[:, time_index],
+                    self.convective_alpha,
+                    self.convective_outer_temp
+                )
+
+            # Perform Newmark method
+            # Predictor step
+            theta_tilde = (
+                self.theta[:, time_index]
+                + (1-gamma)*delta_t*self.theta_dt[:, time_index]
+            )
+
+            # Solve for next time step
+            self.theta[:, time_index+1] = slin.spsolve(
+                k_star, (
+                    f
+                    + 1/(gamma*delta_t)*c*theta_tilde
+                )
+            )
+
+            # Perform corrector step
+            self.theta_dt[:, time_index+1] = \
+                (self.theta[:, time_index+1]-theta_tilde)/(gamma*delta_t)
+
+            if (time_index + 1) % 100 == 0:
+                print(f"Finished time step {time_index+1}")
+
+            # Check if material parameters would change
+            temp_field_per_element = get_avg_temp_field_per_element(
+                self.theta[:, -1],
+                self.mesh_data.elements
+            )
+            if self.material_manager.update_temperature(
+                temp_field_per_element
+            ):
+                return time_index
+        return number_of_time_steps

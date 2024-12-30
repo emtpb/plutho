@@ -225,14 +225,14 @@ def example_piezo_freq_sim(base_directory):
 
 
 def example_therm_piezo_sim(base_directory):
-    sim_name = "therm_piezo_sim_test_new_model"
+    sim_name = "test_temp"
     mesh = pfem.Mesh(
-        os.path.join(base_directory, "disc_mesh.msh"),
+        os.path.join(base_directory, "disc_mesh_default.msh"),
         True
     )
 
     delta_t = 1e-8
-    number_of_time_steps = 8192
+    number_of_time_steps = 100
 
     # Create single simulation object
     sim = pfem.SingleSimulation(
@@ -286,6 +286,7 @@ def example_therm_piezo_sim(base_directory):
     # Run simulation
     sim.simulate(electrode_elements=electrode_elements)
     sim.save_simulation_results()
+    sim.save_simulation_settings()
 
 
 def real_model(base_directory):
@@ -334,5 +335,5 @@ if __name__ == "__main__":
     # real_model(CWD)
     # example_heat_cond(CWD)
     # example_piezo_sim(CWD)
-    example_piezo_freq_sim(CWD)
-    # example_therm_piezo_sim(CWD)
+    # example_piezo_freq_sim(CWD)
+    example_therm_piezo_sim(CWD)

@@ -36,13 +36,14 @@ def loss_integral_scs(
         elasticity_matrix: Elasticity matrix for the current element (c matrix)
     """
     def inner(s, t):
-        r = local_to_global_coordinates(node_points, s, t, )[0]
+        r = local_to_global_coordinates(node_points, s, t)[0]
         b_opt = b_operator_global(node_points, s, t, jacobian_inverted_t)
 
         s_e = np.dot(b_opt, u_e)
         dt_s = 1j*angular_frequency*s_e
 
-        return np.dot(dt_s.T, np.dot(elasticity_matrix.T, dt_s))*r
+        # return np.dot(dt_s.T, np.dot(elasticity_matrix.T, dt_s))*r
+        return np.dot(np.conjugate(s_e).T, np.dot(elasticity_matrix.T, s_e))*r
 
     return quadratic_quadrature(inner)
 
@@ -271,7 +272,7 @@ class PiezoFreqSim:
             f"Starting frequency simulation. There are {len(frequencies)} "
             "frequency steps."
         )
-        for index, frequency in enumerate(frequencies):
+        for frequency_index, frequency in enumerate(frequencies):
             angular_frequency = 2*np.pi*frequency
 
             a = (
@@ -283,14 +284,14 @@ class PiezoFreqSim:
             f = self.get_load_vector(
                 self.dirichlet_nodes,
                 self.dirichlet_values,
-                index
+                frequency_index
             )
 
-            u[:, index] = slin.spsolve(a, f)
+            u[:, frequency_index] = slin.spsolve(a, f)
 
             if electrode_elements is not None:
-                q[index] = calculate_charge(
-                    u[:, index],
+                q[frequency_index] = calculate_charge(
+                    u[:, frequency_index],
                     self.material_manager,
                     electrode_elements,
                     self.mesh_data.nodes
@@ -306,15 +307,15 @@ class PiezoFreqSim:
 
                 # Get field values
                 u_e = np.array([
-                    u[2*element[0], index],
-                    u[2*element[0]+1, index],
-                    u[2*element[1], index],
-                    u[2*element[1]+1, index],
-                    u[2*element[2], index],
-                    u[2*element[2]+1, index]])
+                    u[2*element[0], frequency_index],
+                    u[2*element[0]+1, frequency_index],
+                    u[2*element[1], frequency_index],
+                    u[2*element[1]+1, frequency_index],
+                    u[2*element[2], frequency_index],
+                    u[2*element[2]+1, frequency_index]])
 
                 if calculate_mech_loss:
-                    mech_loss[index] = (
+                    mech_loss[element_index, frequency_index] = (
                         loss_integral_scs(
                             node_points,
                             u_e,
@@ -327,6 +328,8 @@ class PiezoFreqSim:
                         * 2 * np.pi * jacobian_det
                         * self.material_manager.get_alpha_k(element_index)
                         * 1/volumes[element_index]
+                        # TODO Actually this must be multiplied with -1
+                        * 1/2 * angular_frequency**2
                     )
 
         self.u = u
