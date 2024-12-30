@@ -347,7 +347,7 @@ class SingleSimulation:
             simulation_type = "PiezoTime"
         elif isinstance(self.solver, PiezoFreqSim):
             simulation_type = "PiezoFreq"
-        elif isinstance(self.solver, PiezoFreqSim):
+        elif isinstance(self.solver, PiezoSimTherm):
             simulation_type = "ThermoPiezo"
         else:
             raise ValueError(
