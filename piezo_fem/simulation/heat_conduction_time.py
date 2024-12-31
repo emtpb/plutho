@@ -461,13 +461,12 @@ class HeatConductionSim:
 
         # Init arrays
         if start_index == 0:
-            if theta_start is not None:
-                self.theta[:, start_index] = theta_start
-
             self.theta = np.zeros(
                 (k.shape[0], number_of_time_steps),
                 dtype=np.float64
             )
+            if theta_start is not None:
+                self.theta[:, start_index] = theta_start
             # theta derived after t (du/dt)
             self.theta_dt = np.zeros(
                 (k.shape[0], number_of_time_steps),

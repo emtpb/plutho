@@ -221,6 +221,7 @@ class SingleSimulation:
         self.solver.assemble()
         if isinstance(self.solver, HeatConductionSim):
             theta_start = None
+            # TODO Rename theta start and starting temperature
             if "theta_start" in kwargs:
                 theta_start = kwargs["theta_start"]
             if "time_step" in kwargs:

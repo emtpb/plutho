@@ -44,7 +44,9 @@ def run_simulation(
 
     coupled_sim.set_excitation(amplitude)
 
-    coupled_sim.simulate(starting_temperature=20)
+    coupled_sim.simulate_coupled(
+        starting_temperature=20,
+        is_temperature_dependent=True)
     coupled_sim.save_simulation_results()
 
 

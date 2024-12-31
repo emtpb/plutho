@@ -254,14 +254,67 @@ class CoupledFreqPiezoHeatCond:
                 np.zeros(1)
             )
 
-    def simulate(self, **kwargs):
+    def simulate_coupled(self, starting_temperature, is_temperature_dependent):
 
         time_index = 0
         number_of_time_steps = \
             self.heat_cond_sim.solver.simulation_data.number_of_time_steps
-        while time_index < number_of_time_steps:
+
+        if is_temperature_dependent:
+            temp_field_per_element = None
+            while time_index < number_of_time_steps:
+                # Run piezofreq simulation
+                if time_index == 0:
+                    self.piezo_freq.simulate(
+                        calculate_mech_loss=True,
+                        starting_temperature=starting_temperature
+                    )
+                else:
+                    self.piezo_freq.simulate(
+                        calculate_mech_loss=True,
+                        starting_temperature=temp_field_per_element
+                    )
+                # Get mech losses
+                mech_loss = np.real(self.piezo_freq.solver.mech_loss[:, 0])
+
+                # Use mech losses for heat conduction simulation
+                self.heat_cond_sim.solver.f *= 0  # Reset load vector
+                self.heat_cond_sim.solver.set_constant_volume_heat_source(
+                    mech_loss,
+                    number_of_time_steps
+                )
+                if time_index == 0:
+                    time_index = self.heat_cond_sim.simulate(
+                        time_step=0,
+                        starting_temperature=starting_temperature
+                    )
+                else:
+                    time_index = self.heat_cond_sim.simulate(
+                        time_step=time_index,
+                        starting_temperature=temp_field_per_element,
+                        theta_start=self.heat_cond_sim.solver.theta[
+                            :,
+                            time_index-1
+                        ]
+                    )
+                if time_index == number_of_time_steps:
+                    break
+
+                # Simulation is not done. Get the temp per element and
+                # in the next iteration set it for the piezo freq simulation
+                # to calculate the new mech losses
+                print(
+                    f"Updating material parameters at time step {time_index}"
+                )
+                temp_field_per_element = get_avg_temp_field_per_element(
+                    self.heat_cond_sim.solver.theta[:, time_index],
+                    self.heat_cond_sim.solver.mesh_data.elements
+                )
+
+                time_index += 1
+        else:
             # Run piezofreq simulation
-            self.piezo_freq.simulate(calculate_mech_loss=True, **kwargs)
+            self.piezo_freq.simulate(calculate_mech_loss=True)
 
             # Get mech losses
             mech_loss = np.real(self.piezo_freq.solver.mech_loss[:, 0])
@@ -271,26 +324,7 @@ class CoupledFreqPiezoHeatCond:
                 mech_loss,
                 number_of_time_steps
             )
-            time_index = self.heat_cond_sim.simulate(
-                time_step=time_index,
-                **kwargs
-            )
-            if time_index == number_of_time_steps:
-                break
-
-            # Simulation is not done, new mech losses must be calculated
-            # Update material parameters for freq simulation
-            print(f"Updating material parameters at time step {time_index}")
-            temp_field_per_element = get_avg_temp_field_per_element(
-                self.heat_cond_sim.solver.theta[:, time_index],
-                self.heat_cond_sim.solver.mesh_data.elements
-            )
-            self.piezo_freq.material_manager.update_temperature(
-                temp_field_per_element
-            )
-            self.piezo_freq.solver.assemble()
-
-            time_index += 1
+            self.heat_cond_sim.simulate()
 
     def save_simulation_results(self):
         """Saves the simulation results to the simulation folder."""

@@ -54,7 +54,7 @@ def plot_scalar_field(
 if __name__ == "__main__":
     load_dotenv()
 
-    MODEL_NAME = "heat_cond_sim_check_model"
+    MODEL_NAME = "coupled_piezo_freq_heat_cond"
     simulation_folder = os.environ["piezo_fem_simulation_path"]
     plot_folder = os.environ["piezo_fem_plot_path"]
 
@@ -68,15 +68,23 @@ if __name__ == "__main__":
     theta = np.load(os.path.join(
         current_sim_folder,
         #"theta_1ms",
-        f"theta_field.npy"
+        f"heat_cond_theta.npy"
+    ))
+    mech_loss = np.load(os.path.join(
+        current_sim_folder,
+        "piezo_freq_mech_loss.npy"
     ))
 
     gmsh_handler = pfem.gmsh_handler.GmshHandler(
         #os.path.join(current_sim_folder, f"{MODEL_NAME}_disc.msh"),
-        os.path.join(current_sim_folder, f"mesh.msh"),
+        os.path.join(simulation_folder, f"disc_mesh_0DOT0001.msh"),
         True
     )
-    nodes, elemens = gmsh_handler.get_mesh_nodes_and_elements()
+    nodes, elements = gmsh_handler.get_mesh_nodes_and_elements()
+
+    #total_mech_loss = 0
+    #for element_index, element in enumerate(elements):
+    #    current_volume = 
 
     plot_scalar_field(
         theta[:, -1],
