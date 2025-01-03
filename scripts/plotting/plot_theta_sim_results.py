@@ -85,7 +85,6 @@ if __name__ == "__main__":
     #total_mech_loss = 0
     #for element_index, element in enumerate(elements):
     #    current_volume = 
-
     plot_scalar_field(
         theta[:, -1],
         nodes,

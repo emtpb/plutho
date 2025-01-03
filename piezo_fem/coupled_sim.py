@@ -254,12 +254,14 @@ class CoupledFreqPiezoHeatCond:
                 np.zeros(1)
             )
 
-    def simulate_coupled(self, starting_temperature, is_temperature_dependent):
-
+    def simulate_coupled(
+            self,
+            starting_temperature: float,
+            is_temperature_dependent: bool):
         time_index = 0
         number_of_time_steps = \
             self.heat_cond_sim.solver.simulation_data.number_of_time_steps
-
+        number_of_nodes = len(self.heat_cond_sim.solver.mesh_data.nodes)
         if is_temperature_dependent:
             temp_field_per_element = None
             while time_index < number_of_time_steps:
@@ -286,16 +288,15 @@ class CoupledFreqPiezoHeatCond:
                 if time_index == 0:
                     time_index = self.heat_cond_sim.simulate(
                         time_step=0,
-                        starting_temperature=starting_temperature
+                        starting_temperature=starting_temperature,
+                        theta_start=starting_temperature*np.ones(
+                            number_of_nodes
+                        )
                     )
                 else:
                     time_index = self.heat_cond_sim.simulate(
                         time_step=time_index,
-                        starting_temperature=temp_field_per_element,
-                        theta_start=self.heat_cond_sim.solver.theta[
-                            :,
-                            time_index-1
-                        ]
+                        starting_temperature=temp_field_per_element
                     )
                 if time_index == number_of_time_steps:
                     break
