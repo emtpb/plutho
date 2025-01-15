@@ -4,3 +4,5 @@ from .base import MaterialData, SimulationData, MeshData, ModelType, \
     SimulationType
 from .heat_conduction_time import HeatConductionSim
 from .piezo_freq import PiezoFreqSim
+from .nonlinear import NonlinearPiezoSim
+
