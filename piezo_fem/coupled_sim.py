@@ -193,7 +193,7 @@ class CoupledThermPiezoHeatCond:
 
     def save_simulation_settings(self):
         """Saves the simulation settings to the simulation folder."""
-        self.piezo_freq.save_simulation_settings("piezo_freq")
+        self.piezo_sim.save_simulation_settings("piezo_freq")
         self.heat_cond_sim.save_simulation_results("heat_cond")
 
 class CoupledFreqPiezoHeatCond:

@@ -62,12 +62,10 @@ if __name__ == "__main__":
         os.path.join(CWD, "ring_mesh_0DOT00004.msh"),
         True
     )
-    working_directory = os.path.join(CWD, sim_name)
-
     run_simulation(working_directory, sim_name, mesh)
 
     # Analyze results
-    sim = pfem.SingleSimulation.load_simulation_settings(CWD)
+    sim = pfem.SingleSimulation.load_simulation_settings(working_directory)
     sim.load_simulation_results()
 
     impedance_fem = np.abs(1/(1j*2*np.pi*sim.solver.frequencies*sim.solver.q))
