@@ -61,7 +61,7 @@ if __name__ == "__main__":
     CWD = os.path.join(
         os.environ["piezo_fem_simulation_path"],
     )
-    # run_simulation(CWD, SIM_NAME)
+    run_simulation(CWD, SIM_NAME)
 
     # Load simulation results
     mech_loss_time = np.load(os.path.join(CWD, SIM_NAME, "mech_loss_time.npy"))

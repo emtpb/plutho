@@ -50,11 +50,14 @@ def plot_scalar_field(
     plt.ylabel("Höhe $z$ / m")
     plt.show()
 
+    #if tikz_output_path != "":
+    #    tikzplotlib.save(tikz_output_path)
+
 
 if __name__ == "__main__":
     load_dotenv()
 
-    MODEL_NAME = "coupled_piezo_freq_heat_cond"
+    MODEL_NAME = "coupled_pic181_thermo_freq_temp_independent_20c_coarse"
     simulation_folder = os.environ["piezo_fem_simulation_path"]
     plot_folder = os.environ["piezo_fem_plot_path"]
 
@@ -68,23 +71,27 @@ if __name__ == "__main__":
     theta = np.load(os.path.join(
         current_sim_folder,
         #"theta_1ms",
-        f"heat_cond_theta.npy"
-    ))
-    mech_loss = np.load(os.path.join(
-        current_sim_folder,
-        "piezo_freq_mech_loss.npy"
+        "heat_cond_theta.npy"
     ))
 
+    #mech_loss = np.load(
+    #    os.path.join(
+    #        current_sim_folder,
+    #        "piezo_freq_mech_loss.npy"
+    #    )
+    #)
+
     gmsh_handler = pfem.gmsh_handler.GmshHandler(
-        #os.path.join(current_sim_folder, f"{MODEL_NAME}_disc.msh"),
-        os.path.join(simulation_folder, f"disc_mesh_0DOT0001.msh"),
+        os.path.join(simulation_folder, "ring_mesh_0DOT0001.msh"),
         True
     )
     nodes, elements = gmsh_handler.get_mesh_nodes_and_elements()
 
-    #total_mech_loss = 0
-    #for element_index, element in enumerate(elements):
-    #    current_volume = 
+    #print(mech_loss.shape)
+    # plt.plot(mech_loss[1079, :])
+    # plt.show()
+    # exit(0)
+    # print(theta.shape)
     plot_scalar_field(
         theta[:, -1],
         nodes,

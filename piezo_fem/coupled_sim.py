@@ -128,6 +128,28 @@ class CoupledThermPiezoHeatCond:
                 np.zeros(len(excitation))
             )
 
+    def set_convection_bc(
+            self,
+            alpha,
+            outer_temperature):
+        boundary_elements = \
+            self.heat_cond_sim.mesh.get_elements_by_physical_groups(
+                ["Electrode", "Ground", "RightBoundary"]
+            )
+        convective_bc_elements = np.vstack(
+            [
+                boundary_elements["Electrode"],
+                boundary_elements["Ground"],
+                boundary_elements["RightBoundary"]
+            ]
+        )
+
+        self.heat_cond_sim.solver.set_convection_bc(
+            convective_bc_elements,
+            alpha,
+            outer_temperature
+        )
+
     def simulate(self, **kwargs):
         """Runs the coupled simulation. First the thermo-piezoelectric
         simulation is run. Then the power losses in the stationary state
@@ -159,7 +181,10 @@ class CoupledThermPiezoHeatCond:
         number_of_nodes = len(self.piezo_sim.mesh_data.nodes)
         theta_start = self.piezo_sim.solver.u[3*number_of_nodes:, -1]
 
-        self.heat_cond_sim.simulate(theta_start=theta_start)
+        self.heat_cond_sim.simulate(
+            theta_start=theta_start,
+            **kwargs
+        )
 
     def save_simulation_results(self):
         """Saves the simulation results to the simulation folder."""
@@ -265,7 +290,7 @@ class CoupledFreqPiezoHeatCond:
         if is_temperature_dependent:
             temp_field_per_element = None
             while time_index < number_of_time_steps:
-                # Run piezofreq simulation
+                # Run piezo_freq simulation
                 if time_index == 0:
                     self.piezo_freq.simulate(
                         calculate_mech_loss=True,
@@ -274,10 +299,15 @@ class CoupledFreqPiezoHeatCond:
                 else:
                     self.piezo_freq.simulate(
                         calculate_mech_loss=True,
-                        starting_temperature=temp_field_per_element
+                        initialize_materials=False
+                    )
+                    self.piezo_freq.material_manager.update_temperature(
+                        temp_field_per_element
                     )
                 # Get mech losses
-                mech_loss = np.real(self.piezo_freq.solver.mech_loss[:, 0])
+                mech_loss = np.real(
+                    self.piezo_freq.solver.mech_loss[:, 0]
+                )
 
                 # Use mech losses for heat conduction simulation
                 self.heat_cond_sim.solver.f *= 0  # Reset load vector
@@ -288,15 +318,15 @@ class CoupledFreqPiezoHeatCond:
                 if time_index == 0:
                     time_index = self.heat_cond_sim.simulate(
                         time_step=0,
-                        starting_temperature=starting_temperature,
                         theta_start=starting_temperature*np.ones(
                             number_of_nodes
-                        )
+                        ),
+                        starting_temperature=starting_temperature
                     )
                 else:
                     time_index = self.heat_cond_sim.simulate(
                         time_step=time_index,
-                        starting_temperature=temp_field_per_element
+                        starting_temperature=starting_temperature
                     )
                 if time_index == number_of_time_steps:
                     break
@@ -311,11 +341,12 @@ class CoupledFreqPiezoHeatCond:
                     self.heat_cond_sim.solver.theta[:, time_index],
                     self.heat_cond_sim.solver.mesh_data.elements
                 )
-
-                time_index += 1
         else:
             # Run piezofreq simulation
-            self.piezo_freq.simulate(calculate_mech_loss=True)
+            self.piezo_freq.simulate(
+                calculate_mech_loss=True,
+                starting_temperature=starting_temperature
+            )
 
             # Get mech losses
             mech_loss = np.real(self.piezo_freq.solver.mech_loss[:, 0])
@@ -325,7 +356,12 @@ class CoupledFreqPiezoHeatCond:
                 mech_loss,
                 number_of_time_steps
             )
-            self.heat_cond_sim.simulate()
+            self.heat_cond_sim.simulate(
+                starting_temperature=starting_temperature,
+                theta_start=starting_temperature*np.ones(
+                    number_of_nodes
+                )
+            )
 
     def save_simulation_results(self):
         """Saves the simulation results to the simulation folder."""

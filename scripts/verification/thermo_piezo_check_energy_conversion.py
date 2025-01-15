@@ -93,7 +93,7 @@ def model(working_directory, sim_name):
         base_directory: Directory where the simulation directory is created.
     """
     mesh = pfem.Mesh(
-        os.path.join(working_directory, "disc_mesh_0DOT00004.msh"),
+        os.path.join(working_directory, "disc_mesh_0DOT0001.msh"),
         True
     )
 
@@ -104,10 +104,8 @@ def model(working_directory, sim_name):
     )
 
     # Simulation parameters
-    number_of_time_steps = 8192
+    number_of_time_steps = 20000
     delta_t = 1e-8
-    amplitude = 20
-    frequency = 2e6
 
     sim.setup_thermal_piezo_time_domain(
         pfem.SimulationData(
@@ -123,18 +121,20 @@ def model(working_directory, sim_name):
         None
     )
 
-    #time_steps = np.arange(number_of_time_steps)*delta_t
+    time_steps = np.arange(number_of_time_steps)*delta_t
     #excitation = amplitude*np.sin(2*np.pi*frequency*time_steps)
+    from scipy import signal
+    _, exc = signal.gausspulse(time_steps-25*delta_t, fc=1/(10*delta_t), retenv=True)
 
-    excitation = np.zeros(number_of_time_steps)
-    excitation[1:10] = (
-        1 * np.array([0.2, 0.4, 0.6, 0.8, 1, 0.8, 0.6, 0.4, 0.2])
-    )
+    # excitation = np.zeros(number_of_time_steps)
+    # excitation[1:10] = (
+    #     1 * np.array([0.2, 0.4, 0.6, 0.8, 1, 0.8, 0.6, 0.4, 0.2])
+    # )
 
     sim.add_dirichlet_bc(
         pfem.FieldType.PHI,
         "Electrode",
-        excitation
+        exc
     )
     sim.add_dirichlet_bc(
         pfem.FieldType.PHI,
@@ -165,7 +165,7 @@ if __name__ == "__main__":
     if CWD is None:
         print("Couldn't find simulation path.")
         exit(1)
-    MODEL_NAME = "energy_check_triangular_test"
+    MODEL_NAME = "energy_check_triangular_20k"
     SIM_FOLDER = os.path.join(
         CWD,
         MODEL_NAME

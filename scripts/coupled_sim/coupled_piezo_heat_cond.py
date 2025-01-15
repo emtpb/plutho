@@ -47,30 +47,34 @@ def run_simulation(working_directory, sim_name, mesh):
     frequency = 2e6
     time_values = np.arange(piezo_number_of_time_steps)*piezo_delta_t
     coupled_sim.set_excitation(
-        amplitude*np.sin(2*np.pi*frequency*time_values)
+        amplitude*np.sin(2*np.pi*frequency*time_values),
+        True
     )
-
+    coupled_sim.set_convection_bc(
+        80,
+        20
+    )
     coupled_sim.simulate()
     coupled_sim.save_simulation_results()
 
 
 if __name__ == "__main__":
     load_dotenv()
-    SIM_NAME = "coupled_therm_piezo_heat_cond"
+    SIM_NAME = "coupled_therm_piezo_heat_cond_convection_bc"
     CWD = os.path.join(
         os.environ["piezo_fem_simulation_path"],
+    )
+
+    mesh = pfem.Mesh(
+        os.path.join(
+            os.environ["piezo_fem_simulation_path"],
+            "disc_mesh_0DOT0001.msh"
+        ),
+        True
     )
 
     run_simulation(
         CWD,
         SIM_NAME,
-        pfem.Mesh(
-            os.path.join(
-                os.environ["piezo_fem_simulation_path"],
-                "disc_mesh_0DOT0001.msh"
-            ),
-            True
-        )
+        mesh
     )
-
-    

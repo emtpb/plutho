@@ -135,6 +135,8 @@ class Mesh:
         gmsh.model.setPhysicalName(1, boundary_left, "Symaxis")
         boundary_bottom = gmsh.model.geo.addPhysicalGroup(1, [bottom_line])
         gmsh.model.setPhysicalName(1, boundary_bottom, "Ground")
+        boundary_right = gmsh.model.geo.addPhysicalGroup(1, [right_line])
+        gmsh.model.setPhysicalName(1, boundary_right, "RightBoundary")
 
         model = gmsh.model.geo.addPhysicalGroup(2, [surface])
         gmsh.model.setPhysicalName(2, model, "Surface")

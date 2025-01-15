@@ -37,7 +37,7 @@ def run_simulation(
     )
 
     coupled_sim.add_material(
-        "pic255",
+        "pic181",
         material_data,
         None
     )

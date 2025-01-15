@@ -398,6 +398,9 @@ class HeatConductionSim:
 
         k_star = (k+1/(gamma*delta_t)*c).tocsr()
 
+        if self.enable_convection_bc:
+            print("Convection bc is enabled")
+
         print("Starting heat conduction simulation")
         for time_index in range(number_of_time_steps-1):
             # Set dirichlet nodes for the load vector
@@ -531,7 +534,6 @@ class HeatConductionSim:
                 self.mesh_data.elements
             )
             if self.material_manager.update_temperature(
-                temp_field_per_element
-            ):
-                return time_index
+                    temp_field_per_element):
+                return time_index+1
         return number_of_time_steps

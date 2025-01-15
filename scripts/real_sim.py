@@ -169,12 +169,17 @@ def example_piezo_sim(base_directory):
 
 
 def example_piezo_freq_sim(base_directory):
-    sim_name = "piezo_sim_freq_test_new_model"
+    sim_name = "impedance_pic181_20c_coarse"
     mesh = pfem.Mesh(
-        os.path.join(base_directory, "disc_mesh.msh"),
+        os.path.join(base_directory, "ring_mesh_0DOT0001.msh"),
         True
     )
-    mesh.generate_rectangular_mesh(mesh_size=0.00004)
+    # mesh.generate_rectangular_mesh(
+    #     width=0.00635-0.0026,
+    #     height=0.001,
+    #     mesh_size=0.00004,
+    #     x_offset=0.0026
+    # )
 
     frequencies = np.linspace(0, 1e7, 1000)[1:]
 
@@ -190,8 +195,8 @@ def example_piezo_freq_sim(base_directory):
 
     # Add materials
     sim.add_material(
-        "pic255",
-        pfem.materials.pic255_alpha_m_nonzero,
+        "pic181_20c",
+        pfem.materials.pic181_20_extrapolated,
         None
     )
 
@@ -206,11 +211,11 @@ def example_piezo_freq_sim(base_directory):
         "Ground",
         np.zeros(len(frequencies))
     )
-    sim.add_dirichlet_bc(
-        pfem.FieldType.U_R,
-        "Symaxis",
-        np.zeros(len(frequencies))
-    )
+    # sim.add_dirichlet_bc(
+    #     pfem.FieldType.U_R,
+    #     "Symaxis",
+    #     np.zeros(len(frequencies))
+    # )
 
     electrode_elements = mesh.get_elements_by_physical_groups(
         ["Electrode"]
@@ -225,9 +230,9 @@ def example_piezo_freq_sim(base_directory):
 
 
 def example_therm_piezo_sim(base_directory):
-    sim_name = "test_temp"
+    sim_name = "pic181_thermopiezo_20k"
     mesh = pfem.Mesh(
-        os.path.join(base_directory, "disc_mesh_default.msh"),
+        os.path.join(base_directory, "disc_mesh_0DOT0001.msh"),
         True
     )
 
@@ -253,8 +258,8 @@ def example_therm_piezo_sim(base_directory):
 
     # Add materials
     sim.add_material(
-        "pic255",
-        pfem.materials.pic255_alpha_m_nonzero,
+        "pic181",
+        pfem.materials.pic181,
         None
     )
 
@@ -284,7 +289,12 @@ def example_therm_piezo_sim(base_directory):
     )["Electrode"]
 
     # Run simulation
-    sim.simulate(electrode_elements=electrode_elements)
+    sim.material_manager.is_temperature_dependent = False
+    sim.material_manager.print_material_data(0)
+    sim.simulate(
+        electrode_elements=electrode_elements,
+        starting_temperature=20
+    )
     sim.save_simulation_results()
     sim.save_simulation_settings()
 
@@ -335,5 +345,5 @@ if __name__ == "__main__":
     # real_model(CWD)
     # example_heat_cond(CWD)
     # example_piezo_sim(CWD)
-    # example_piezo_freq_sim(CWD)
-    example_therm_piezo_sim(CWD)
+    example_piezo_freq_sim(CWD)
+    # example_therm_piezo_sim(CWD)

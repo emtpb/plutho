@@ -16,6 +16,7 @@ class Material:
     """Class to handle a single material. The material can have either constant
     material properties or temperature variant properties.
     The temperature properties are determined using linear interpolation.
+Plugin 'tmsvg/pear-tree'
 
     Attributes:
         material_name: Name of the material.
@@ -117,6 +118,16 @@ class Material:
         self.eps33_interp = interpolate.interp1d(
             self.material_data.temperatures,
             self.material_data.eps33,
+            fill_value="extrapolate"
+        )
+        self.alpha_k_interp = interpolate.interp1d(
+            self.material_data.temperatures,
+            self.material_data.alpha_k,
+            fill_value="extrapolate"
+        )
+        self.alpha_m_interp = interpolate.interp1d(
+            self.material_data.temperatures,
+            self.material_data.alpha_m,
             fill_value="extrapolate"
         )
 
@@ -250,10 +261,12 @@ class MaterialManager:
                 self.eps33_local[element_index] = material.eps33_interp(
                     starting_temperature[element_index]
                 )
-                self.alpha_k_local[element_index] = \
-                    material.material_data.alpha_k
-                self.alpha_m_local[element_index] = \
-                    material.material_data.alpha_m
+                self.alpha_k_local[element_index] = material.alpha_k_interp(
+                    starting_temperature[element_index]
+                )
+                self.alpha_m_local[element_index] = material.alpha_m_interp(
+                    starting_temperature[element_index]
+                )
                 self.density_local[element_index] = \
                     material.material_data.density
                 self.heat_capacity_local[element_index] = \
@@ -292,6 +305,8 @@ class MaterialManager:
         e33_updated = np.zeros(self.number_of_elements)
         eps11_updated = np.zeros(self.number_of_elements)
         eps33_updated = np.zeros(self.number_of_elements)
+        alpha_m_updated = np.zeros(self.number_of_elements)
+        alpha_k_updated = np.zeros(self.number_of_elements)
 
         for element_index in range(self.number_of_elements):
             current_material = self.materials[
@@ -325,6 +340,12 @@ class MaterialManager:
                 local_temperatures[element_index]
             )
             eps33_updated[element_index] = current_material.eps33_interp(
+                local_temperatures[element_index]
+            )
+            alpha_k_updated[element_index] = current_material.alpha_k_interp(
+                local_temperatures[element_index]
+            )
+            alpha_m_updated[element_index] = current_material.alpha_m_interp(
                 local_temperatures[element_index]
             )
 
@@ -386,6 +407,16 @@ class MaterialManager:
                       self.eps33_local > threshold):
                 update = True
 
+        if not update:
+            if np.any(np.abs(self.alpha_k_local - alpha_k_updated) /
+                      self.alpha_k_local > threshold):
+                update = True
+
+        if not update:
+            if np.any(np.abs(self.alpha_m_local - alpha_m_updated) /
+                      self.alpha_m_local > threshold):
+                update = True
+
         # If any value changed enough, all values can be updated
         if update:
             self.c11_local = c11_updated
@@ -398,6 +429,8 @@ class MaterialManager:
             self.e33_local = e33_updated
             self.eps11_local = eps11_updated
             self.eps33_local = eps33_updated
+            self.alpha_k_local = alpha_k_updated
+            self.alpha_m_local = alpha_m_updated
 
         return update
 
@@ -415,12 +448,10 @@ class MaterialManager:
 
     def get_alpha_m(self, element_index: int):
         """Returns the alpha m material parameter."""
-        # TODO Make temperature dependent
         return self.alpha_m_local[element_index]
 
     def get_alpha_k(self, element_index: int):
         """Returns the alpha k material parameter."""
-        # TODO Make temperature dependent
         return self.alpha_k_local[element_index]
 
     def get_permittivity_matrix(self, element_index: int):
@@ -516,6 +547,48 @@ pic255_alpha_m_nonzero = MaterialData(
         "alpha_m": 1.267e5,
         "alpha_k": 6.259e-10,
         "density": 7800,
+        "heat_capacity": 350,
+        "thermal_conductivity": 1.1,
+        "temperatures": 20
+    }
+)
+
+pic255_olga = MaterialData(
+    **{
+        "c11": 1.11e11,
+        "c12": 0.72e11,
+        "c13": 0.79e11,
+        "c33": 1.19e11,
+        "c44": 0.2e11,
+        "e15": 12.09,  # 2.35e-6,
+        "e31": -6.57,
+        "e33": 15.18,
+        "eps11": 8.15e-9,  # 167.8e-9,
+        "eps33": 6.59e-9,
+        "alpha_m": 1.343e5,
+        "alpha_k": 7.278e-10,
+        "density": 7800,
+        "heat_capacity": 350,
+        "thermal_conductivity": 1.1,
+        "temperatures": 20
+    }
+)
+
+pic181_20_extrapolated = MaterialData(
+    **{
+        "c11": 1.4099e11,
+        "c12": 0.8196e11,
+        "c13": 0.8036e11,
+        "c33": 1.3712e11,
+        "c44": 0.2977e11,
+        "e15": 12.9483,  # 2.35e-6,
+        "e31": -5.0732,
+        "e33": 14.073,
+        "eps11": 1.3019e-8,  # 167.8e-9,
+        "eps33": 5.2963e-9,
+        "alpha_m": 0.0,
+        "alpha_k": 1.1868e-10,
+        "density": 7850,
         "heat_capacity": 350,
         "thermal_conductivity": 1.1,
         "temperatures": 20

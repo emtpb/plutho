@@ -214,8 +214,11 @@ class SingleSimulation:
                 )
             else:
                 starting_temperature = kwargs["starting_temperature"]
-        self.material_manager.initialize_materials(starting_temperature)
-
+        if ("initialize_materials" not in kwargs
+                or kwargs["initialize_materials"]):
+            self.solver.material_manager.initialize_materials(
+                starting_temperature
+            )
         self.solver.dirichlet_nodes = np.array(self.dirichlet_nodes)
         self.solver.dirichlet_values = np.array(self.dirichlet_values)
         self.solver.assemble()
