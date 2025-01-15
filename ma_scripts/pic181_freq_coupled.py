@@ -15,8 +15,8 @@ def run_simulation(
         working_directory,
         simulation_name,
         mesh):
-    # piezo_frequency = 2.2022e6  # Fine mesh 0.00004
-    piezo_frequency = 2.2322e6   # Coarse mesh 0.0001
+    piezo_frequency = 2.2022e6  # Fine mesh 0.00004
+    # piezo_frequency = 2.2322e6   # Coarse mesh 0.0001
     amplitude = 20
 
     heat_cond_time_steps = 1000
@@ -71,6 +71,7 @@ def run_simulation(
     )
 
     coupled_sim.save_simulation_results()
+    coupled_sim.save_simulation_settings()
 
 
 if __name__ == "__main__":
@@ -83,7 +84,7 @@ if __name__ == "__main__":
     mesh = pfem.Mesh(
         os.path.join(
             os.environ["piezo_fem_simulation_path"],
-            "ring_mesh_0DOT0001.msh"
+            "ring_mesh_0DOT00004.msh"
         ),
         True
     )

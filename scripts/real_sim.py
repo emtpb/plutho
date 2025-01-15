@@ -241,7 +241,7 @@ def example_therm_piezo_sim(base_directory):
 
     # Create single simulation object
     sim = pfem.SingleSimulation(
-        base_directory,
+        base_directory
         sim_name,
         mesh
     )

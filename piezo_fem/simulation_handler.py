@@ -354,7 +354,10 @@ class SingleSimulation:
                     self.solver.q
                 )
 
-    def save_simulation_settings(self):
+    def save_simulation_settings(self, prefix=""):
+        if prefix != "":
+            prefix += "_"
+
         if not os.path.exists(self.simulation_directory):
             os.makedirs(self.simulation_directory)
 
@@ -389,7 +392,10 @@ class SingleSimulation:
         if isinstance(self.solver, PiezoFreqSim):
             # Save frequencies
             np.savetxt(
-                os.path.join(self.simulation_directory, "frequencies.txt"),
+                os.path.join(
+                    self.simulation_directory,
+                    f"{prefix}frequencies.txt"
+                ),
                 self.solver.frequencies
             )
         else:
@@ -405,7 +411,7 @@ class SingleSimulation:
         with open(
             os.path.join(
                 self.simulation_directory,
-                f"{self.simulation_name}.cfg"
+                f"{prefix}{self.simulation_name}.cfg"
             ),
             "w",
             encoding="UTF-8"
@@ -416,7 +422,7 @@ class SingleSimulation:
         with open(
             os.path.join(
                 self.simulation_directory,
-                "materials.json"
+                f"{prefix}materials.json"
             ),
             "w",
             encoding="UTF-8"
@@ -427,7 +433,7 @@ class SingleSimulation:
         with open(
             os.path.join(
                 self.simulation_directory,
-                "boundary_conditions.json"
+                f"{prefix}boundary_conditions.json"
             ),
             "w",
             encoding="UTF-8"
