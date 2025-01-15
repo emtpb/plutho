@@ -301,12 +301,12 @@ class CoupledFreqPiezoHeatCond:
                         starting_temperature=starting_temperature
                     )
                 else:
+                    self.piezo_freq.material_manager.update_temperature(
+                        temp_field_per_element
+                    )
                     self.piezo_freq.simulate(
                         calculate_mech_loss=True,
                         initialize_materials=False
-                    )
-                    self.piezo_freq.material_manager.update_temperature(
-                        temp_field_per_element
                     )
                 # Get mech losses
                 mech_loss = np.real(

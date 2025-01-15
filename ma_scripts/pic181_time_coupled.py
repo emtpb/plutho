@@ -37,7 +37,7 @@ def run_simulation(working_directory, sim_name, mesh):
 
     coupled_sim.add_material(
         "pic181_20°C",
-        pfem.pic181_20_extrapolated,
+        pfem.materials.pic181_20_extrapolated,
         None
     )
 
