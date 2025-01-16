@@ -23,7 +23,7 @@ def run_simulation(working_directory, simulation_name, mesh):
 
     sim.add_material(
         "pic255",
-        pfem.pic255,
+        pfem.materials.pic255_alpha_m_nonzero,
         None
     )
 
@@ -72,7 +72,7 @@ if __name__ == "__main__":
     run_simulation(working_directory, sim_name, mesh)
 
     # Analyze results
-    sim = pfem.SingleSimulation.load_simulation_settings(CWD)
+    sim = pfem.SingleSimulation.load_simulation_settings(working_directory)
     sim.load_simulation_results()
 
     impedance_fem = np.abs(1/(1j*2*np.pi*sim.solver.frequencies*sim.solver.q))

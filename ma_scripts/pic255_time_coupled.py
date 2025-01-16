@@ -50,8 +50,8 @@ def run_simulation(working_directory, simulation_name, mesh):
     )
 
     coupled_sim.simulate()
-    coupled_sim.save_simulation_results()
-    coupled_sim.save_simulation_settings()
+    # coupled_sim.save_simulation_results()
+    # coupled_sim.save_simulation_settings()
 
 
 if __name__ == "__main__":

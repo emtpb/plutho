@@ -64,7 +64,7 @@ if __name__ == "__main__":
     mesh = pfem.Mesh(
         os.path.join(
             os.environ["piezo_fem_simulation_path"],
-            "ring_mesh_0DOT0001.msh"
+            "ring_mesh_0DOT00004.msh"
         ),
         True
     )
