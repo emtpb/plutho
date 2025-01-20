@@ -55,11 +55,11 @@ def plot_scalar_field(theta, nodes, tikz_output_path: str = None):
 if __name__ == "__main__":
     load_dotenv()
 
-    SIM_NAME = "pic255_heat_cond_convective"
+    SIM_NAME = "pic181_thermo_freq_temp_independent_20c"
     simulation_folder = os.environ["piezo_fem_simulation_path"]
     plot_folder = os.environ["piezo_fem_plot_path"]
 
-    temp_file_name = "theta.npy"
+    temp_file_name = "heat_cond_theta.npy"
 
     theta = np.load(os.path.join(
         simulation_folder,
@@ -67,7 +67,7 @@ if __name__ == "__main__":
         temp_file_name
     ))
     mesh = pfem.Mesh(
-        os.path.join(simulation_folder, "disc_mesh_0DOT00004.msh"),
+        os.path.join(simulation_folder, "ring_mesh_0DOT00004.msh"),
         True
     )
 
@@ -76,6 +76,6 @@ if __name__ == "__main__":
     plot_scalar_field(
         theta[:, -1],
         nodes,
-        os.path.join(plot_folder, "pic255_temp_field_1s_conv.tex")
+        os.path.join(plot_folder, "pic181_1s_temp_indep.tex")
     )
 

@@ -227,6 +227,7 @@ class NonlinearPiezoSim:
             electrode_elements: npt.NDArray):
         number_of_time_steps = self.simulation_data.number_of_time_steps
         delta_t = self.simulation_data.delta_t
+        number_of_nodes = len(self.mesh_data.nodes)
 
         m = self.m
         c = self.c
@@ -236,77 +237,52 @@ class NonlinearPiezoSim:
         # Init arrays
         # Displacement u which is calculated
         u = np.zeros((m.shape[0], number_of_time_steps), dtype=np.float64)
-        # Velocity du/dt
-        v = np.zeros((m.shape[0], number_of_time_steps), dtype=np.float64)
-        # Acceleration du^2/dt^2
-        a = np.zeros((m.shape[0], number_of_time_steps), dtype=np.float64)
 
         # Charge calculated during simulation (for impedance)
         q = np.zeros(number_of_time_steps, dtype=np.float64)
 
-        print(m.shape)
-        print(c.shape)
-        print(k.shape)
-        print(ll.shape)
-        m, c, k, ll = NonlinearPiezoSim.apply_dirichlet_bc(
+        system_matrix = self.create_system_matrix(
             m,
             c,
-            k,
-            ll,
-            self.dirichlet_nodes
+            self.dirichlet_nodes,
+            delta_t
         )
-
+        
+        np.savetxt(
+            r"/upb/departments/emt/Student/jonasho/Masterarbeit/simulations/nonlinear_time_test/system_matrix.txt",
+            system_matrix.todense()
+        )
         # TODO This can be made faster using triangular decomposition
-        system_matrix = m+delta_t/2*c
-        print(system_matrix)
-        np.savetxt(r"/upb/departments/emt/Student/jonasho/Masterarbeit/simulations/nonlinear_time_test/system_matrix.txt", system_matrix)
-        print("Starting nonlinear piezoelectric simulation")
-        for time_index in range(number_of_time_steps-1):
-            # Get load vector of the current time step
-            f = self.get_load_vector(
-                self.dirichlet_nodes,
-                self.dirichlet_values[:, time_index+1]
-            )
+        # system_matrix_inv = linalg.inv(system_matrix)
 
-            # k_whole = k*u[:, time_index]+ll*u[:, time_index]**2
+        print("Starting nonlinear piezoelectric simulation")
+        for time_index in range(1, number_of_time_steps-1):
+            # Get load vector of the current time step
+            # f = self.get_load_vector(
+            #     self.dirichlet_nodes,
+            #     self.dirichlet_values[:, time_index+1]
+            # )
+            f = np.zeros(3*number_of_nodes)
+
+            k_whole = k*u[:, time_index]+ll*u[:, time_index]**2
 
             # The next time step 'time_index' is calculated using the previous
             # time step 'time_index-1'
-            #right_side = (
-            #    delta_t**2*(f-k_whole)
-            #    + delta_t/2*c*u[:, time_index-1]
-            #    + m*(2*u[:, time_index]-u[:, time_index-1])
-            #)
             right_side = (
-                f
-                - (
-                    k*(
-                        u[:, time_index]
-                        + delta_t*v[:, time_index]
-                        + delta_t**2/2*a[:, time_index]
-                    )
-                    + ll*(
-                        u[:, time_index]
-                        + delta_t*v[:, time_index]
-                        + delta_t**2/2*a[:, time_index]
-                    )**2
-                )
-                - delta_t/2*c*a[:, time_index]
+                delta_t**2*(f-k_whole)
+                + delta_t/2*c*u[:, time_index-1]
+                + m*(2*u[:, time_index]-u[:, time_index-1])
             )
-            a[:, time_index+1] = linalg.spsolve(
-                system_matrix, right_side
+            right_side = NonlinearPiezoSim.apply_dirichlet_bc(
+                right_side,
+                self.dirichlet_nodes,
+                self.dirichlet_values[:, time_index]
             )
-
-            # Update remaining state variables
-            v[:, time_index+1] = (
-                v[:, time_index]
-                + 1/2*delta_t*(a[:, time_index]+a[:, time_index+1])
+            np.savetxt(
+                rf"/upb/departments/emt/Student/jonasho/Masterarbeit/simulations/nonlinear_time_test/right_side_{time_index}.txt",
+                right_side
             )
-            u[:, time_index+1] = (
-                u[:, time_index]
-                + delta_t*v[:, time_index]
-                + delta_t**2/2*a[:, time_index]
-            )
+            u[:, time_index+1] = linalg.spsolve(system_matrix, right_side)
 
             if electrode_elements is not None:
                 # Caluclate charge
@@ -350,38 +326,20 @@ class NonlinearPiezoSim:
 
     @staticmethod
     def apply_dirichlet_bc(
-            m: npt.NDArray,
-            c: npt.NDArray,
-            k: npt.NDArray,
-            ll: npt.NDArray,
-            nodes: npt.NDArray):
-        """Prepares the given matrices m, c and k for the dirichlet boundary
-        conditions. This is done by setting the corresponding rows to 0
-        excepct for the node which will contain the specific value (this is set
-        to 1). Right now only boundary conditions for v and u_r can be set, not
-        for u_z (not neede yet).
+            right_side: npt.NDArray,
+            nodes: npt.NDArray,
+            values: npt.NDArray):
+        for node, value in zip(nodes, values):
+            right_side[node] = value
 
-        Parameters:
-            m: Mass matrix M.
-            c: Damping matrix C.
-            k: Stiffness matrix K.
-            nodes: List of nodes at which a dirichlet boundary condition
-                shall be applied.
-        Returns:
-            Modified mass, damping and stiffness matrix.
-        """
-        # Set rows of matrices to 0 and diagonal of K to 1 (at node points)
+        return right_side
 
-        # Matrices for u_r component
-        for node in nodes:
-            # Set rows to 0
-            m[node, :] = 0
-            c[node, :] = 0
-            k[node, :] = 0
-            ll[node, :] = 0
+    def create_system_matrix(self, m, c, dirichlet_nodes, delta_t):
+        system_matrix = (m+delta_t/2*c).tolil()
 
-            # Set diagonal values to 1
-            k[node, node] = 1
+        for node in dirichlet_nodes:
+            system_matrix[node, :] = 0
+            system_matrix[node, node] = 1
 
-        return m, c, k, ll
+        return system_matrix.tocsc()
 

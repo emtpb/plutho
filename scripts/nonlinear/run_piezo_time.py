@@ -30,6 +30,7 @@ if __name__ == "__main__":
         os.path.join(CWD, "disc_mesh_0DOT0001.msh"),
         True
     )
+    # mesh.generate_rectangular_mesh(mesh_size=0.001)
     nodes, elements = mesh.get_mesh_nodes_and_elements()
     number_of_nodes = len(nodes)
     number_of_elements = len(elements)
@@ -98,6 +99,8 @@ if __name__ == "__main__":
     nonlinear_ela_matrix = np.zeros((4, 4))
     sim.assemble(nonlinear_ela_matrix)
     sim.solve_time(electrode_elements)
+
+    print(sim.q)
 
     np.save(
         os.path.join(sim_directory, "u.npy"),
