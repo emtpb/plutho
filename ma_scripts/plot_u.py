@@ -19,7 +19,7 @@ class FieldType(Enum):
     U_Z = "u_z"
     THETA = "theta"
 
-def plot_scalar_field(field, nodes, field_type, tikz_output_path: str = None):
+def plot_scalar_field_2d(field, nodes, field_type, tikz_output_path: str = None):
     if field_type == FieldType.U_R or field_type == FieldType.U_Z:
         label = f"Verschiebung ${field_type.value}$ / m"
         cmap = "viridis"
@@ -72,14 +72,23 @@ def plot_scalar_field(field, nodes, field_type, tikz_output_path: str = None):
     #     tikzplotlib.save(tikz_output_path)
 
 
+def plot_over_time(number_of_time_steps, delta_t, fields):
+    time_values = np.arange(number_of_time_steps)*delta_t
+    for field in fields:
+        plt.plot(time_values, field)
+        plt.grid()
+        plt.legend()
+        plt.show()
+
+
 if __name__ == "__main__":
     load_dotenv()
 
-    SIM_NAME = "pic181_thermo_freq_temp_independent_20c"
+    SIM_NAME = "pic181_impedance_time_40k"
     simulation_folder = os.environ["piezo_fem_simulation_path"]
     plot_folder = os.environ["piezo_fem_plot_path"]
 
-    u_file_name = "piezo_freq_u.npy"
+    u_file_name = "u.npy"
 
     u = np.load(os.path.join(
         simulation_folder,
@@ -94,7 +103,16 @@ if __name__ == "__main__":
     nodes, _ = mesh.get_mesh_nodes_and_elements()
     number_of_nodes = len(nodes)
 
-    plot_scalar_field(
+    _, number_of_time_steps = u.shape
+    delta_t = 1e-8
+
+    plot_over_time(
+        number_of_time_steps,
+        delta_t,
+        u[[645, 324, 1200], :]
+    )
+    exit(0)
+    plot_scalar_field_2d(
         np.real(u[:, -1]),
         nodes,
         FieldType.U_Z,

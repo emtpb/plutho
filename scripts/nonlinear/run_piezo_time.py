@@ -27,10 +27,10 @@ if __name__ == "__main__":
 
     # Load mesh
     mesh = pfem.Mesh(
-        os.path.join(CWD, "disc_mesh_0DOT0001.msh"),
+        os.path.join(CWD, "disc_mesh_0DOT001.msh"),
         True
     )
-    # mesh.generate_rectangular_mesh(mesh_size=0.001)
+    # mesh.generate_rectangular_mesh(mesh_size=0.01)
     nodes, elements = mesh.get_mesh_nodes_and_elements()
     number_of_nodes = len(nodes)
     number_of_elements = len(elements)

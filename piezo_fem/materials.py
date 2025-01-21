@@ -594,3 +594,25 @@ pic181_20_extrapolated = MaterialData(
         "temperatures": 20
     }
 )
+
+pic181_90_extrapolated = MaterialData(
+    **{
+        "c11": 1.41405244e11,
+        "c12": 8.34514249e10,
+        "c13": 7.99705391e10,
+        "c33": 1.37506008e11,
+        "c44": 3.02865266e10,
+        "e15": 13.90159052,  # 2.35e-6,
+        "e31": -5.04276938,
+        "e33": 15.71897841,
+        "eps11": 1.46031733e-8,  # 167.8e-9,
+        "eps33": 6.58773038e-9,
+        "alpha_m": 0.0,
+        "alpha_k": 5.99305326e-11,
+        "density": 7850,
+        "heat_capacity": 350,
+        "thermal_conductivity": 1.1,
+        "temperatures": 20
+    }
+)
+

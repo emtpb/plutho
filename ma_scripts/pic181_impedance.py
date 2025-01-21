@@ -18,12 +18,12 @@ def run_simulation(working_directory, simulation_name, mesh):
         mesh
     )
 
-    frequencies = np.linspace(0, 1e7, 1000)[1:]
+    frequencies = np.linspace(0, 1e7, 8000)[1:]
     sim.setup_piezo_freq_domain(frequencies)
 
     sim.add_material(
         "pic181_c",
-        pfem.materials.pic181_20_extrapolated,
+        pfem.materials.pic181_90_extrapolated,
         None
     )
 
@@ -57,13 +57,14 @@ if __name__ == "__main__":
         print("Couldn't find simulation path.")
         exit(1)
 
-    sim_name = "pic181_impedance"
+    sim_name = "pic181_impedance_90c"
     mesh = pfem.Mesh(
         os.path.join(CWD, "ring_mesh_0DOT00004.msh"),
         True
     )
-    run_simulation(working_directory, sim_name, mesh)
-
+    run_simulation(CWD, sim_name, mesh)
+    exit(0)
+    working_directory = os.path.join(CWD, sim_name)
     # Analyze results
     sim = pfem.SingleSimulation.load_simulation_settings(working_directory)
     sim.load_simulation_results()

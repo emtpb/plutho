@@ -46,16 +46,16 @@ def plot_scalar_field(theta, nodes, tikz_output_path: str = None):
 
     plt.xlabel("Radius $r$ / m")
     plt.ylabel("Höhe $z$ / m")
-    # plt.show()
+    plt.show()
 
-    if tikz_output_path != "":
-        tikzplotlib.save(tikz_output_path)
+    # if tikz_output_path != "":
+    #     tikzplotlib.save(tikz_output_path)
 
 
 if __name__ == "__main__":
     load_dotenv()
 
-    SIM_NAME = "pic181_thermo_freq_temp_independent_20c"
+    SIM_NAME = "pic181_thermo_freq_temp_dependent"
     simulation_folder = os.environ["piezo_fem_simulation_path"]
     plot_folder = os.environ["piezo_fem_plot_path"]
 
