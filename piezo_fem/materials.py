@@ -61,7 +61,7 @@ Plugin 'tmsvg/pear-tree'
         return {
             "temperature_dependent": self.is_temperature_dependent,
             "physical_group_name": self.physical_group_name,
-            "material_data": self.material_data.__dict__
+            "material_data": self.material_data.to_dict()
         }
 
     def create_interpolations(self):
@@ -616,3 +616,23 @@ pic181_90_extrapolated = MaterialData(
     }
 )
 
+pic184_25 = MaterialData(
+    **{
+        "c11": 141496343521.27835,
+        "c12": 86169430271.64551,
+        "c13": 79915318364.24962,
+        "c33": 124909327336.97089,
+        "c44": 26771638883.39679,
+        "e15": 13.815676514507956,
+        "e31": -4.004768707540417,
+        "e33": 13.168634717101696,
+        "eps11": 1.086683329447101e-08,
+        "eps33": 5.6431956643221666e-09,
+        "alpha_m": 0.0,
+        "alpha_k": 5.143833571076851e-10,
+        "density": 7850,
+        "heat_capacity": 350,
+        "thermal_conductivity": 1.1,
+        "temperatures": 25
+    }
+)

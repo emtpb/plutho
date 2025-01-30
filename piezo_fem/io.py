@@ -36,6 +36,29 @@ def parse_charge_hist_file(file_path: str) -> Tuple[npt.NDArray, npt.NDArray]:
 
     return np.array(time), np.array(charge)
 
+def parse_charge_freq_hist_file(
+        file_path: str) -> Tuple[npt.NDArray, npt.NDArray]:
+    """Reads the charge file from an OpenCFS simulation.
+
+    Parameters:
+        file_path: Path to the charge (*.hist) file.
+
+    Returns:
+        Tuple containing the time list and charge list read from the
+        given file.
+    """
+    lines = []
+    with open(file_path, "r", encoding="UTF-8") as fd:
+        lines = fd.readlines()[3:]
+
+    frequencies = []
+    charge = []
+    for line in lines:
+        current_frequency, current_charge, _ = line.split()
+        frequencies.append(float(current_frequency))
+        charge.append(float(current_charge))
+
+    return np.array(frequencies), np.array(charge)
 
 def parse_displacement_hist_file(
         file_path: str) -> Tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
@@ -209,8 +232,8 @@ def load_temperature_dependent_material_data_pic181(files):
             "eps11": np.array(eps11),
             "eps33": np.array(eps33),
             #"alpha_m": alpha_m,
-            "alpha_m": 0,
-            "alpha_k": 1.289813815258054e-10,
+            "alpha_m": np.zeros(len(alpha_k)),
+            "alpha_k": np.array(alpha_k),
             "temperatures": np.array(temperatures),
             "heat_capacity": heat_capacity,
             "density": density,

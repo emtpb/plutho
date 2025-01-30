@@ -267,7 +267,8 @@ class PiezoFreqSim:
         )
 
         volumes = calculate_volumes(self.local_elements)
-
+        print(np.sum(volumes))
+        self.material_manager.print_material_data(0)
         print(
             f"Starting frequency simulation. There are {len(frequencies)} "
             "frequency steps."
@@ -331,6 +332,9 @@ class PiezoFreqSim:
                         # TODO Actually this must be multiplied with -1
                         * 1/2 * angular_frequency**2
                     )
+
+            if frequency_index % 100 == 0 and frequency_index > 0:
+                print(f"Frequency step {frequency_index} finished")
 
         self.u = u
         self.q = q
