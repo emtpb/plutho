@@ -12,7 +12,7 @@ from .base import MeshData, local_to_global_coordinates, b_operator_global, \
     integral_m, integral_ku, integral_kuv, integral_kve, apply_dirichlet_bc, \
     create_local_element_data, LocalElementData, quadratic_quadrature, \
     calculate_volumes
-from .fem_piezo_time import calculate_charge
+from .piezo_time import calculate_charge
 from ..materials import MaterialManager
 
 
@@ -36,13 +36,14 @@ def loss_integral_scs(
         elasticity_matrix: Elasticity matrix for the current element (c matrix)
     """
     def inner(s, t):
-        r = local_to_global_coordinates(node_points, s, t, )[0]
+        r = local_to_global_coordinates(node_points, s, t)[0]
         b_opt = b_operator_global(node_points, s, t, jacobian_inverted_t)
 
         s_e = np.dot(b_opt, u_e)
         dt_s = 1j*angular_frequency*s_e
 
-        return np.dot(dt_s.T, np.dot(elasticity_matrix.T, dt_s))*r
+        # return np.dot(dt_s.T, np.dot(elasticity_matrix.T, dt_s))*r
+        return np.dot(np.conjugate(s_e).T, np.dot(elasticity_matrix.T, s_e))*r
 
     return quadratic_quadrature(inner)
 
@@ -77,6 +78,7 @@ class PiezoFreqSim:
     # Simulation parameters
     mesh_data: MeshData
     material_manager: MaterialManager
+    frequencies: npt.NDArray
 
     # Dirichlet boundary condition
     dirichlet_nodes: npt.NDArray
@@ -98,9 +100,11 @@ class PiezoFreqSim:
     def __init__(
             self,
             mesh_data: MeshData,
-            material_manager: MaterialManager):
+            material_manager: MaterialManager,
+            frequencies: npt.NDArray):
         self.mesh_data = mesh_data
         self.material_manager = material_manager
+        self.frequencies = frequencies
 
     def assemble(self):
         """Assembles the FEM matrices based on the set mesh_data and
@@ -144,7 +148,7 @@ class PiezoFreqSim:
             # local coordinates.
             # Mutiply with 2*pi because theta is integrated from 0 to 2*pi
             mu_e = (
-                self.material_manager.get_density()
+                self.material_manager.get_density(element_index)
                 * integral_m(node_points)
                 * jacobian_det * 2 * np.pi
             )
@@ -200,8 +204,8 @@ class PiezoFreqSim:
 
         # Calculate damping matrix
         cu = (
-            self.material_manager.get_alpha_m() * mu
-            + self.material_manager.get_alpha_k() * ku
+            self.material_manager.get_alpha_m(0) * mu
+            + self.material_manager.get_alpha_k(0) * ku
         )
 
         # Calculate block matrices
@@ -226,57 +230,32 @@ class PiezoFreqSim:
         self.c = c.tolil()
         self.k = k.tolil()
 
-    def get_load_vector(
-            self,
-            nodes_u: npt.NDArray,
-            values_u: npt.NDArray,
-            nodes_v: npt.NDArray,
-            values_v: npt.NDArray) -> npt.NDArray:
-        """Calculates the load vector (right hand side) vector for the
-        simulation.
-
-        Parameters:
-            nodes_u: Nodes where the dirichlet bc for u is set.
-            values_u: Values of the u boundary condition for the nodes.
-                Contains a tuple of values [u_r, u_z].
-            nodes_v: Nodes where the dirichlet bc for v is set.
-            values_v: Value of the v boundary condition for the nodes.
-
-        Returns:
-            Right hand side vector for the simulation.
-        """
-        number_of_nodes = len(self.mesh_data.nodes)
-
-        # Can be initialized to 0 because external load and volume
-        # charge density is 0.
-        f = np.zeros(3*number_of_nodes, dtype=np.float64)
-
-        # Set dirichlet values for u_r only
-        for node, value in zip(nodes_u, values_u):
-            f[2*node] = value[0]
-
-        # Set dirichlet values for v
-        # Use offset because v nodes have higher index than u nodes
-        offset = 2*number_of_nodes
-
-        for node, value in zip(nodes_v, values_v):
-            f[node+offset] = value
-
-        return f
-
     def solve_frequency(
             self,
-            frequencies,
-            electrode_elements,
-            set_symmetric_bc):
+            electrode_elements: npt.NDArray,
+            calculate_mech_loss: bool):
+        """Run the frequency simulation using the given frequencies.
+        If electrode elements are given the charge at those elements is
+        calculated.
+
+        Parameters:
+            frequencies: Array of frequencies at which the simulation is done.
+            electrode_elements: Array of element indices. At those indices
+                the charge is calculated, summed up and saved in q."""
         m = self.m
         c = self.c
         k = self.k
 
-        u = np.zeros((m.shape[0], len(frequencies)), dtype=np.complex128)
+        frequencies = self.frequencies
+        number_of_nodes = len(self.mesh_data.nodes)
+        number_of_elements = len(self.mesh_data.elements)
+        u = np.zeros(
+            (3*number_of_nodes, len(frequencies)),
+            dtype=np.complex128
+        )
         q = np.zeros((len(frequencies)), dtype=np.complex128)
         mech_loss = np.zeros(
-            (m.shape[0], len(frequencies)),
+            (number_of_elements, len(frequencies)),
             dtype=np.complex128
         )
 
@@ -284,14 +263,17 @@ class PiezoFreqSim:
             m,
             c,
             k,
-            self.dirichlet_nodes[0],
-            self.dirichlet_nodes[1],
-            len(self.mesh_data.nodes)
+            self.dirichlet_nodes
         )
 
         volumes = calculate_volumes(self.local_elements)
-
-        for index, frequency in enumerate(frequencies):
+        print(np.sum(volumes))
+        self.material_manager.print_material_data(0)
+        print(
+            f"Starting frequency simulation. There are {len(frequencies)} "
+            "frequency steps."
+        )
+        for frequency_index, frequency in enumerate(frequencies):
             angular_frequency = 2*np.pi*frequency
 
             a = (
@@ -299,31 +281,22 @@ class PiezoFreqSim:
                 + 1j*angular_frequency*c
                 + k
             )
-            if set_symmetric_bc:
-                f = self.get_load_vector(
-                    self.dirichlet_nodes[0],
-                    np.zeros((len(self.dirichlet_nodes[0]), 2)),
-                    self.dirichlet_nodes[1],
-                    self.dirichlet_values[1][index]
-                )
-            else:
-                # If it is a ring there are no boundary conditions for u_r
-                # or u_z.
-                f = self.get_load_vector(
-                    np.array([]),
-                    np.array([]),
-                    self.dirichlet_nodes[1],
-                    self.dirichlet_values[1][index]
-                )
 
-            u[:, index] = slin.spsolve(a, f)
-
-            q[index] = calculate_charge(
-                u[:, index],
-                self.material_manager,
-                electrode_elements,
-                self.mesh_data.nodes
+            f = self.get_load_vector(
+                self.dirichlet_nodes,
+                self.dirichlet_values,
+                frequency_index
             )
+
+            u[:, frequency_index] = slin.spsolve(a, f)
+
+            if electrode_elements is not None:
+                q[frequency_index] = calculate_charge(
+                    u[:, frequency_index],
+                    self.material_manager,
+                    electrode_elements,
+                    self.mesh_data.nodes
+                )
 
             # Calculate mech_loss for every element
             for element_index, element in enumerate(self.mesh_data.elements):
@@ -335,28 +308,61 @@ class PiezoFreqSim:
 
                 # Get field values
                 u_e = np.array([
-                    u[2*element[0], index],
-                    u[2*element[0]+1, index],
-                    u[2*element[1], index],
-                    u[2*element[1]+1, index],
-                    u[2*element[2], index],
-                    u[2*element[2]+1, index]])
+                    u[2*element[0], frequency_index],
+                    u[2*element[0]+1, frequency_index],
+                    u[2*element[1], frequency_index],
+                    u[2*element[1]+1, frequency_index],
+                    u[2*element[2], frequency_index],
+                    u[2*element[2]+1, frequency_index]])
 
-                mech_loss[index] = (
-                    loss_integral_scs(
-                        node_points,
-                        u_e,
-                        angular_frequency,
-                        jacobian_inverted_t,
-                        self.material_manager.get_elasticity_matrix(
-                            element_index
+                if calculate_mech_loss:
+                    mech_loss[element_index, frequency_index] = (
+                        loss_integral_scs(
+                            node_points,
+                            u_e,
+                            angular_frequency,
+                            jacobian_inverted_t,
+                            self.material_manager.get_elasticity_matrix(
+                                element_index
+                            )
                         )
+                        * 2 * np.pi * jacobian_det
+                        * self.material_manager.get_alpha_k(element_index)
+                        * 1/volumes[element_index]
+                        # TODO Actually this must be multiplied with -1
+                        * 1/2 * angular_frequency**2
                     )
-                    * 2 * np.pi * jacobian_det
-                    * self.material_manager.get_alpha_k()
-                    * 1/volumes[element_index]
-                )
+
+            if frequency_index % 100 == 0 and frequency_index > 0:
+                print(f"Frequency step {frequency_index} finished")
 
         self.u = u
         self.q = q
         self.mech_loss = mech_loss
+
+    def get_load_vector(
+            self,
+            dirichlet_nodes: npt.NDArray,
+            dirichlet_values: npt.NDArray,
+            frequency_index: int) -> npt.NDArray:
+        """Calculates the load vector (right hand side) vector for the
+        simulation.
+
+        Parameters:
+            dirichlet_nodes: Nodes at which the dirichlet value shall be set.
+            dirichlet_values: Dirichlet value which is set at the corresponding
+                node.
+
+        Returns:
+            Right hand side vector for the simulation.
+        """
+        number_of_nodes = len(self.mesh_data.nodes)
+
+        # Can be initialized to 0 because external load and volume
+        # charge density is 0.
+        f = np.zeros(3*number_of_nodes, dtype=np.float64)
+
+        for node, value in zip(dirichlet_nodes, dirichlet_values):
+            f[node] = value[frequency_index]
+
+        return f

@@ -13,9 +13,9 @@ import matplotlib.pyplot as plt
 from .simulation.base import MeshData, MaterialData, SimulationData, \
     SimulationType, ModelType, create_dirichlet_bc_nodes, \
     ExcitationInfo, ExcitationType, create_dirichlet_bc_nodes_freq
-from .simulation.fem_piezo_temp_time import PiezoSimTherm
-from .simulation.fem_piezo_time import PiezoSim
-from .simulation.fem_piezo_freq import PiezoFreqSim
+from .simulation.piezo_temp_time import PiezoSimTherm
+from .simulation.piezo_time import PiezoSim
+from .simulation.piezo_freq import PiezoFreqSim
 from .gmsh_handler import GmshHandler
 from .materials import pic255, MaterialManager
 from .postprocessing import calculate_impedance
@@ -369,9 +369,11 @@ class PiezoSimulation:
         with open(
                 os.path.join(
                     self.workspace_directory,
-                    f"{self.simulation_name}.cfg"),
+                    f"{self.simulation_name}.cfg"
+                ),
                 "w",
-                encoding="UTF-8") as fd:
+                encoding="UTF-8"
+            ) as fd:
             settings.write(fd)
 
     def load_simulation_results(self):
