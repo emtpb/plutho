@@ -397,6 +397,9 @@ class NonlinearPiezoSim:
             ) * 2 * np.pi * jacobian_det
             q += q_u - q_v
 
+        if np.isnan(q):
+            print("Calculated charge is nan")
+
         return q
 
     @staticmethod
