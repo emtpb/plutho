@@ -9,10 +9,10 @@ from scipy.sparse import linalg
 
 # Local libraries
 from ..base import SimulationData, MeshData, gradient_local_shape_functions, \
-        local_to_global_coordinates, b_operator_global, integral_m, \
-        integral_ku, integral_kuv, integral_kve, \
-        create_local_element_data, LocalElementData, \
-        quadratic_quadrature
+    local_to_global_coordinates, b_operator_global, integral_m, \
+    integral_ku, integral_kuv, integral_kve, \
+    create_local_element_data, LocalElementData, \
+    quadratic_quadrature
 from piezo_fem.simulation.piezo_time import charge_integral_u, \
     charge_integral_v
 from piezo_fem.materials import MaterialManager
@@ -39,7 +39,8 @@ def integral_u_nonlinear(
         b_op = b_operator_global(node_points, s, t, jacobian_inverted_t)
         r = local_to_global_coordinates(node_points, s, t)[0]
 
-        return np.dot(np.dot(b_op.T, nonlinear_elasticity_matrix), b_op)*r
+        b_op_sq = np.square(b_op)
+        return np.dot(np.dot(b_op.T, nonlinear_elasticity_matrix), b_op_sq)*r
 
     return quadratic_quadrature(inner)
 
@@ -154,7 +155,7 @@ class NonlinearPiezoSim:
                 )
                 * jacobian_det * 2 * np.pi
             )
-            l_e = (
+            lu_e = (
                 integral_u_nonlinear(
                     node_points,
                     jacobian_inverted_t,
@@ -187,7 +188,7 @@ class NonlinearPiezoSim:
 
                     # L_e is similar to Ku_e
                     lu[2*global_p:2*global_p+2, 2*global_q:2*global_q+2] += \
-                        l_e[2*local_p:2*local_p+2, 2*local_q:2*local_q+2]
+                        lu_e[2*local_p:2*local_p+2, 2*local_q:2*local_q+2]
 
         # Calculate damping matrix
         # Currently in the simulations only one material is used
@@ -320,6 +321,79 @@ class NonlinearPiezoSim:
         self.q = q
         self.u = u
 
+    def solve_time_implicit(
+            self,
+            electrode_elements: npt.NDArray,
+            max_iter: int,
+            max_error: float):
+        # Setup simulation parameters
+        number_of_nodes = len(self.mesh_data.nodes)
+        number_of_time_steps = self.simulation_data.number_of_time_steps
+        delta_t = self.simulation_data.delta_t
+        gamma = self.simulation_data.gamma
+        beta = self.simulation_data.beta
+
+        # Setup matrices
+        mu = self.mu
+        ku = self.ku
+        cu = self.cu
+        kuv = self.kuv
+        kv = self.kv
+        k_snake = self.k_snake
+        # Init arrays
+        u = np.zeros(
+            (2*number_of_nodes, number_of_time_steps),
+            dtype=np.float64
+        )
+        v = np.zeros(
+            (2*number_of_nodes, number_of_time_steps),
+            dtype=np.float64
+        )
+        a = np.zeros(
+            (2*number_of_nodes, number_of_time_steps),
+            dtype=np.float64
+        )
+        phi = np.zeros(
+            (number_of_nodes, number_of_time_steps),
+            dtype=np.float64
+        )
+
+        print(
+            "Starting nonlinear piezoeletric simulation with implicit "
+            "time integration"
+        )
+
+        for time_index in range(1, number_of_time_steps-1):
+
+            # Solve for phi
+            right_side_phi = NonlinearPiezoSim.apply_dirchlet_bc_loadvector(
+                kuv.T*u[:, time_index],
+                self.dirichlet_nodes_phi,
+                self.dirichlet_values_phi[:, time_index]
+            )
+            phi[:, time_index+1] = linalg.spsolve(
+                system_matrix_phi,
+                right_side_phi
+            )
+
+            # Solve for u
+            p = -kuv*phi[:, time_index+1]
+            f = p+mu*(
+                1/(beta*delta_t**2)*u[:, time_index]
+                + 1/(beta*delta_t)*v[:, time_index]
+                + (1/(2*beta)-1)*a[:, time_index]
+            )
+
+            # Solve nonlinear eq
+            u_est = u[:, time_index]
+            k = 0
+            while (k > max_iter
+                   or np.abs(u_est)/np.abs(u[:, time-index]) <= max_error):
+                r = k_snake*np.square(u_est)+ku*u_est
+                t = 1/(beta*delta_t**2)*mu*u_est+r
+
+                # TODO Finish implicit simulation type?
+
     def get_load_vector(
             self,
             nodes: npt.NDArray,
@@ -421,4 +495,3 @@ class NonlinearPiezoSim:
             system_matrix[node, node] = 1
 
         return system_matrix
-
