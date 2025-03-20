@@ -185,4 +185,4 @@ examples/simulations
 mypy.ini
 
 # Ignore swap files
-*..swo
+*.swo
