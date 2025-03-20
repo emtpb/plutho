@@ -12,10 +12,14 @@ import numpy.typing as npt
 
 # Local libraries
 from .simulation.base import MeshData, SimulationData
-from .simulation import HeatConductionSim, PiezoSim, PiezoSimTherm, \
-    PiezoFreqSim
+from .simulation import ThermoSimTime, PiezoSimTime, ThermoPiezoSimTime, \
+    PiezoSimFreq
 from .materials import MaterialData, MaterialManager
 from .mesh import Mesh
+
+
+class SimulationException(Exception):
+    """Custom exception to simplify errors."""
 
 
 class FieldType(Enum):
@@ -28,7 +32,7 @@ class FieldType(Enum):
 
 
 class SingleSimulation:
-    """Base calss to handle single simulations. Multiple different simulation
+    """Base class to handle single simulations. Multiple different simulation
     types can be chosen.
 
     Arguments:
@@ -64,15 +68,16 @@ class SingleSimulation:
     dirichlet_values: List[npt.NDArray]
 
     # Simulation
-    solver: Union[HeatConductionSim, PiezoFreqSim, PiezoSim, PiezoSimTherm]
+    solver: Union[ThermoSimTime, PiezoSimFreq, PiezoSimTime, ThermoPiezoSimTime]
     charge_calculated: bool
     mech_loss_calculated: bool
 
     def __init__(
-            self,
-            working_directory: str,
-            simulation_name: str,
-            mesh: Mesh):
+        self,
+        working_directory: str,
+        simulation_name: str,
+        mesh: Mesh
+    ):
         simulation_directory = os.path.join(working_directory, simulation_name)
 
         self.simulation_directory = simulation_directory
@@ -91,10 +96,20 @@ class SingleSimulation:
         self.dirichlet_values = []
 
     def add_material(
-            self,
-            material_name: str,
-            material_data: MaterialData,
-            physical_group_name: str):
+        self,
+        material_name: str,
+        material_data: MaterialData,
+        physical_group_name: str
+    ):
+        """Adds a material to the simulation
+
+        Parameters:
+            material_name: Name of the material.
+            material_data: Material data.
+            physical_group_name: Name of the physical group for which the
+                material shall be set. If this is None or "" the material will
+                be set for the whole model.
+        """
         if physical_group_name is None or physical_group_name == "":
             element_indices = np.arange(len(self.mesh_data.elements))
         else:
@@ -110,19 +125,30 @@ class SingleSimulation:
         )
 
     def add_dirichlet_bc(
-            self,
-            field_type: FieldType,
-            physical_group: str,
-            values: npt.NDArray):
-        if isinstance(self.solver, HeatConductionSim):
+        self,
+        field_type: FieldType,
+        physical_group: str,
+        values: npt.NDArray
+    ):
+        """Adds a dirichlet boundary condition (dirichlet bc) to the simulation.
+
+        Parameters:
+            field_type: The type of field for which the bc shall be set.
+            physical_group: Name of the physical group for which the boundary
+                condition shall be set.
+            values: List of values per time step. Value of the bc for each time
+                step. The value for one time step is applied to every element
+                equally.
+        """
+        if isinstance(self.solver, ThermoSimTime):
             if (field_type is FieldType.U_R or
                     field_type is FieldType.U_Z or
                     field_type is FieldType.PHI):
                 raise ValueError(
                     f"Unknown variable type {field_type} given for"
                     f"simulation type {type(self.solver)}")
-        elif (isinstance(self.solver, PiezoFreqSim) or
-                isinstance(self.solver, PiezoSim)):
+        elif (isinstance(self.solver, PiezoSimFreq) or
+                isinstance(self.solver, PiezoSimTime)):
             if field_type is FieldType.THETA:
                 raise ValueError(
                     f"Unknown variable type {field_type} given for"
@@ -149,7 +175,7 @@ class SingleSimulation:
             if field_type is FieldType.PHI:
                 real_index = 2*number_of_nodes+node_index
             elif field_type is FieldType.THETA:
-                if isinstance(self.solver, HeatConductionSim):
+                if isinstance(self.solver, ThermoSimTime):
                     real_index = node_index
                 else:
                     real_index = 3*number_of_nodes+node_index
@@ -159,16 +185,26 @@ class SingleSimulation:
                 real_index = 2*node_index+1
             else:
                 raise ValueError(f"Unknown variable type {field_type}")
+
             self.dirichlet_nodes.append(real_index)
             self.dirichlet_values.append(values)
 
-    def setup_heat_conduction_time_domain(
-            self,
-            delta_t: float,
-            number_of_time_steps: int,
-            gamma: float):
+    def setup_thermo_time_domain(
+        self,
+        delta_t: float,
+        number_of_time_steps: int,
+        gamma: float
+    ):
+        """Sets the simulation to a thermal simulation in the time domain.
+
+        Parameters:
+            delta_t: Difference between the time steps.
+            number_of_time_steps: Total number of time steps.
+            gamma: Time integration parameter (Set to 0.5 for unconditionally
+                stable simulation).
+        """
         # TODO Change parameter to simulation data?
-        self.solver = HeatConductionSim(
+        self.solver = ThermoSimTime(
             self.mesh_data,
             self.material_manager,
             SimulationData(
@@ -180,31 +216,74 @@ class SingleSimulation:
         )
 
     def setup_piezo_time_domain(
-            self,
-            simulation_data: SimulationData):
-        self.solver = PiezoSim(
+        self,
+        simulation_data: SimulationData
+    ):
+        """Sets a electro-mechanical (piezo) simulation in the time domain.
+
+        Parameters:
+            simulation_data: Simulation data object.
+        """
+        self.solver = PiezoSimTime(
             self.mesh_data,
             self.material_manager,
             simulation_data
         )
 
     def setup_piezo_freq_domain(self, frequencies: npt.NDArray):
-        self.solver = PiezoFreqSim(
+        """Sets a electro-mechanical (piezo) simulation in the frequency
+        domain
+
+        Parameters:
+            frequencies: Frequencies which shall be simulated.
+        """
+        self.solver = PiezoSimFreq(
             self.mesh_data,
             self.material_manager,
             frequencies
         )
 
     def setup_thermal_piezo_time_domain(
-            self,
-            simulation_data: SimulationData):
-        self.solver = PiezoSimTherm(
+        self,
+        simulation_data: SimulationData
+    ):
+        """Sets a thermo-piezoelectrical simulation.
+
+        Parameters:
+            simulation_data: SimulationData object.
+        """
+        self.solver = ThermoPiezoSimTime(
             self.mesh_data,
             self.material_manager,
             simulation_data
         )
 
     def simulate(self, **kwargs):
+        """Runs a simulation. Note that a simulation must be setup
+        beforehand.
+
+        Parameters:
+            **kwargs:
+                'starting_temperature': Sets a starting temperature field.
+                'initialize_materials': The materials are initialized with
+                    the given starting_temperature field.
+                'theta_start': Sets the starting field for the pure thermal
+                    simulation.
+                'time_step': Sets a starting time index for the pure thermal
+                    simulation.
+                'electrode_elements': List of element indices for which the
+                    charge is calculated.
+                'calculate_mech_loss': Set to true of the mech loss shall
+                    be calculated.
+        """
+
+        # Check if solver is set
+        if self.solver == None:
+            raise SimulationException(
+                "Please setup a solver first using any "
+                "setup function"
+            )
+
         starting_temperature = None
         if "starting_temperature" in kwargs:
             start_temp = kwargs["starting_temperature"]
@@ -222,7 +301,7 @@ class SingleSimulation:
         self.solver.dirichlet_nodes = np.array(self.dirichlet_nodes)
         self.solver.dirichlet_values = np.array(self.dirichlet_values)
         self.solver.assemble()
-        if isinstance(self.solver, HeatConductionSim):
+        if isinstance(self.solver, ThermoSimTime):
             theta_start = None
             # TODO Rename theta start and starting temperature
             if "theta_start" in kwargs:
@@ -236,7 +315,7 @@ class SingleSimulation:
                 self.solver.solve_time(
                     theta_start
                 )
-        elif isinstance(self.solver, PiezoFreqSim):
+        elif isinstance(self.solver, PiezoSimFreq):
             electrode_elements = None
             if "electrode_elements" in kwargs:
                 electrode_elements = kwargs["electrode_elements"]
@@ -249,7 +328,7 @@ class SingleSimulation:
                 electrode_elements,
                 calculate_mech_loss
             )
-        elif isinstance(self.solver, PiezoSim):
+        elif isinstance(self.solver, PiezoSimTime):
             electrode_elements = None
             if "electrode_elements" in kwargs:
                 electrode_elements = kwargs["electrode_elements"]
@@ -258,7 +337,7 @@ class SingleSimulation:
             self.solver.solve_time(
                 electrode_elements
             )
-        elif isinstance(self.solver, PiezoSimTherm):
+        elif isinstance(self.solver, ThermoPiezoSimTime):
             electrode_elements = None
             if "electrode_elements" in kwargs:
                 electrode_elements = kwargs["electrode_elements"]
@@ -275,13 +354,19 @@ class SingleSimulation:
             return
 
     def save_simulation_results(self, file_prefix: str = ""):
+        """Save the simulation results to the simulation folder. If a prefix
+        is given this is prepend to the name of the output file.
+
+        Parameters:
+            file_prefix: String which is prepend to the output file names.
+        """
         if not os.path.exists(self.simulation_directory):
             os.makedirs(self.simulation_directory)
 
         if file_prefix != "":
             file_prefix += "_"
 
-        if isinstance(self.solver, HeatConductionSim):
+        if isinstance(self.solver, ThermoSimTime):
             np.save(
                 os.path.join(
                     self.simulation_directory,
@@ -289,7 +374,7 @@ class SingleSimulation:
                 ),
                 self.solver.theta
             )
-        elif isinstance(self.solver, PiezoFreqSim):
+        elif isinstance(self.solver, PiezoSimFreq):
             np.save(
                 os.path.join(
                     self.simulation_directory,
@@ -313,7 +398,7 @@ class SingleSimulation:
                     ),
                     self.solver.q
                 )
-        elif isinstance(self.solver, PiezoSim):
+        elif isinstance(self.solver, PiezoSimTime):
             np.save(
                 os.path.join(
                     self.simulation_directory,
@@ -329,7 +414,7 @@ class SingleSimulation:
                     ),
                     self.solver.q
                 )
-        elif isinstance(self.solver, PiezoSimTherm):
+        elif isinstance(self.solver, ThermoPiezoSimTime):
             np.save(
                 os.path.join(
                     self.simulation_directory,
@@ -355,6 +440,12 @@ class SingleSimulation:
                 )
 
     def save_simulation_settings(self, prefix=""):
+        """Save the simulation settings to the simulation folder. If a prefix
+        is given this is prepend to the name of the output file.
+
+        Parameters:
+            file_prefix: String which is prepend to the output file names.
+        """
         if prefix != "":
             prefix += "_"
 
@@ -363,13 +454,13 @@ class SingleSimulation:
 
         settings = configparser.ConfigParser()
 
-        if isinstance(self.solver, HeatConductionSim):
-            simulation_type = "HeatConduction"
-        elif isinstance(self.solver, PiezoSim):
+        if isinstance(self.solver, ThermoSimTime):
+            simulation_type = "ThermoSimTime"
+        elif isinstance(self.solver, PiezoSimTime):
             simulation_type = "PiezoTime"
-        elif isinstance(self.solver, PiezoFreqSim):
+        elif isinstance(self.solver, PiezoSimFreq):
             simulation_type = "PiezoFreq"
-        elif isinstance(self.solver, PiezoSimTherm):
+        elif isinstance(self.solver, ThermoPiezoSimTime):
             simulation_type = "ThermoPiezo"
         else:
             raise ValueError(
@@ -389,7 +480,7 @@ class SingleSimulation:
         for material in self.material_manager.materials:
             material_settings[material.material_name] = material.to_dict()
 
-        if isinstance(self.solver, PiezoFreqSim):
+        if isinstance(self.solver, PiezoSimFreq):
             # Save frequencies
             np.savetxt(
                 os.path.join(
@@ -442,9 +533,17 @@ class SingleSimulation:
 
     @staticmethod
     def load_simulation_settings(simulation_folder: str):
+        """Loads the simulation settings from the given folder and return
+        a SingleSimulation object.
+
+        Parameters:
+            simulation_folder: Path to a folder containing simulation files.
+        """
         # TODO Right now in a coupled sim the simulation settings
-        # are overrwriding itself
-        # Add additional possible label to prevent this
+        # are overwriding itself
+        # --> Add additional possible label to prevent this
+
+
         simulation_name = os.path.basename(simulation_folder)
 
         # Check if folder has all necessary files
@@ -495,8 +594,8 @@ class SingleSimulation:
                 float(settings["simulation"]["gamma"]),
                 float(settings["simulation"]["beta"]),
             )
-            if simulation_type == "HeatConduction":
-                simulation.setup_heat_conduction_time_domain(
+            if simulation_type == "ThermoSimTime":
+                simulation.setup_thermo_time_domain(
                     simulation_data.delta_t,
                     simulation_data.number_of_time_steps,
                     simulation_data.gamma
@@ -543,7 +642,9 @@ class SingleSimulation:
         return simulation
 
     def load_simulation_results(self):
-        if isinstance(self.solver, HeatConductionSim):
+        """Load the simulation results which are in the current simulation
+        folder to the current SingleSimulation object."""
+        if isinstance(self.solver, ThermoSimTime):
             theta_file = os.path.join(
                 self.simulation_directory,
                 "theta.npy"
@@ -552,7 +653,7 @@ class SingleSimulation:
                 self.solver.theta = np.load(theta_file)
             else:
                 raise IOError("Couldn't find theta file.")
-        elif isinstance(self.solver, PiezoSim):
+        elif isinstance(self.solver, PiezoSimTime):
             u_file = os.path.join(
                 self.simulation_directory,
                 "u.npy"
@@ -567,7 +668,7 @@ class SingleSimulation:
                 raise IOError("Couldn't find u file.")
             if os.path.isfile(q_file):
                 self.solver.q = np.load(q_file)
-        elif isinstance(self.solver, PiezoFreqSim):
+        elif isinstance(self.solver, PiezoSimFreq):
             u_file = os.path.join(
                 self.simulation_directory,
                 "u.npy"
@@ -589,7 +690,7 @@ class SingleSimulation:
                 self.solver.q = np.load(q_file)
             if os.path.isfile(mech_loss_file):
                 self.solver.mech_loss = np.load(mech_loss_file)
-        elif isinstance(self.solver, PiezoSimTherm):
+        elif isinstance(self.solver, ThermoPiezoSimTime):
             u_file = os.path.join(
                 self.simulation_directory,
                 "u.npy"

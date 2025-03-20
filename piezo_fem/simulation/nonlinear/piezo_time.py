@@ -19,9 +19,10 @@ from piezo_fem.materials import MaterialManager
 
 
 def integral_u_nonlinear(
-        node_points: npt.NDArray,
-        jacobian_inverted_t: npt.NDArray,
-        nonlinear_elasticity_matrix: npt.NDArray):
+    node_points: npt.NDArray,
+    jacobian_inverted_t: npt.NDArray,
+    nonlinear_elasticity_matrix: npt.NDArray
+):
     """Calculates the Ku integral
 
     Parameters:
@@ -39,13 +40,41 @@ def integral_u_nonlinear(
         b_op = b_operator_global(node_points, s, t, jacobian_inverted_t)
         r = local_to_global_coordinates(node_points, s, t)[0]
 
-        b_op_sq = np.square(b_op)
-        return np.dot(np.dot(b_op.T, nonlinear_elasticity_matrix), b_op_sq)*r
+        return np.dot(np.dot(b_op.T, nonlinear_elasticity_matrix), b_op)*r
 
     return quadratic_quadrature(inner)
 
 
-class NonlinearPiezoSim:
+class NonlinearPiezoSimTime:
+    """Simulates eletro-mechanical fields for the given mesh, material and
+    simulation information. The simulation is using a nonlinear stiffness
+    matrix which is used for a quadratic term in the hooke law.
+
+    Attributes:
+        mesh_data: Contains the mesh information.
+        material_manager: Organizes material parameters. Can use materials
+            with different temperatures.
+        simulation_data: Contains settings for the simulation.
+        dirichlet_nodes_u: Nodes at which a dirichlet bc shall be set for the
+            mechanical field.
+        dirichlet_values_u: Values which are set at the node from the nodes
+            list for the mechanical field.
+        dirichlet_nodes_phi: Nodes at which a dirichlet bc shall be set for
+            the electrical field.
+        dirichlet_values_phi: Values which are set at the node from the nodes
+            list for the electrical field.
+        mu: FEM mass matrix for the mechanical field.
+        ku: FEM stiffness matrix for the mechanical field.
+        cu: FEM damping matrix for the mechanical field.
+        kuv: FEM stiffness matrix for the coupling of electrical and
+            mechanical field.
+        kv: FEM stiffness matrix for the electrical field.
+        k_snake: FEM stiffness matrix for the nonlinear part of the
+            mechanical field.
+        u: Mechanical field vector u(t,r).
+        q: List of charges per time step.
+        local_elements: List of element data for the local triangles.
+    """
 
     # Simulation parameters
     mesh_data: MeshData
@@ -58,11 +87,6 @@ class NonlinearPiezoSim:
     dirichlet_nodes_phi: npt.NDArray
     dirichlet_values_phi: npt.NDArray
 
-    # FEM matrices
-    m: npt.NDArray
-    c: npt.NDArray
-    k: npt.NDArray
-
     # Resulting fields
     u: npt.NDArray
     q: npt.NDArray
@@ -71,18 +95,21 @@ class NonlinearPiezoSim:
     local_elements: List[LocalElementData]
 
     def __init__(
-            self,
-            mesh_data: MeshData,
-            material_manager: MaterialManager,
-            simulation_data: SimulationData):
+        self,
+        mesh_data: MeshData,
+        material_manager: MaterialManager,
+        simulation_data: SimulationData
+    ):
         self.mesh_data = mesh_data
         self.material_manager = material_manager
         self.simulation_data = simulation_data
 
-    def assemble(self, nonlinear_elasticity_matrix):
+    def assemble(self, nonlinear_elasticity_matrix: npt.NDArray):
         """Assembles the FEM matrices based on the set mesh_data and
-        material_data.
-        The matrices are stored in self.m, self.c, self.k.
+        material_data. Resulting FEM matrices are saved in global variables.
+
+        Parameters:
+            nonlinear_elasticity_matrix: 4x4 nonlinear material matrix.
         """
         # TODO Assembly takes to long rework this algorithm
         # Maybe the 2x2 matrix slicing is not very fast
@@ -206,38 +233,17 @@ class NonlinearPiezoSim:
         self.k_snake = lu.tolil()
         self.ku = ku.tolil()
 
-        """
-        # Calculate block matrices
-        zeros1x1 = np.zeros((number_of_nodes, number_of_nodes))
-        zeros2x1 = np.zeros((2*number_of_nodes, number_of_nodes))
-        zeros1x2 = np.zeros((number_of_nodes, 2*number_of_nodes))
-
-        m = sparse.bmat([
-            [mu, zeros2x1],
-            [zeros1x2, zeros1x1],
-        ])
-        c = sparse.bmat([
-            [cu, zeros2x1],
-            [zeros1x2, zeros1x1],
-        ])
-        k = sparse.bmat([
-            [ku, kuv],
-            [kuv.T, -1*kve]
-        ])
-        ll = sparse.bmat([
-            [lu, zeros2x1],
-            [zeros1x2, zeros1x1]
-        ])
-
-        self.m = m.tolil()
-        self.c = c.tolil()
-        self.k = k.tolil()
-        self.l = ll.tolil()
-        """
-
     def solve_time(
-            self,
-            electrode_elements: npt.NDArray):
+        self,
+        electrode_elements: npt.NDArray
+    ):
+        """Calculates the electro-mechanical field for each time step using a
+        nonlinear piezo simulation.
+
+        Parameters:
+            electrode_elements: Elements on the electrode for which the charge
+                is calculated.
+        """
         number_of_time_steps = self.simulation_data.number_of_time_steps
         delta_t = self.simulation_data.delta_t
         number_of_nodes = len(self.mesh_data.nodes)
@@ -264,11 +270,11 @@ class NonlinearPiezoSim:
         q = np.zeros(number_of_time_steps, dtype=np.float64)
 
         # Set boundary conditions
-        system_matrix_u = NonlinearPiezoSim.apply_dirichlet_bc(
+        system_matrix_u = NonlinearPiezoSimTime.apply_dirichlet_bc(
             (mu+delta_t/2*cu).tolil(),
             self.dirichlet_nodes_u
         ).tocsc()
-        system_matrix_phi = NonlinearPiezoSim.apply_dirichlet_bc(
+        system_matrix_phi = NonlinearPiezoSimTime.apply_dirichlet_bc(
             kv,
             self.dirichlet_nodes_phi
         ).tocsc()
@@ -277,7 +283,7 @@ class NonlinearPiezoSim:
         for time_index in range(1, number_of_time_steps-1):
 
             # Solve for phi
-            right_side_phi = NonlinearPiezoSim.apply_dirchlet_bc_loadvector(
+            right_side_phi = NonlinearPiezoSimTime.apply_dirchlet_bc_loadvector(
                 kuv.T*u[:, time_index],
                 self.dirichlet_nodes_phi,
                 self.dirichlet_values_phi[:, time_index]
@@ -291,7 +297,7 @@ class NonlinearPiezoSim:
             # Solve for u
             p = -kuv*phi[:, time_index+1]
             r = k_snake*np.square(u[:, time_index])+ku*u[:, time_index]
-            right_side_u = NonlinearPiezoSim.apply_dirchlet_bc_loadvector(
+            right_side_u = NonlinearPiezoSimTime.apply_dirchlet_bc_loadvector(
                 (
                     (delta_t)**2*(p-r)
                     + delta_t/2*cu*u[:, time_index-1]
@@ -307,7 +313,7 @@ class NonlinearPiezoSim:
 
             if electrode_elements is not None:
                 # Caluclate charge
-                q[time_index] = NonlinearPiezoSim.calculate_charge(
+                q[time_index] = NonlinearPiezoSimTime.calculate_charge(
                     u[:, time_index+1],
                     phi[:, time_index+1],
                     self.material_manager,
@@ -322,10 +328,23 @@ class NonlinearPiezoSim:
         self.u = u
 
     def solve_time_implicit(
-            self,
-            electrode_elements: npt.NDArray,
-            max_iter: int,
-            max_error: float):
+        self,
+        electrode_elements: npt.NDArray,
+        max_iter: int,
+        error: float
+    ):
+        """Calculates the electro-mechanical field for each time step using an
+        implicit time integration scheme WIP.
+
+        Parameters:
+            electrode_elements: Elements which are on the electrode. Used to
+                calculate the charge.
+            max_iter: Maximum number of iterations per time step.
+            error: Error which shall be achieved.
+        """
+        return NotImplementedError
+
+        # TODO Finish function
         # Setup simulation parameters
         number_of_nodes = len(self.mesh_data.nodes)
         number_of_time_steps = self.simulation_data.number_of_time_steps
@@ -388,16 +407,17 @@ class NonlinearPiezoSim:
             u_est = u[:, time_index]
             k = 0
             while (k > max_iter
-                   or np.abs(u_est)/np.abs(u[:, time-index]) <= max_error):
+                   or np.abs(u_est)/np.abs(u[:, time-index]) <= error):
                 r = k_snake*np.square(u_est)+ku*u_est
                 t = 1/(beta*delta_t**2)*mu*u_est+r
 
                 # TODO Finish implicit simulation type?
 
     def get_load_vector(
-            self,
-            nodes: npt.NDArray,
-            values: npt.NDArray) -> npt.NDArray:
+        self,
+        nodes: npt.NDArray,
+        values: npt.NDArray
+    ) -> npt.NDArray:
         """Calculates the load vector (right hand side) vector for the
         simulation.
 
@@ -421,11 +441,12 @@ class NonlinearPiezoSim:
 
     @staticmethod
     def calculate_charge(
-            u: npt.NDArray,
-            phi: npt.NDArray,
-            material_manager: MaterialManager,
-            electrode_elements: npt.NDArray,
-            nodes: npt.NDArray) -> float:
+        u: npt.NDArray,
+        phi: npt.NDArray,
+        material_manager: MaterialManager,
+        electrode_elements: npt.NDArray,
+        nodes: npt.NDArray
+    ) -> float:
         q = 0
 
         for element_index, element in enumerate(electrode_elements):
@@ -478,9 +499,21 @@ class NonlinearPiezoSim:
 
     @staticmethod
     def apply_dirchlet_bc_loadvector(
-            load_vector: npt.NDArray,
-            nodes: npt.NDArray,
-            values: npt.NDArray):
+        load_vector: npt.NDArray,
+        nodes: npt.NDArray,
+        values: npt.NDArray
+    ):
+        """Sets dirichlet boundary conditions on the given load vector
+
+        Parameters:
+            load_vector: Load vector for which the bc is set.
+            nodes: List of node indices on which the bc is defined.
+            values: List of values per node index which gives the value of
+                the bc at the specific node.
+
+        Returns:
+            load vector with the boundary condition set.
+        """
         for node, value in zip(nodes, values):
             load_vector[node] = value
 
@@ -488,8 +521,18 @@ class NonlinearPiezoSim:
 
     @staticmethod
     def apply_dirichlet_bc(
-            system_matrix,
-            nodes: npt.NDArray):
+        system_matrix: npt.NDArray,
+        nodes: npt.NDArray
+    ):
+        """Sets dirichlet boundary condition for the given matrix.
+
+        Parameters:
+            system_matrix: Matrix for which the boundary conditions are set.
+            nodes: List of node indices at which the bc are defined.
+
+        Returns:
+            Matrix with set boundary conditions.
+        """
         for node in nodes:
             system_matrix[node, :] = 0
             system_matrix[node, node] = 1

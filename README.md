@@ -20,7 +20,7 @@ Gmsh is internally used to create the mesh.
     - Maybe lru caches can be utilized?
 - Creating post processing views for gmsh takes a very long time
 - When creating the simulation results folder the simulation name can be
-removed from the file names
+  removed from the file names
 - Check if code can made faster using jfit from numba
 - Is the boundary condition for u_r at the symmetry axis even needed?
 - Assembly in temperature dependent material parameters can be made faster by
@@ -30,5 +30,8 @@ removed from the file names
   inner and outer radius can be given
 - Make the assembly procedure faster
 - Make explicit time solving scheme in nonlinear simulation faster by using
-matrix inversion
+  matrix inversion
+- Add functionality for multiple materials in the MaterialManager class
+- Rework the simulation **kwargs parameters for the SingleSimulation and the
+  CoupledSimulation
 

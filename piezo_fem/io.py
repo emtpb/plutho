@@ -37,7 +37,8 @@ def parse_charge_hist_file(file_path: str) -> Tuple[npt.NDArray, npt.NDArray]:
     return np.array(time), np.array(charge)
 
 def parse_charge_freq_hist_file(
-        file_path: str) -> Tuple[npt.NDArray, npt.NDArray]:
+    file_path: str
+) -> Tuple[npt.NDArray, npt.NDArray]:
     """Reads the charge file from an OpenCFS simulation.
 
     Parameters:
@@ -61,7 +62,8 @@ def parse_charge_freq_hist_file(
     return np.array(frequencies), np.array(charge)
 
 def parse_displacement_hist_file(
-        file_path: str) -> Tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    file_path: str
+) -> Tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     """Reads the displacement file from and OpenCFS simulation.
 
     Parameters:
@@ -85,10 +87,11 @@ def parse_displacement_hist_file(
     return np.array(time_steps), np.array(u_r), np.array(u_z)
 
 def create_scalar_field_as_csv(
-        field_name: str,
-        field: npt.NDArray,
-        nodes: npt.NDArray,
-        folder_path: str):
+    field_name: str,
+    field: npt.NDArray,
+    nodes: npt.NDArray,
+    folder_path: str
+):
     """Creates a series of *.csv files in the given folder each for
     a specific time step of the given field.
 
@@ -119,10 +122,11 @@ def create_scalar_field_as_csv(
             fd.write(text)
 
 def create_vector_field_as_csv(
-        u: npt.NDArray,
-        nodes: npt.NDArray,
-        folder_path: str,
-        contains_theta: bool):
+    u: npt.NDArray,
+    nodes: npt.NDArray,
+    folder_path: str,
+    contains_theta: bool
+):
     """Creates a new *.csv for each time step containing the data from u.
 
     Parameters:
@@ -171,7 +175,7 @@ def load_temperature_dependent_material_data_pic181(files):
 
     Parameters:
         files: List of file paths.
-    
+
     Returns:
         MaterialData object.
     """
@@ -191,8 +195,6 @@ def load_temperature_dependent_material_data_pic181(files):
     density = 7850
     thermal_conductivity = 1.1
     heat_capacity = 350
-
-    material_name = "pic181"
 
     for file in files:
         file_name, ext = os.path.splitext(os.path.basename(file))

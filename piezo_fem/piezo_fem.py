@@ -1,4 +1,9 @@
-"""Module for setting up the simulations."""
+"""
+DEPRECATED -> Please use the SingleSimulation class from simulation_handler.py
+Module for setting up the simulations.
+This is an old module.
+TODO Can this be deleted?
+"""
 
 # Python standard libraries
 from __future__ import annotations
@@ -13,9 +18,9 @@ import matplotlib.pyplot as plt
 from .simulation.base import MeshData, MaterialData, SimulationData, \
     SimulationType, ModelType, create_dirichlet_bc_nodes, \
     ExcitationInfo, ExcitationType, create_dirichlet_bc_nodes_freq
-from .simulation.piezo_temp_time import PiezoSimTherm
-from .simulation.piezo_time import PiezoSim
-from .simulation.piezo_freq import PiezoFreqSim
+from .simulation.thermo_piezo_time import ThermoPiezoSimTime
+from .simulation.piezo_time import PiezoSimTime
+from .simulation.piezo_freq import PiezoSimFreq
 from .gmsh_handler import GmshHandler
 from .materials import pic255, MaterialManager
 from .postprocessing import calculate_impedance
@@ -47,7 +52,7 @@ class PiezoSimulation:
         simulation_type: Simulation type.
         simulation_name: Name of the simulation. Used for names of the
             different files.
-        solver: Either PiezoSim or PiezoSimTherm depending on the
+        solver: Either PiezoSim or ThermoPiezoSimTime depending on the
             simulation_type.
         mesh_data: Contains information about the used mesh.
         material_handler: Contains information about the used material.
@@ -64,7 +69,7 @@ class PiezoSimulation:
     simulation_name: str
 
     # Simulation parameters
-    solver: Union[PiezoSim, PiezoSimTherm, PiezoFreqSim]
+    solver: Union[PiezoSimTime, ThermoPiezoSimTime, PiezoSimFreq]
     mesh_data: Union[Any, MeshData]
 
     # TODO Remove this since its already in material manager
@@ -176,7 +181,7 @@ class PiezoSimulation:
             amplitude: Sets the amplitude of the triangle pulse."""
         if not hasattr(self, "simulation_data"):
             raise SimulationException("Please set simulation data first.")
-        if isinstance(self.solver, PiezoFreqSim):
+        if isinstance(self.solver, PiezoSimFreq):
             raise SimulationException(
                 "Can not be set on frequency simulation."
         )
@@ -231,7 +236,7 @@ class PiezoSimulation:
         if not hasattr(self, "material_manager"):
             raise SimulationException("Please set material data first.")
 
-        self.solver = PiezoFreqSim(
+        self.solver = PiezoSimFreq(
             self.mesh_data,
             self.material_manager
         )
@@ -267,13 +272,13 @@ class PiezoSimulation:
         )
 
         if simulation_type is SimulationType.PIEZOELECTRIC:
-            self.solver = PiezoSim(
+            self.solver = PiezoSimTime(
                 self.mesh_data,
                 self.material_manager,
                 self.simulation_data
             )
         elif simulation_type is SimulationType.THERMOPIEZOELECTRIC:
-            self.solver = PiezoSimTherm(
+            self.solver = ThermoPiezoSimTime(
                 self.mesh_data,
                 self.material_manager,
                 self.simulation_data
@@ -323,18 +328,18 @@ class PiezoSimulation:
         electrode_triangles = pg_elements["Electrode"]
 
         self.solver.assemble()
-        if isinstance(self.solver, PiezoSim):
+        if isinstance(self.solver, PiezoSimTime):
             self.solver.solve_time(
                 electrode_triangles,
                 self.gmsh_handler.model_type is ModelType.DISC,
             )
-        elif isinstance(self.solver, PiezoSimTherm):
+        elif isinstance(self.solver, ThermoPiezoSimTime):
             self.solver.solve_time(
                 electrode_triangles,
                 self.gmsh_handler.model_type is ModelType.DISC,
                 theta_start
             )
-        elif isinstance(self.solver, PiezoFreqSim):
+        elif isinstance(self.solver, PiezoSimFreq):
             self.solver.solve_frequency(
                 self.freqencies,
                 self.excitation,
@@ -393,7 +398,7 @@ class PiezoSimulation:
         self.solver.u = np.load(displacement_file)
         self.solver.q = np.load(charge_file)
 
-        if isinstance(self.solver, PiezoSimTherm):
+        if isinstance(self.solver, ThermoPiezoSimTime):
             mech_loss_file = os.path.join(
                 self.workspace_directory,
                 f"{self.simulation_name}_mech_loss.npy"

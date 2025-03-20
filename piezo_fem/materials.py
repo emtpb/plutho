@@ -16,7 +16,6 @@ class Material:
     """Class to handle a single material. The material can have either constant
     material properties or temperature variant properties.
     The temperature properties are determined using linear interpolation.
-Plugin 'tmsvg/pear-tree'
 
     Attributes:
         material_name: Name of the material.
@@ -31,10 +30,11 @@ Plugin 'tmsvg/pear-tree'
     physical_group_name: str
 
     def __init__(
-            self,
-            material_name: str,
-            material_data: MaterialData,
-            physical_group_name: str):
+        self,
+        material_name: str,
+        material_data: MaterialData,
+        physical_group_name: str
+    ):
         self.material_name = material_name
         self.material_data = material_data
         self.is_temperature_dependent = False
@@ -133,6 +133,19 @@ Plugin 'tmsvg/pear-tree'
 
 
 class MaterialManager:
+    """Class to organize temperature dependent materials.
+    When the temperature is updated to a given value the material parameters
+    are updated as well according to the given data.
+    Right now only one material can be handled.
+    TODO Add possibility for multiple materials
+
+    Attributes:
+        materials: List of materials (only 1).
+        element_index_to_material_data: Sets a material index (corresponding to
+            the materials list) for every element in the mesh.
+        is_temperature_dependent: True if the materials shall be temperature
+            dependent.
+    """
 
     materials: List[Material]
     element_index_to_material_data: npt.NDArray
@@ -148,11 +161,24 @@ class MaterialManager:
         self.is_temperature_dependent = False
 
     def add_material(
-            self,
-            material_name,
-            material_data,
-            physical_group_name,
-            element_indices):
+        self,
+        material_name: str,
+        material_data: MaterialData,
+        physical_group_name: str,
+        element_indices: npt.NDArray
+    ):
+        """Adds a material to the material manager. For every given
+        element_index (which are all in the physical group defined by the
+        physical_group_name) the material is set to the given material data.
+
+        Parameters:
+            material_name: Name of the material.
+            material_data: Material data.
+            physical_group_name: Name of the physical group for which this
+                material shall be set.
+            element_indices: Index of every element in the physical group which
+                name is given in physical_group_name.
+        """
         new_material = Material(
                 material_name,
                 material_data,
@@ -175,8 +201,16 @@ class MaterialManager:
             self.is_temperature_dependent = True
 
     def initialize_materials(
-            self,
-            starting_temperature: Union[float, npt.NDArray] = None):
+        self,
+        starting_temperature: Union[float, npt.NDArray] = None
+    ):
+        """Initializes the material data for every element.
+        If a starting temperature field is given this will be used to
+        determine the starting material parameters (is temperature dependent).
+
+        Parameters:
+            starting_temperature: List of temperatures one for every element.
+        """
         if isinstance(starting_temperature, float):
             starting_temperature = np.ones(self.number_of_elements) * \
                 starting_temperature
@@ -510,6 +544,8 @@ class MaterialManager:
             self.get_thermal_conductivity(element_index)
         )
 
+### Material datas
+# ----------------
 
 pic255 = MaterialData(
     **{

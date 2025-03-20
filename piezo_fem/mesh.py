@@ -10,13 +10,18 @@ import gmsh
 
 
 class Mesh:
+    """Class to handle generate and read meshes.
 
+    Attributes:
+        mesh_file_path: Path to the mesh.
+    """
     mesh_file_path: str
 
     def __init__(
-            self,
-            file_path: str,
-            load: bool = False):
+        self,
+        file_path: str,
+        load: bool = False
+    ):
         if not gmsh.is_initialized():
             gmsh.initialize()
 
@@ -56,9 +61,10 @@ class Mesh:
 
     @staticmethod
     def _get_elements(
-            element_types,
-            element_tags,
-            element_node_tags) -> npt.NDArray:
+        element_types,
+        element_tags,
+        element_node_tags
+    ) -> npt.NDArray:
         """Returns a list of elements used in the simulation from the gmsh
         getElements() api function.
 
@@ -85,11 +91,12 @@ class Mesh:
         return elements
 
     def generate_rectangular_mesh(
-            self,
-            width: float = 0.005,
-            height: float = 0.001,
-            mesh_size: float = 0.00015,
-            x_offset: float = 0):
+        self,
+        width: float = 0.005,
+        height: float = 0.001,
+        mesh_size: float = 0.00015,
+        x_offset: float = 0
+    ):
         """Creates a gmsh rectangular mesh given the width, height, the mesh
         size and the x_offset.
 
@@ -156,8 +163,9 @@ class Mesh:
         return nodes, elements
 
     def get_nodes_by_physical_groups(
-            self,
-            needed_pg_names: List[str]) -> Dict[str, List]:
+        self,
+        needed_pg_names: List[str]
+    ) -> Dict[str, List]:
         """Returns the node indices of each physical group given by
         needed_pg_names list.
 
@@ -189,8 +197,9 @@ class Mesh:
         return pg_tags
 
     def get_elements_by_physical_groups(
-            self,
-            needed_pg_names: List[str]) -> Dict[str, npt.NDArray]:
+        self,
+        needed_pg_names: List[str]
+    ) -> Dict[str, npt.NDArray]:
         """Returns the elements inside the given physical groups.
 
         Parameters:

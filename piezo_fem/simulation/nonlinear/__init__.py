@@ -1,2 +1,2 @@
-from .piezo_time import NonlinearPiezoSim
+from .piezo_time import NonlinearPiezoSimTime
 

@@ -17,10 +17,11 @@ from ..materials import MaterialManager
 
 
 def charge_integral_u(
-        node_points: npt.NDArray,
-        u_e: npt.NDArray,
-        piezo_matrix: npt.NDArray,
-        jacobian_inverted_t: npt.NDArray):
+    node_points: npt.NDArray,
+    u_e: npt.NDArray,
+    piezo_matrix: npt.NDArray,
+    jacobian_inverted_t: npt.NDArray
+):
     """Calculates the integral of eBu of the given element.
 
     Parameters:
@@ -51,10 +52,11 @@ def charge_integral_u(
 
 
 def charge_integral_v(
-        node_points: npt.NDArray,
-        v_e: npt.NDArray,
-        permittivity_matrix: npt.NDArray,
-        jacobian_inverted_t: npt.NDArray):
+    node_points: npt.NDArray,
+    v_e: npt.NDArray,
+    permittivity_matrix: npt.NDArray,
+    jacobian_inverted_t: npt.NDArray
+):
     """Calculates the integral of epsilonBVe of the given element.
 
     Parameters:
@@ -81,10 +83,11 @@ def charge_integral_v(
 
 
 def calculate_charge(
-        u: npt.NDArray,
-        material_manager: MaterialManager,
-        elements: npt.NDArray,
-        nodes) -> float:
+    u: npt.NDArray,
+    material_manager: MaterialManager,
+    elements: npt.NDArray,
+    nodes
+) -> float:
     """Calculates the charge of the given elements.
 
     Parameters:
@@ -147,7 +150,7 @@ def calculate_charge(
     return q
 
 
-class PiezoSim:
+class PiezoSimTime:
     """Class for the simulation of mechanical-electric fields.
 
     Parameters:
@@ -157,7 +160,7 @@ class PiezoSim:
 
     Attributes:
         mesh_data: Contains the mesh information.
-        material_manager: Contains the information about the materials.
+        material_manager: Contains information about the materials.
         simulation_data: Contains the information about the simulation.
         dirichlet_nodes: List of nodes for which dirichlet values are set.
         dirichlet_values: List of values of the corresponding dirichlet nodes
@@ -196,10 +199,11 @@ class PiezoSim:
     local_elements: List[LocalElementData]
 
     def __init__(
-            self,
-            mesh_data: MeshData,
-            material_manager: MaterialManager,
-            simulation_data: SimulationData):
+        self,
+        mesh_data: MeshData,
+        material_manager: MaterialManager,
+        simulation_data: SimulationData
+    ):
         self.mesh_data = mesh_data
         self.material_manager = material_manager
         self.simulation_data = simulation_data
@@ -331,8 +335,10 @@ class PiezoSim:
         self.c = c.tolil()
         self.k = k.tolil()
 
-    def solve_time(self,
-                   electrode_elements: npt.NDArray):
+    def solve_time(
+        self,
+        electrode_elements: npt.NDArray
+    ):
         """Runs the simulation using the assembled m, c and k matrices as well
         as the set excitation.
         Calculates the displacement field and potential field of the given
@@ -425,9 +431,10 @@ class PiezoSim:
         self.u = u
 
     def get_load_vector(
-            self,
-            nodes: npt.NDArray,
-            values: npt.NDArray) -> npt.NDArray:
+        self,
+        nodes: npt.NDArray,
+        values: npt.NDArray
+    ) -> npt.NDArray:
         """Calculates the load vector (right hand side) vector for the
         simulation.
 

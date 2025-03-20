@@ -73,9 +73,10 @@ class GmshHandler:
 
     @staticmethod
     def _get_elements(
-            element_types,
-            element_tags,
-            element_node_tags) -> npt.NDArray:
+        element_types,
+        element_tags,
+        element_node_tags
+    ) -> npt.NDArray:
         """Returns a list of elements used in the simulation from the gmsh
         getElements() api function.
 
@@ -112,8 +113,9 @@ class GmshHandler:
         return nodes, elements
 
     def get_nodes_by_physical_groups(
-            self,
-            needed_pg_names: List[str]) -> Dict[str, List]:
+        self,
+        needed_pg_names: List[str]
+    ) -> Dict[str, List]:
         """Returns the node indices of each physical group given by
         needed_pg_names list.
 
@@ -145,8 +147,9 @@ class GmshHandler:
         return pg_tags
 
     def get_elements_by_physical_groups(
-            self,
-            needed_pg_names: List[str]) -> Dict[str, npt.NDArray]:
+        self,
+        needed_pg_names: List[str]
+    ) -> Dict[str, npt.NDArray]:
         """Returns the elements inside the given physical groups.
 
         Parameters:
@@ -184,13 +187,14 @@ class GmshHandler:
         return triangle_elements
 
     def create_element_post_processing_view(
-            self,
-            field: npt.NDArray,
-            number_of_time_steps: int,
-            delta_t: float,
-            field_dimension: int,
-            field_name: str,
-            append: bool):
+        self,
+        field: npt.NDArray,
+        number_of_time_steps: int,
+        delta_t: float,
+        field_dimension: int,
+        field_name: str,
+        append: bool
+    ):
         """Appends a post processing view to the output mesh file.
         The given field must be scalar and defined over the elements.
 
@@ -236,12 +240,13 @@ class GmshHandler:
         gmsh.view.write(view_tag, self.output_file_path, append)
 
     def create_u_default_post_processing_view(
-            self,
-            u: npt.NDArray,
-            number_of_time_steps: int,
-            delta_t: float,
-            temperature_field: bool,
-            append: bool):
+        self,
+        u: npt.NDArray,
+        number_of_time_steps: int,
+        delta_t: float,
+        temperature_field: bool,
+        append: bool
+    ):
         """Appends a post processing view to the output mesh file.
         The given field must be scalar and defined over the nodes.
 
@@ -307,11 +312,12 @@ class GmshHandler:
             gmsh.view.write(theta_view_tag, self.output_file_path, True)
 
     def create_theta_post_processing_view(
-            self,
-            theta: npt.NDArray,
-            number_of_time_steps: int,
-            delta_t: float,
-            append: bool):
+        self,
+        theta: npt.NDArray,
+        number_of_time_steps: int,
+        delta_t: float,
+        append: bool
+    ):
         """Appends a post processing view to the output mesh file.
         The given field must be scalar and defined over the nodes.
 
@@ -343,11 +349,12 @@ class GmshHandler:
         gmsh.view.write(theta_view_tag, self.output_file_path, append)
 
     def generate_rectangular_mesh(
-            self,
-            width: float = 0.005,
-            height: float = 0.001,
-            mesh_size: float = 0.00015,
-            x_offset: float = 0):
+        self,
+        width: float = 0.005,
+        height: float = 0.001,
+        mesh_size: float = 0.00015,
+        x_offset: float = 0
+    ):
         """Creates a gmsh rectangular mesh given the width, height, the mesh
         size and the x_offset.
 

@@ -7,6 +7,9 @@ from enum import Enum
 import numpy as np
 import numpy.typing as npt
 
+# Local libraries
+from ..gmsh_handler import GmshHandler
+
 ### ENUMS AND DATACLASSES
 # -----------------------
 
@@ -158,7 +161,8 @@ def gradient_local_shape_functions():
 def local_to_global_coordinates(
         node_points: npt.NDArray,
         s: float,
-        t: float) -> Any:
+        t: float
+) -> Any:
     """Transforms the local coordinates s, t using the node points to
     the global coordinates r, z.
 
@@ -175,10 +179,11 @@ def local_to_global_coordinates(
 
 
 def b_operator_global(
-        node_points: npt.NDArray,
-        s: float,
-        t: float,
-        jacobian_inverted_t: npt.NDArray):
+    node_points: npt.NDArray,
+    s: float,
+    t: float,
+    jacobian_inverted_t: npt.NDArray
+):
     """Calculates the B operator for the local coordinantes which is needed
     for voigt-notation.
     The derivates are with respect to the global coordinates r and z.
@@ -246,9 +251,10 @@ def integral_m(node_points: npt.NDArray):
 
 
 def integral_ku(
-        node_points: npt.NDArray,
-        jacobian_inverted_t: npt.NDArray,
-        elasticity_matrix: npt.NDArray):
+    node_points: npt.NDArray,
+    jacobian_inverted_t: npt.NDArray,
+    elasticity_matrix: npt.NDArray
+):
     """Calculates the Ku integral
 
     Parameters:
@@ -272,9 +278,10 @@ def integral_ku(
 
 
 def integral_kuv(
-        node_points: npt.NDArray,
-        jacobian_inverted_t: npt.NDArray,
-        piezo_matrix: npt.NDArray):
+    node_points: npt.NDArray,
+    jacobian_inverted_t: npt.NDArray,
+    piezo_matrix: npt.NDArray
+):
     """Calculates the KuV integral.
 
     Parameters:
@@ -299,9 +306,10 @@ def integral_kuv(
 
 
 def integral_kve(
-        node_points: npt.NDArray,
-        jacobian_inverted_t: npt.NDArray,
-        permittivity_matrix: npt.NDArray):
+    node_points: npt.NDArray,
+    jacobian_inverted_t: npt.NDArray,
+    permittivity_matrix: npt.NDArray
+):
     """Calculates the KVe integral.
 
     Parameters:
@@ -326,8 +334,9 @@ def integral_kve(
 
 
 def energy_integral_theta(
-        node_points: npt.NDArray,
-        theta: npt.NDArray):
+    node_points: npt.NDArray,
+    theta: npt.NDArray
+):
     """Integrates the given element over the given theta field.
 
     Parameters:
@@ -400,10 +409,11 @@ def line_quadrature(func):
 
 
 def apply_dirichlet_bc(
-        m: npt.NDArray,
-        c: npt.NDArray,
-        k: npt.NDArray,
-        nodes: npt.NDArray) -> Tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    m: npt.NDArray,
+    c: npt.NDArray,
+    k: npt.NDArray,
+    nodes: npt.NDArray
+) -> Tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     """Prepares the given matrices m, c and k for the dirichlet boundary
     conditions. This is done by setting the corresponding rows to 0
     excepct for the node which will contain the specific value (this is set
@@ -435,10 +445,24 @@ def apply_dirichlet_bc(
 
 
 def create_dirichlet_bc_nodes_freq(
-        gmsh_handler,
-        amplitudes: npt.NDArray,
-        number_of_frequencies: int,
-        set_symmetric_bc: bool = True):
+    gmsh_handler: GmshHandler,
+    amplitudes: npt.NDArray,
+    number_of_frequencies: int,
+    set_symmetric_bc: bool = True
+) -> Tuple:
+    """Create the dirichlet boundary condition nodes for a simulation in the
+    frequency domain.
+
+    Parameter:
+        gmsh_handler: Gmsh handler for accessing the mesh.
+        amplitudes: List of amplitude per frequency step.
+        number_of_frequencies: Total number of frequency steps.
+        set_symmetric_bc: Set to True of the left border of the model is on the
+            ordinate axis.
+
+    Returns:
+        The dirichlet nodes and values for u and v respectively.
+    """
 
     # Get nodes from gmsh handler
     pg_nodes = gmsh_handler.get_nodes_by_physical_groups(
@@ -470,10 +494,11 @@ def create_dirichlet_bc_nodes_freq(
         [dirichlet_values_u, dirichlet_values_v]
 
 def create_dirichlet_bc_nodes(
-        gmsh_handler,
-        electrode_excitation: npt.NDArray,
-        number_of_time_steps: int,
-        set_symmetric_bc: bool = True):
+    gmsh_handler: GmshHandler,
+    electrode_excitation: npt.NDArray,
+    number_of_time_steps: int,
+    set_symmetric_bc: bool = True
+):
     """Creates lists of nodes and values used in the simulation to
     apply the boundary conditions.
     There are 4 lists returning: nodes_u, values_u, nodes_v, values_v.
@@ -495,7 +520,7 @@ def create_dirichlet_bc_nodes(
     Returns
         Tuple of 2 tuples. The first inner tuple is a tuple containing
         the nodes and values for u and the second inner tuple contains
-        the nodes and values for v. 
+        the nodes and values for v.
     """
     # Get nodes from gmsh handler
     pg_nodes = gmsh_handler.get_nodes_by_physical_groups(
@@ -532,8 +557,9 @@ def create_dirichlet_bc_nodes(
         [dirichlet_values_u, dirichlet_values_v]
 
 def create_local_element_data(
-        nodes: npt.NDArray,
-        elements: npt.NDArray) -> List[LocalElementData]:
+    nodes: npt.NDArray,
+    elements: npt.NDArray
+) -> List[LocalElementData]:
     """Create the local node data and the corresponding matrices
     for every element which are needed in many parts of the simulations.
 
@@ -592,8 +618,17 @@ def calculate_volumes(local_element_data: List[LocalElementData]):
 
 
 def get_avg_temp_field_per_element(
-        theta,
-        elements):
+    theta: npt.NDArray,
+    elements: npt.NDArray
+):
+    """Returns the average temperature for each element.
+
+    Parameters:
+        theta: Temperatures for each node.
+        elements: List of elements.
+
+    Returns:
+        Mean temperature for each element."""
     theta_elements = np.zeros(len(elements))
 
     for element_index, element in enumerate(elements):

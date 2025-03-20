@@ -17,11 +17,12 @@ from ..materials import MaterialManager
 
 
 def loss_integral_scs(
-        node_points: npt.NDArray,
-        u_e: npt.NDArray,
-        angular_frequency: float,
-        jacobian_inverted_t: npt.NDArray,
-        elasticity_matrix: npt.NDArray):
+    node_points: npt.NDArray,
+    u_e: npt.NDArray,
+    angular_frequency: float,
+    jacobian_inverted_t: npt.NDArray,
+    elasticity_matrix: npt.NDArray
+):
     """Calculate sthe integral of dS/dt*c*dS/dt over one triangle in the
     frequency domain for the given frequency.
 
@@ -40,7 +41,6 @@ def loss_integral_scs(
         b_opt = b_operator_global(node_points, s, t, jacobian_inverted_t)
 
         s_e = np.dot(b_opt, u_e)
-        dt_s = 1j*angular_frequency*s_e
 
         # return np.dot(dt_s.T, np.dot(elasticity_matrix.T, dt_s))*r
         return np.dot(np.conjugate(s_e).T, np.dot(elasticity_matrix.T, s_e))*r
@@ -48,7 +48,7 @@ def loss_integral_scs(
     return quadratic_quadrature(inner)
 
 
-class PiezoFreqSim:
+class PiezoSimFreq:
     """Class for the simulation of mechanical-electric fields.
 
     Parameters:
@@ -98,10 +98,11 @@ class PiezoFreqSim:
     local_elements: List[LocalElementData]
 
     def __init__(
-            self,
-            mesh_data: MeshData,
-            material_manager: MaterialManager,
-            frequencies: npt.NDArray):
+        self,
+        mesh_data: MeshData,
+        material_manager: MaterialManager,
+        frequencies: npt.NDArray
+    ):
         self.mesh_data = mesh_data
         self.material_manager = material_manager
         self.frequencies = frequencies
@@ -231,9 +232,10 @@ class PiezoFreqSim:
         self.k = k.tolil()
 
     def solve_frequency(
-            self,
-            electrode_elements: npt.NDArray,
-            calculate_mech_loss: bool):
+        self,
+        electrode_elements: npt.NDArray,
+        calculate_mech_loss: bool
+    ):
         """Run the frequency simulation using the given frequencies.
         If electrode elements are given the charge at those elements is
         calculated.
@@ -267,8 +269,7 @@ class PiezoFreqSim:
         )
 
         volumes = calculate_volumes(self.local_elements)
-        print(np.sum(volumes))
-        self.material_manager.print_material_data(0)
+
         print(
             f"Starting frequency simulation. There are {len(frequencies)} "
             "frequency steps."
@@ -341,10 +342,11 @@ class PiezoFreqSim:
         self.mech_loss = mech_loss
 
     def get_load_vector(
-            self,
-            dirichlet_nodes: npt.NDArray,
-            dirichlet_values: npt.NDArray,
-            frequency_index: int) -> npt.NDArray:
+        self,
+        dirichlet_nodes: npt.NDArray,
+        dirichlet_values: npt.NDArray,
+        frequency_index: int
+    ) -> npt.NDArray:
         """Calculates the load vector (right hand side) vector for the
         simulation.
 

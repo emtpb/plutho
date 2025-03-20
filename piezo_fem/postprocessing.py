@@ -10,9 +10,10 @@ from piezo_fem.simulation.base import energy_integral_theta, \
     gradient_local_shape_functions
 
 def calculate_impedance(
-        q: npt.NDArray,
-        excitation: npt.NDArray,
-        delta_t: float) -> Tuple[npt.NDArray, npt.NDArray]:
+    q: npt.NDArray,
+    excitation: npt.NDArray,
+    delta_t: float
+) -> Tuple[npt.NDArray, npt.NDArray]:
     """Calculates the impedance given the charge q and the excitation
     per time step.
 
@@ -33,9 +34,10 @@ def calculate_impedance(
 
 
 def calculate_electrical_input_energy(
-        voltage_excitation: npt.NDArray,
-        charge: npt.NDArray,
-        delta_t: float):
+    voltage_excitation: npt.NDArray,
+    charge: npt.NDArray,
+    delta_t: float
+):
     """Calculates the energy of the elctric input.
 
     Parameters:
@@ -52,11 +54,12 @@ def calculate_electrical_input_energy(
 
 
 def calculate_stored_thermal_energy(
-        theta: npt.NDArray,
-        nodes: npt.NDArray,
-        elements: npt.NDArray,
-        heat_capacity: float,
-        density: float) -> Union[float, npt.NDArray]:
+    theta: npt.NDArray,
+    nodes: npt.NDArray,
+    elements: npt.NDArray,
+    heat_capacity: float,
+    density: float
+) -> Union[float, npt.NDArray]:
     """Calculates the stored thermal energy from the given field.
     theta can have 2 different formats depending on if its time dependent:
         theta[node_index, time_index] or

@@ -38,12 +38,13 @@ class CoupledThermPiezoHeatCond:
     heat_cond_sim: SingleSimulation
 
     def __init__(
-            self,
-            working_directory: str,
-            simulation_name: str,
-            thermo_piezo_simulation_data: SimulationData,
-            heat_cond_simulation_data: SimulationData,
-            mesh: Mesh):
+        self,
+        working_directory: str,
+        simulation_name: str,
+        thermo_piezo_simulation_data: SimulationData,
+        heat_cond_simulation_data: SimulationData,
+        mesh: Mesh
+    ):
         self.working_directory = working_directory
         self.simulation_name = simulation_name
 
@@ -62,7 +63,7 @@ class CoupledThermPiezoHeatCond:
             simulation_name,
             mesh
         )
-        heat_cond_sim.setup_heat_conduction_time_domain(
+        heat_cond_sim.setup_thermo_time_domain(
             heat_cond_simulation_data.delta_t,
             heat_cond_simulation_data.number_of_time_steps,
             heat_cond_simulation_data.gamma
@@ -75,7 +76,8 @@ class CoupledThermPiezoHeatCond:
             self,
             material_name: str,
             material_data: MaterialData,
-            physical_group_name: str):
+            physical_group_name: str
+    ):
         """Add a material to the simulation.
 
         Parameters:
@@ -97,9 +99,10 @@ class CoupledThermPiezoHeatCond:
         )
 
     def set_excitation(
-            self,
-            excitation: npt.NDArray,
-            is_disc: bool):
+        self,
+        excitation: npt.NDArray,
+        is_disc: bool
+    ):
         """Sets the excitation to the given function (per time values).
         The given excitation function is set for all time steps at the
         'Electrode' physical group and 0 is set at the 'Ground' physical group.
@@ -109,7 +112,7 @@ class CoupledThermPiezoHeatCond:
                 will be set for every node on the 'Electrode' boundary.
             is_disc: Boolean to check if the model is a piezoelectric disc and
                 therefore defined at the origin (r=0). In this case a
-                additional boundary condition is set: u_r(r=0,z)=0. 
+                additional boundary condition is set: u_r(r=0,z)=0.
         """
         self.piezo_sim.add_dirichlet_bc(
             FieldType.PHI,
@@ -129,9 +132,16 @@ class CoupledThermPiezoHeatCond:
             )
 
     def set_convection_bc(
-            self,
-            alpha,
-            outer_temperature):
+        self,
+        alpha: float,
+        outer_temperature: float
+    ):
+        """Sets a convction boundary condition for the simulation.
+
+        Parameters:
+            alpha: Heat transfer coefficient.
+            outer_temperautre: Fixed temperature outside the model.
+        """
         boundary_elements = \
             self.heat_cond_sim.mesh.get_elements_by_physical_groups(
                 ["Electrode", "Ground", "RightBoundary"]
@@ -204,15 +214,16 @@ class CoupledFreqPiezoHeatCond:
 
     # Simulations
     piezo_freq: SingleSimulation
-    heat_cond_sim: SingleSimulation
+    thermo_time_sim: SingleSimulation
 
     def __init__(
-            self,
-            working_directory: str,
-            simulation_name: str,
-            piezo_sim_frequency: float,
-            heat_cond_simulation_data: SimulationData,
-            mesh: Mesh):
+        self,
+        working_directory: str,
+        simulation_name: str,
+        piezo_sim_frequency: float,
+        heat_cond_simulation_data: SimulationData,
+        mesh: Mesh
+    ):
         self.working_directory = working_directory
         self.simulation_name = simulation_name
 
@@ -228,20 +239,21 @@ class CoupledFreqPiezoHeatCond:
             simulation_name,
             mesh
         )
-        heat_cond_sim.setup_heat_conduction_time_domain(
+        heat_cond_sim.setup_thermo_time_domain(
             heat_cond_simulation_data.delta_t,
             heat_cond_simulation_data.number_of_time_steps,
             heat_cond_simulation_data.gamma
         )
 
         self.piezo_freq = piezo_freq
-        self.heat_cond_sim = heat_cond_sim
+        self.thermo_time_sim = heat_cond_sim
 
     def add_material(
-            self,
-            material_name: str,
-            material_data: MaterialData,
-            physical_group_name: str):
+        self,
+        material_name: str,
+        material_data: MaterialData,
+        physical_group_name: str
+    ):
         """Add a material to the simulation.
 
         Parameters:
@@ -256,16 +268,24 @@ class CoupledFreqPiezoHeatCond:
             material_data,
             physical_group_name
         )
-        self.heat_cond_sim.add_material(
+        self.thermo_time_sim.add_material(
             material_name,
             material_data,
             physical_group_name
         )
 
     def set_excitation(
-            self,
-            excitation: float,
-            is_disc: bool = True):
+        self,
+        excitation: float,
+        is_disc: bool = True
+    ):
+        """Sets the excitation for the simulation. Only pure sinusoidal
+        excitation is possible.
+
+        Parameters:
+            excitation: Sets the amplitude for the sinusoidal excitation.
+            is_disc: Set to true of the model is a disc.
+        """
         self.piezo_freq.add_dirichlet_bc(
             FieldType.PHI,
             "Electrode",
@@ -284,13 +304,25 @@ class CoupledFreqPiezoHeatCond:
             )
 
     def simulate_coupled(
-            self,
-            starting_temperature: float,
-            is_temperature_dependent: bool):
+        self,
+        starting_temperature: float,
+        is_temperature_dependent: bool
+    ):
+        """Runs the coupled simulation. The results are saved in the individual
+        simulation classes.
+
+        Parameters:
+            starting_temperature: Sets the temperature at time step 0.
+                Sets the starting temperature field as well as the material
+                parameters at the start.
+            is_temperature_dependent: Set to true if the materials shall be
+                temperature dependent (Changing material parameters based on the
+                current field temperature).
+        """
         time_index = 0
         number_of_time_steps = \
-            self.heat_cond_sim.solver.simulation_data.number_of_time_steps
-        number_of_nodes = len(self.heat_cond_sim.solver.mesh_data.nodes)
+            self.thermo_time_sim.solver.simulation_data.number_of_time_steps
+        number_of_nodes = len(self.thermo_time_sim.solver.mesh_data.nodes)
         if is_temperature_dependent:
             temp_field_per_element = None
             while time_index < number_of_time_steps:
@@ -314,13 +346,13 @@ class CoupledFreqPiezoHeatCond:
                 )
 
                 # Use mech losses for heat conduction simulation
-                self.heat_cond_sim.solver.f *= 0  # Reset load vector
-                self.heat_cond_sim.solver.set_constant_volume_heat_source(
+                self.thermo_time_sim.solver.f *= 0  # Reset load vector
+                self.thermo_time_sim.solver.set_constant_volume_heat_source(
                     mech_loss,
                     number_of_time_steps
                 )
                 if time_index == 0:
-                    time_index = self.heat_cond_sim.simulate(
+                    time_index = self.thermo_time_sim.simulate(
                         time_step=0,
                         theta_start=starting_temperature*np.ones(
                             number_of_nodes
@@ -328,7 +360,7 @@ class CoupledFreqPiezoHeatCond:
                         starting_temperature=starting_temperature
                     )
                 else:
-                    time_index = self.heat_cond_sim.simulate(
+                    time_index = self.thermo_time_sim.simulate(
                         time_step=time_index,
                         starting_temperature=starting_temperature
                     )
@@ -342,8 +374,8 @@ class CoupledFreqPiezoHeatCond:
                     f"Updating material parameters at time step {time_index}"
                 )
                 temp_field_per_element = get_avg_temp_field_per_element(
-                    self.heat_cond_sim.solver.theta[:, time_index],
-                    self.heat_cond_sim.solver.mesh_data.elements
+                    self.thermo_time_sim.solver.theta[:, time_index],
+                    self.thermo_time_sim.solver.mesh_data.elements
                 )
         else:
             # Run piezofreq simulation
@@ -356,11 +388,11 @@ class CoupledFreqPiezoHeatCond:
             mech_loss = np.real(self.piezo_freq.solver.mech_loss[:, 0])
 
             # Use mech losses for heat conduction simulation
-            self.heat_cond_sim.solver.set_constant_volume_heat_source(
+            self.thermo_time_sim.solver.set_constant_volume_heat_source(
                 mech_loss,
                 number_of_time_steps
             )
-            self.heat_cond_sim.simulate(
+            self.thermo_time_sim.simulate(
                 starting_temperature=starting_temperature,
                 theta_start=starting_temperature*np.ones(
                     number_of_nodes
@@ -370,10 +402,10 @@ class CoupledFreqPiezoHeatCond:
     def save_simulation_results(self):
         """Saves the simulation results to the simulation folder."""
         self.piezo_freq.save_simulation_results("piezo_freq")
-        self.heat_cond_sim.save_simulation_results("heat_cond")
+        self.thermo_time_sim.save_simulation_results("heat_cond")
 
     def save_simulation_settings(self):
         """Saves the simulation settings to the simulation folder."""
         self.piezo_freq.save_simulation_settings("piezo_freq")
-        self.heat_cond_sim.save_simulation_results("heat_cond")
+        self.thermo_time_sim.save_simulation_results("heat_cond")
 

@@ -19,8 +19,9 @@ from ..materials import MaterialManager
 
 
 def integral_heat_flux(
-        node_points: npt.NDArray,
-        heat_flux: npt.NDArray):
+    node_points: npt.NDArray,
+    heat_flux: npt.NDArray
+):
     """Integrates the heat flux using the shape functions.
 
     Parameters:
@@ -39,8 +40,9 @@ def integral_heat_flux(
 
 
 def integral_ktheta(
-        node_points: npt.NDArray,
-        jacobian_inverted_t: npt.NDArray):
+    node_points: npt.NDArray,
+    jacobian_inverted_t: npt.NDArray
+):
     """Calculates the Ktheta integral.
 
     Parameters:
@@ -82,26 +84,24 @@ def integral_theta_load(
     return quadratic_quadrature(inner)
 
 
-class HeatConductionSim:
+class ThermoSimTime:
     """Simulates a heat conduction problem for the given mesh, material and
     simulation information.
 
     Attributes:
         mesh_data: Contains the mesh information.
-        material_data: Contains the information about the materials.
-        simulation_data: Contains the information about the simulation.
-        c: Damping matrix.
-        k: Stiffness matrix.
+        material_manager: Organizes the material parameters.
+        simulation_data: Contains the simulation data.
         theta: Temperature field defined for every node.
         f: Load vector for the temperature field contains the information
-            from the given losses."""
+            from the given losses.
+        """
+    # Simulation settings
     mesh_data: MeshData
     material_manager: MaterialManager
     simulation_data: SimulationData
 
-    c: npt.NDArray
-    k: npt.NDArray
-
+    # FEM Vectors
     theta: npt.NDArray
     f: npt.NDArray
 
@@ -194,9 +194,10 @@ class HeatConductionSim:
         self.k = k.tolil()
 
     def set_volume_heat_source(
-            self,
-            mech_loss_density,
-            number_of_time_steps):
+        self,
+        mech_loss_density,
+        number_of_time_steps
+    ):
         """Sets the excitation for the heat conduction simulation.
         The mech_losses are set for every time step.
 
@@ -234,9 +235,10 @@ class HeatConductionSim:
         self.f += f
 
     def set_constant_volume_heat_source(
-            self,
-            mech_loss_density,
-            number_of_time_steps):
+        self,
+        mech_loss_density,
+        number_of_time_steps
+    ):
         """Sets the excitation for the heat conduction simulation.
         The mech_loss_density are set for every time step.
 
@@ -273,12 +275,13 @@ class HeatConductionSim:
         self.f += np.tile(f.reshape(-1, 1), (1, number_of_time_steps))
 
     def _calculate_convection_bc(
-            self,
-            nodes: npt.NDArray,
-            boundary_elements: npt.NDArray,
-            theta: npt.NDArray,
-            alpha: float,
-            outer_temperature: float) -> npt.NDArray:
+        self,
+        nodes: npt.NDArray,
+        boundary_elements: npt.NDArray,
+        theta: npt.NDArray,
+        alpha: float,
+        outer_temperature: float
+    ) -> npt.NDArray:
         """Calculates the load vector for the convection boundary condition.
         The condition is calculated using the temeprature at the given
         boundary.
@@ -326,10 +329,11 @@ class HeatConductionSim:
         return f
 
     def set_convection_bc(
-            self,
-            convective_boundary_elements,
-            alpha,
-            outer_temperature):
+        self,
+        convective_boundary_elements,
+        alpha,
+        outer_temperature
+    ):
         """Adds a convection boundary condition to the current simulation.
 
         Parameters:
@@ -344,11 +348,12 @@ class HeatConductionSim:
         self.enable_convection_bc = True
 
     def set_dirichlet_bc_load_vector(
-            self,
-            f: npt.NDArray,
-            nodes: npt.NDArray,
-            values: npt.NDArray,
-            time_step: int) -> npt.NDArray:
+        self,
+        f: npt.NDArray,
+        nodes: npt.NDArray,
+        values: npt.NDArray,
+        time_step: int
+    ) -> npt.NDArray:
         """Adds the dirichlet values for the given load vector.
 
         Parameters:
@@ -367,11 +372,15 @@ class HeatConductionSim:
         return f
 
     def solve_time(
-            self,
-            theta_start=None):
+        self,
+        theta_start = None
+    ):
         """Runs the simulation using the assembled c and k matrices as well
         as the set excitation.
         Calculates the temperature field and saves it in theta.
+
+        Parameters:
+            theta_start: Sets a field for time step 0.
         """
         number_of_time_steps = self.simulation_data.number_of_time_steps
         gamma = self.simulation_data.gamma
@@ -448,12 +457,17 @@ class HeatConductionSim:
         self.theta = theta
 
     def solve_until_material_parameters_change(
-            self,
-            theta_start,
-            start_index):
+        self,
+        theta_start: npt.NDArray,
+        start_index: int
+    ):
         """Runs the simulation using the assembled c and k matrices as well
         as the set excitation.
         Calculates the temperature field and saves it in theta.
+
+        Parameters:
+            theta_start: Field at time step start_index.
+            start_index: Sets the starting time step.
         """
         number_of_time_steps = self.simulation_data.number_of_time_steps
         gamma = self.simulation_data.gamma
