@@ -183,3 +183,6 @@ examples/cfs
 examples/simulations
 .env
 mypy.ini
+
+# Ignore swap files
+.swo
