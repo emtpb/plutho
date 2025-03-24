@@ -7,6 +7,13 @@ import numpy as np
 # Local libraries
 import piezo_fem as pfem
 
+### Global variables
+# ------------------
+
+NUMBER_OF_TIME_STEPS = 1000
+MAX_ERROR = 1e-15
+
+
 ### Helper functions
 # ------------------
 
@@ -14,11 +21,12 @@ def compare_numpy_array(a, b):
     if a.shape != b.shape:
         return False
 
-    return np.allclose(a, b, atol=1e-15)
+    return np.allclose(a, b, atol=MAX_ERROR)
 
 
 ### Test functions
 # ----------------
+
 
 def test_thermo_time(tmp_path):
     # Create mesh
@@ -35,14 +43,13 @@ def test_thermo_time(tmp_path):
 
     # Simulation parameters
     INPUT_POWER_DENSITY = 1
-    number_of_time_steps = 1000
     delta_t = 0.001
     nodes, elements = mesh.get_mesh_nodes_and_elements()
     number_of_elements = len(elements)
 
     sim.setup_thermo_time_domain(
         delta_t,
-        number_of_time_steps,
+        NUMBER_OF_TIME_STEPS,
         0.5
     )
 
@@ -55,7 +62,7 @@ def test_thermo_time(tmp_path):
     # Set constant volume loss density
     sim.solver.set_constant_volume_heat_source(
         INPUT_POWER_DENSITY*np.ones(number_of_elements),
-        number_of_time_steps
+        NUMBER_OF_TIME_STEPS
     )
 
     sim.simulate()
@@ -100,8 +107,6 @@ def test_piezo_time(tmp_path):
         pfem.pic255,
         None
     )
-
-    NUMBER_OF_TIME_STEPS = 100
 
     sim.setup_piezo_time_domain(pfem.SimulationData(
         number_of_time_steps=NUMBER_OF_TIME_STEPS,
@@ -159,8 +164,74 @@ def test_piezo_time(tmp_path):
            "Displacement u is not equal"
 
 
+def test_piezo_freq(tmp_path):
+    # Create mesh
+    mesh_path = os.path.join(tmp_path, "default_mesh.msh")
+    mesh = pfem.Mesh(mesh_path)
+    # TODO Maybe use mesh with smaller element size?
+    mesh.generate_rectangular_mesh()
+
+    sim = pfem.SingleSimulation(
+        tmp_path,
+        "piezo_freq_test",
+        mesh
+    )
+
+    sim.add_material(
+        "pic255",
+        pfem.pic255,
+        None
+    )
+
+    sim.setup_piezo_freq_domain(np.array([2e6]))
+
+    # Set boundary conditions
+    sim.add_dirichlet_bc(
+        pfem.FieldType.PHI,
+        "Electrode",
+        np.ones(1)
+    )
+    sim.add_dirichlet_bc(
+        pfem.FieldType.PHI,
+        "Ground",
+        np.zeros(1)
+    )
+    sim.add_dirichlet_bc(
+        pfem.FieldType.U_R,
+        "Symaxis",
+        np.zeros(1)
+    )
+
+    electrode_elements = mesh.get_elements_by_physical_groups(
+        ["Electrode"]
+    )["Electrode"]
+
+    sim.simulate(electrode_elements=electrode_elements)
+
+    # Compare results with test data
+    # Load test data
+    test_folder = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "data",
+        "piezo_freq"
+    )
+
+    test_q = np.load(os.path.join(test_folder, "q.npy"))
+    test_u = np.load(os.path.join(test_folder, "u.npy"))
+
+    uut_q = sim.solver.q
+    uut_u = sim.solver.u
+
+    # Compare arrays
+    # For displacement just take last time step. TODO Is this sufficient?
+    assert compare_numpy_array(uut_q, test_q), "Charge is not equal"
+    assert compare_numpy_array(uut_u[:, -1], test_u[:, -1]), \
+           "Displacement u is not equal"
+
 if __name__ == "__main__":
+    # Create test data
     dir = "tests/data"
+    # test_piezo_time(dir)
     test_piezo_time(dir)
 
 
