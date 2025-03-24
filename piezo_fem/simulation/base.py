@@ -8,7 +8,7 @@ import numpy as np
 import numpy.typing as npt
 
 # Local libraries
-from ..gmsh_handler import GmshHandler
+from ..mesh import Mesh
 
 ### ENUMS AND DATACLASSES
 # -----------------------
@@ -445,7 +445,7 @@ def apply_dirichlet_bc(
 
 
 def create_dirichlet_bc_nodes_freq(
-    gmsh_handler: GmshHandler,
+    mesh: Mesh,
     amplitudes: npt.NDArray,
     number_of_frequencies: int,
     set_symmetric_bc: bool = True
@@ -454,7 +454,7 @@ def create_dirichlet_bc_nodes_freq(
     frequency domain.
 
     Parameter:
-        gmsh_handler: Gmsh handler for accessing the mesh.
+        mesh: Mesh class for accessing nodes.
         amplitudes: List of amplitude per frequency step.
         number_of_frequencies: Total number of frequency steps.
         set_symmetric_bc: Set to True of the left border of the model is on the
@@ -464,8 +464,8 @@ def create_dirichlet_bc_nodes_freq(
         The dirichlet nodes and values for u and v respectively.
     """
 
-    # Get nodes from gmsh handler
-    pg_nodes = gmsh_handler.get_nodes_by_physical_groups(
+    # Get nodes from mesh
+    pg_nodes = mesh.get_nodes_by_physical_groups(
         ["Electrode", "Symaxis", "Ground"])
 
     electrode_nodes = pg_nodes["Electrode"]
@@ -494,7 +494,7 @@ def create_dirichlet_bc_nodes_freq(
         [dirichlet_values_u, dirichlet_values_v]
 
 def create_dirichlet_bc_nodes(
-    gmsh_handler: GmshHandler,
+    mesh: Mesh,
     electrode_excitation: npt.NDArray,
     number_of_time_steps: int,
     set_symmetric_bc: bool = True
@@ -523,7 +523,7 @@ def create_dirichlet_bc_nodes(
         the nodes and values for v.
     """
     # Get nodes from gmsh handler
-    pg_nodes = gmsh_handler.get_nodes_by_physical_groups(
+    pg_nodes = mesh.get_nodes_by_physical_groups(
         ["Electrode", "Symaxis", "Ground"])
 
     electrode_nodes = pg_nodes["Electrode"]

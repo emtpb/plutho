@@ -1,4 +1,3 @@
-from .gmsh_handler import GmshHandler
 from .simulation import PiezoSimTime, ThermoPiezoSimTime, MeshData, \
     SimulationData, MaterialData, SimulationType, ModelType, \
     ThermoSimTime, NonlinearPiezoSimTime
@@ -7,7 +6,6 @@ from .io import parse_charge_hist_file, parse_displacement_hist_file, \
 from .postprocessing import calculate_impedance, \
     calculate_electrical_input_energy
 from .materials import pic255, MaterialManager
-from .piezo_fem import PiezoSimulation
 from .simulation_handler import SingleSimulation, FieldType
 from .mesh import Mesh
-from .coupled_sim import CoupledThermPiezoHeatCond, CoupledFreqPiezoHeatCond
+from .coupled_sim import CoupledThermoPiezoThermoSim, CoupledFreqPiezoHeatCond

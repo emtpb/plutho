@@ -236,8 +236,8 @@ class ThermoSimTime:
 
     def set_constant_volume_heat_source(
         self,
-        mech_loss_density,
-        number_of_time_steps
+        mech_loss_density: npt.NDArray,
+        number_of_time_steps: float
     ):
         """Sets the excitation for the heat conduction simulation.
         The mech_loss_density are set for every time step.

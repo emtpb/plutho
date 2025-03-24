@@ -99,7 +99,7 @@ class SingleSimulation:
         self,
         material_name: str,
         material_data: MaterialData,
-        physical_group_name: str
+        physical_group_name: Union[str, None]
     ):
         """Adds a material to the simulation
 
@@ -265,12 +265,12 @@ class SingleSimulation:
         material_starting_temperature: Union[
             npt.NDArray,
             float,
-            NoneType
+            None
         ] = None,
         temperature_dependent: bool = False,
-        initial_theta_field: Union[npt.NDArray, float, NoneType] = None,
-        initial_theta_time_step: Union[npt.NDArray, NoneType] = None,
-        electrode_elements: Union[npt.NDArray, NoneType] = None,
+        initial_theta_field: Union[npt.NDArray, float, None] = None,
+        initial_theta_time_step: Union[npt.NDArray, None] = None,
+        electrode_elements: Union[npt.NDArray, None] = None,
         calculate_mech_loss: bool = False
     ):
         """Runs a simulation. Note that a simulation must be setup
@@ -320,6 +320,8 @@ class SingleSimulation:
             self.solver.material_manager.initialize_materials(
                 material_starting_temperature
             )
+        else:
+            self.solver.material_manager.initialize_materials()
 
         # Get boundary condition lists
         self.solver.dirichlet_nodes = np.array(self.dirichlet_nodes)

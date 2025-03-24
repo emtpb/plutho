@@ -16,7 +16,7 @@ from .base import SimulationData, MeshData, \
     quadratic_quadrature, LocalElementData, calculate_volumes, \
     get_avg_temp_field_per_element
 from .piezo_time import calculate_charge
-from .heat_conduction_time import integral_ktheta, integral_theta_load
+from .thermo_time import integral_ktheta, integral_theta_load
 from ..materials import MaterialManager
 
 

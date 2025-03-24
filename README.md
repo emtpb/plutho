@@ -31,6 +31,8 @@ Gmsh is internally used to create the mesh.
 - Make the assembly procedure faster
 - Make explicit time solving scheme in nonlinear simulation faster by using
   matrix inversion
-- Add functionality for multiple materials in the MaterialManager class
 - Update example files
+- Check if multiple materials already works or if continuity and boundary
+  conditions are needed
+- Rename simulation_handler to single_sim
 

@@ -201,7 +201,7 @@ class MaterialManager:
 
     def initialize_materials(
         self,
-        starting_temperature: Union[float, npt.NDArray, NoneType] = None
+        starting_temperature: Union[float, npt.NDArray, None] = None
     ):
         """Initializes all materials at the given starting temperature.
         This starting temperature field is used to determine the starting
@@ -327,7 +327,7 @@ class MaterialManager:
         Returns:
             True if the material parameters are updated. False otherwise.
         """
-
+        # TODO Make parameter?
         threshold = 0.01
 
         # When for any element the material parameter change is greater

@@ -14,7 +14,8 @@ dependencies = [
     "scipy",
     "gmsh",
     "python-dotenv",
-    "pyyaml"
+    "pyyaml",
+    "pytest"
 ]
 
 [proect.urls]

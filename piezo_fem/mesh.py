@@ -235,3 +235,167 @@ class Mesh:
                 dtype=int)
 
         return triangle_elements
+
+    def create_element_post_processing_view(
+        self,
+        field: npt.NDArray,
+        number_of_time_steps: int,
+        delta_t: float,
+        field_dimension: int,
+        field_name: str,
+        append: bool
+    ):
+        """Appends a post processing view to the output mesh file.
+        The given field must be scalar and defined over the elements.
+
+        Parameters:
+            field: Field quantity [element_index, time_index].
+            number_of_time_steps: Total number of time steps.
+            delta_t: Time difference between each time step.
+            field_dimension: 1 for scalar fields and 2 for vector fields
+                with 2 components.
+            field_name: Description of the field in gmsh.
+            append: Set to true if this field should be appended to the file.
+        """
+        element_tags = gmsh.model.mesh.getElements(2)[1][0]
+        number_of_elements = len(element_tags)
+        view_tag = gmsh.view.add(field_name)
+
+        for time_index in range(number_of_time_steps):
+            if field_dimension != 2:
+                current_field_value = field[:, time_index].reshape(
+                    number_of_elements, field_dimension)
+            else:
+                # Since the components have 2 components but gmsh can only take
+                # 3.
+                current_field_value = np.array(
+                    [
+                        [field[2*i, time_index],
+                         field[2*i+1, time_index], 0] for i in range(
+                         number_of_elements)
+                    ]
+                )
+            gmsh.view.addModelData(
+                view_tag,
+                time_index,
+                "",
+                "ElementData",
+                element_tags,
+                current_field_value,
+                time_index*delta_t,
+                field_dimension if field_dimension != 2 else 3)
+
+        if not os.path.exists(self.output_file_path):
+            gmsh.write(self.output_file_path)
+        gmsh.view.write(view_tag, self.output_file_path, append)
+
+    def create_u_default_post_processing_view(
+        self,
+        u: npt.NDArray,
+        number_of_time_steps: int,
+        delta_t: float,
+        temperature_field: bool,
+        append: bool
+    ):
+        """Appends a post processing view to the output mesh file.
+        The given field must be scalar and defined over the nodes.
+
+        Parameters:
+            u: u field given from the simulation.
+            number_of_time_steps: Total number of time steps.
+            delta_t: Time difference between each time step.
+            temperature_field: True of u contains temperature field,
+                else false.
+            append: Set to true if this field should be appended to the file.
+        """
+        node_tags, _, _ = gmsh.model.mesh.getNodes()
+        number_of_nodes = len(node_tags)
+
+        # Views
+        u_view_tag = gmsh.view.add("Displacement")
+        v_view_tag = gmsh.view.add("Potential")
+        if temperature_field:
+            theta_view_tag = gmsh.view.add("Temperature")
+
+        for time_index in range(number_of_time_steps):
+            current_u = [
+                [u[2*i, time_index],
+                 u[2*i+1, time_index], 0] for i in range(number_of_nodes)]
+            current_v = u[2*number_of_nodes:3*number_of_nodes, time_index] \
+                .reshape(number_of_nodes, 1)
+            gmsh.view.addModelData(
+                u_view_tag,
+                time_index,
+                "",
+                "NodeData",
+                node_tags,
+                current_u,
+                time_index*delta_t,
+                3)
+            gmsh.view.addModelData(
+                v_view_tag,
+                time_index,
+                "",
+                "NodeData",
+                node_tags,
+                current_v,
+                time_index*delta_t,
+                1)
+
+            if temperature_field:
+                current_theta = u[3*number_of_nodes:, time_index] \
+                    .reshape(number_of_nodes, 1)
+                gmsh.view.addModelData(
+                    theta_view_tag,
+                    time_index,
+                    "",
+                    "NodeData",
+                    node_tags,
+                    current_theta,
+                    time_index*delta_t,
+                    1)
+        if not os.path.exists(self.output_file_path):
+            gmsh.write(self.output_file_path)
+        gmsh.view.write(u_view_tag, self.output_file_path, append)
+        gmsh.view.write(v_view_tag, self.output_file_path, True)
+        if temperature_field:
+            gmsh.view.write(theta_view_tag, self.output_file_path, True)
+
+    def create_theta_post_processing_view(
+        self,
+        theta: npt.NDArray,
+        number_of_time_steps: int,
+        delta_t: float,
+        append: bool
+    ):
+        """Appends a post processing view to the output mesh file.
+        The given field must be scalar and defined over the nodes.
+
+        Parameters:
+            theta: theta field given from the simulation.
+            number_of_time_steps: Total number of time steps.
+            delta_t: Time difference between each time step.
+            append: Set to true if this field should be appended to the file.
+        """
+        node_tags, _, _ = gmsh.model.mesh.getNodes()
+        number_of_nodes = len(node_tags)
+
+        # Views
+        theta_view_tag = gmsh.view.add("Temperature")
+
+        for time_index in range(number_of_time_steps):
+            current_theta = theta[:, time_index].reshape(number_of_nodes, 1)
+            gmsh.view.addModelData(
+                theta_view_tag,
+                time_index,
+                "",
+                "NodeData",
+                node_tags,
+                current_theta,
+                time_index*delta_t,
+                1)
+        if not os.path.exists(self.output_file_path):
+            gmsh.write(self.output_file_path)
+        gmsh.view.write(theta_view_tag, self.output_file_path, append)
+
+
