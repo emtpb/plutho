@@ -2,7 +2,7 @@
 # Python standard libraries
 import os
 from enum import Enum
-from typing import Union, List, Dict, NoneType
+from typing import Union, List, Dict
 import configparser
 import json
 

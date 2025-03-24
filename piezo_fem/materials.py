@@ -137,10 +137,9 @@ class MaterialManager:
     When the temperature is updated to a given value the material parameters
     are updated as well according to the given data.
     Right now only one material can be handled.
-    TODO Add possibility for multiple materials
 
     Attributes:
-        materials: List of materials (only 1).
+        materials: List of materials.
         element_index_to_material_data: Sets a material index (corresponding to
             the materials list) for every element in the mesh.
         is_temperature_dependent: True if the materials shall be temperature
@@ -202,19 +201,17 @@ class MaterialManager:
 
     def initialize_materials(
         self,
-        starting_temperature: Union[float, npt.NDArray] = None
+        starting_temperature: Union[float, npt.NDArray, NoneType] = None
     ):
-        """Initializes the material data for every element.
-        If a starting temperature field is given this will be used to
-        determine the starting material parameters (is temperature dependent).
+        """Initializes all materials at the given starting temperature.
+        This starting temperature field is used to determine the starting
+        material parameters (if temperature dependent).
 
         Parameters:
-            starting_temperature: List of temperatures one for every element.
+            starting_temperature: List of temperatures for every element.
         """
-        if isinstance(starting_temperature, float):
-            starting_temperature = np.ones(self.number_of_elements) * \
-                starting_temperature
-
+        # Initialize local parameters: Material parameter defined for each
+        # element
         self.c11_local = np.zeros(self.number_of_elements)
         self.c12_local = np.zeros(self.number_of_elements)
         self.c13_local = np.zeros(self.number_of_elements)
@@ -239,6 +236,9 @@ class MaterialManager:
                 )
             # Material is not temperature dependent
             for element_index in range(self.number_of_elements):
+                # For every parameter for every element get the material
+                # parameter from the material which is applied to the current
+                # element.
                 material_data = self.materials[
                     self.element_index_to_material_data[element_index]
                 ].material_data
@@ -260,8 +260,15 @@ class MaterialManager:
                 self.thermal_conductivity_local[element_index] = \
                     material_data.thermal_conductivity
         else:
+            # Convert to starting_temperature field
+            if isinstance(starting_temperature, float):
+                starting_temperature = np.ones(self.number_of_elements) * \
+                    starting_temperature
+
             # Material is temperature dependent
             for element_index in range(self.number_of_elements):
+                # Get interpolations for every material parameter for every
+                # element
                 material = self.materials[
                     self.element_index_to_material_data[element_index]
                 ]
