@@ -634,4 +634,4 @@ def get_avg_temp_field_per_element(
     for element_index, element in enumerate(elements):
         theta_elements[element_index] = np.mean(theta[element])
 
-    return theta_elements
+    return np.array(theta_elements)

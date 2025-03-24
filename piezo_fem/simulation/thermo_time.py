@@ -458,8 +458,8 @@ class ThermoSimTime:
 
     def solve_until_material_parameters_change(
         self,
-        theta_start: npt.NDArray,
-        start_index: int
+        initial_theta_field: npt.NDArray,
+        initial_time_step: int
     ):
         """Runs the simulation using the assembled c and k matrices as well
         as the set excitation.
@@ -477,13 +477,13 @@ class ThermoSimTime:
         k = self.k
 
         # Init arrays
-        if start_index == 0:
+        if initial_time_step == 0:
             self.theta = np.zeros(
                 (k.shape[0], number_of_time_steps),
                 dtype=np.float64
             )
-            if theta_start is not None:
-                self.theta[:, start_index] = theta_start
+            if initial_theta_field is not None:
+                self.theta[:, initial_time_step] = initial_theta_field
             # theta derived after t (du/dt)
             self.theta_dt = np.zeros(
                 (k.shape[0], number_of_time_steps),
@@ -499,7 +499,7 @@ class ThermoSimTime:
         k_star = (k+1/(gamma*delta_t)*c).tocsr()
 
         print("Starting heat conduction simulation")
-        for time_index in range(start_index, number_of_time_steps-1):
+        for time_index in range(initial_time_step, number_of_time_steps-1):
             # Set dirichlet nodes for the load vector
             # The load vector could already contain e.g. energy sources
             # which are overwritten at the points where a dirichlet bc is set.

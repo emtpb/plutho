@@ -2,7 +2,7 @@
 # Python standard libraries
 import os
 from enum import Enum
-from typing import Union, List, Dict
+from typing import Union, List, Dict, NoneType
 import configparser
 import json
 
@@ -130,7 +130,9 @@ class SingleSimulation:
         physical_group: str,
         values: npt.NDArray
     ):
-        """Adds a dirichlet boundary condition (dirichlet bc) to the simulation.
+        """Adds a dirichlet boundary condition (dirichlet bc) to the
+        simulation. The given values are for each time step. Therefore each
+        value is applied to every node from the given physical_group.
 
         Parameters:
             field_type: The type of field for which the bc shall be set.
@@ -138,7 +140,7 @@ class SingleSimulation:
                 condition shall be set.
             values: List of values per time step. Value of the bc for each time
                 step. The value for one time step is applied to every element
-                equally.
+                equally. Length: number_of_time_step.
         """
         if isinstance(self.solver, ThermoSimTime):
             if (field_type is FieldType.U_R or
@@ -154,14 +156,14 @@ class SingleSimulation:
                     f"Unknown variable type {field_type} given for"
                     f"simulation type {type(self.solver)}")
 
+        # Save boundary condition for serialization
         self.boundary_conditions.append({
             "field_type": field_type.name,
             "physical_group": physical_group,
             "values": values.tolist()
         })
 
-        # TODO Rename for simpler understanding that the values are applied
-        # to all given nodes in the physical group equally
+        # Apply the given values for all nodes from the given physical_group
         node_indices = self.mesh.get_nodes_by_physical_groups(
             [physical_group]
         )[physical_group]
@@ -169,6 +171,7 @@ class SingleSimulation:
         number_of_nodes = len(self.mesh_data.nodes)
         for node_index in node_indices:
             real_index = 0
+
             # Depending on the variable type and the simulation types
             # the corresponding field variable may be found at different
             # positions of the solution vector
@@ -203,7 +206,6 @@ class SingleSimulation:
             gamma: Time integration parameter (Set to 0.5 for unconditionally
                 stable simulation).
         """
-        # TODO Change parameter to simulation data?
         self.solver = ThermoSimTime(
             self.mesh_data,
             self.material_manager,
@@ -258,23 +260,34 @@ class SingleSimulation:
             simulation_data
         )
 
-    def simulate(self, **kwargs):
+    def simulate(
+        self,
+        material_starting_temperature: Union[
+            npt.NDArray,
+            float,
+            NoneType
+        ] = None,
+        temperature_dependent: bool = False,
+        initial_theta_field: Union[npt.NDArray, float, NoneType] = None,
+        initial_theta_time_step: Union[npt.NDArray, NoneType] = None,
+        electrode_elements: Union[npt.NDArray, NoneType] = None,
+        calculate_mech_loss: bool = False
+    ):
         """Runs a simulation. Note that a simulation must be setup
         beforehand.
 
         Parameters:
-            **kwargs:
-                'starting_temperature': Sets a starting temperature field.
-                'initialize_materials': The materials are initialized with
-                    the given starting_temperature field.
-                'theta_start': Sets the starting field for the pure thermal
-                    simulation.
-                'time_step': Sets a starting time index for the pure thermal
-                    simulation.
-                'electrode_elements': List of element indices for which the
-                    charge is calculated.
-                'calculate_mech_loss': Set to true of the mech loss shall
-                    be calculated.
+            starting_temperature: Sets a starting temperature field.
+            initialize_materials: The materials are initialized with
+                the given starting_temperature field.
+            theta_start: Sets the starting field for the pure thermal
+                simulation.
+            time_step': Sets a starting time index for the pure thermal
+                simulation.
+            electrode_elements: List of element indices for which the
+                charge is calculated.
+            calculate_mech_loss: Set to true of the mech loss shall
+                be calculated.
         """
 
         # Check if solver is set
@@ -284,71 +297,102 @@ class SingleSimulation:
                 "setup function"
             )
 
-        starting_temperature = None
-        if "starting_temperature" in kwargs:
-            start_temp = kwargs["starting_temperature"]
-            if isinstance(start_temp, int) or isinstance(start_temp, float):
-                starting_temperature = start_temp*np.ones(
-                    len(self.mesh_data.elements)
-                )
-            else:
-                starting_temperature = kwargs["starting_temperature"]
-        if ("initialize_materials" not in kwargs
-                or kwargs["initialize_materials"]):
-            self.solver.material_manager.initialize_materials(
-                starting_temperature
+        # Check if there is a material defined for every point
+        if np.any(self.material_manager.element_index_to_material_data == -1):
+            print(
+                "Not every node has a material defined."
+                "Cannot start simulation."
             )
+
+        # Check if mesh data is set
+        if self.mesh_data.nodes is None or self.mesh_data.elements is None:
+            print("Please setup mesh before starting simulation.")
+
+        # Set material starting temperature if given
+        if material_starting_temperature is not None:
+            # Check if material temp is given as float
+            if isinstance(material_starting_temperature, float):
+                material_starting_temperature = (
+                        material_starting_temperature
+                        * np.ones(len(self.mesh_data.elements))
+                )
+
+            self.solver.material_manager.initialize_materials(
+                material_starting_temperature
+            )
+
+        # Get boundary condition lists
         self.solver.dirichlet_nodes = np.array(self.dirichlet_nodes)
         self.solver.dirichlet_values = np.array(self.dirichlet_values)
+
+        # Assemble
         self.solver.assemble()
+
+        # Check for the different solver types and run the simulation
         if isinstance(self.solver, ThermoSimTime):
-            theta_start = None
-            # TODO Rename theta start and starting temperature
-            if "theta_start" in kwargs:
-                theta_start = kwargs["theta_start"]
-            if "time_step" in kwargs:
+            # Check if an initial theta field is given
+            if initial_theta_field is not None:
+                # Check if initial_theta_field is given as float
+                if isinstance(initial_theta_field, float):
+                    initial_theta_field = (
+                        initial_theta_field
+                        * np.ones(len(self.mesh_data.elements))
+                    )
+
+            # If the simulation is temperature dependent and there is an
+            # initial time step given the theta field will be solved until
+            # the temperature dependent material parameters change enough.
+            # If its enough is determined by the material manager.
+            if temperature_dependent and initial_theta_time_step is not None:
                 return self.solver.solve_until_material_parameters_change(
-                    theta_start,
-                    kwargs["time_step"]
+                    initial_theta_field,
+                    initial_theta_time_step
                 )
-            else:
-                self.solver.solve_time(
-                    theta_start
-                )
+
+            self.solver.solve_time(
+                initial_theta_field
+            )
         elif isinstance(self.solver, PiezoSimFreq):
-            electrode_elements = None
-            if "electrode_elements" in kwargs:
-                electrode_elements = kwargs["electrode_elements"]
+            # Check if electrode_elements are given
+            if electrode_elements is not None:
                 self.charge_calculated = True
-            calculate_mech_loss = False
-            if "calculate_mech_loss" in kwargs:
-                calculate_mech_loss = True
+
+            # Check if mech loss shall be calculated
+            if calculate_mech_loss:
                 self.mech_loss_calculated = True
+
             self.solver.solve_frequency(
                 electrode_elements,
                 calculate_mech_loss
             )
         elif isinstance(self.solver, PiezoSimTime):
-            electrode_elements = None
-            if "electrode_elements" in kwargs:
-                electrode_elements = kwargs["electrode_elements"]
+            # Check if electrode_elements are given
+            if electrode_elements is not None:
                 self.charge_calculated = True
 
             self.solver.solve_time(
                 electrode_elements
             )
         elif isinstance(self.solver, ThermoPiezoSimTime):
-            electrode_elements = None
-            if "electrode_elements" in kwargs:
-                electrode_elements = kwargs["electrode_elements"]
+            # Check if electrode_elements are given
+            if electrode_elements is not None:
                 self.charge_calculated = True
-            theta_start = None
-            if "theta_start" in kwargs:
-                theta_start = kwargs["theta_start"]
+
+            # Check if an initial theta field is given
+            if initial_theta_field is not None:
+                # Check if initial_theta_field is given as float
+                if isinstance(initial_theta_field, float):
+                    initial_theta_field = (
+                        initial_theta_field
+                        * np.ones(len(self.mesh_data.elements))
+                    )
+
+            # Mesh loss is always calculated
+            self.mech_loss_calculated = True
 
             self.solver.solve_time(
                 electrode_elements,
-                theta_start
+                initial_theta_field
             )
         else:
             return
@@ -439,7 +483,7 @@ class SingleSimulation:
                     self.solver.q
                 )
 
-    def save_simulation_settings(self, prefix=""):
+    def save_simulation_settings(self, prefix:str = ""):
         """Save the simulation settings to the simulation folder. If a prefix
         is given this is prepend to the name of the output file.
 
@@ -455,13 +499,13 @@ class SingleSimulation:
         settings = configparser.ConfigParser()
 
         if isinstance(self.solver, ThermoSimTime):
-            simulation_type = "ThermoSimTime"
+            simulation_type = "ThermoTime"
         elif isinstance(self.solver, PiezoSimTime):
             simulation_type = "PiezoTime"
         elif isinstance(self.solver, PiezoSimFreq):
             simulation_type = "PiezoFreq"
         elif isinstance(self.solver, ThermoPiezoSimTime):
-            simulation_type = "ThermoPiezo"
+            simulation_type = "ThermoPiezoTime"
         else:
             raise ValueError(
                 f"Cannot save simulation type {type(self.solver)}"
@@ -532,7 +576,10 @@ class SingleSimulation:
             json.dump(boundary_conditions, fd, indent=2)
 
     @staticmethod
-    def load_simulation_settings(simulation_folder: str):
+    def load_simulation_settings(
+            simulation_folder: str,
+            prefix: str = ""
+    ):
         """Loads the simulation settings from the given folder and return
         a SingleSimulation object.
 
@@ -543,14 +590,19 @@ class SingleSimulation:
         # are overwriding itself
         # --> Add additional possible label to prevent this
 
+        if prefix != "":
+            prefix += "_"
 
         simulation_name = os.path.basename(simulation_folder)
 
         # Check if folder has all necessary files
         necessary_files = [
-            os.path.join(simulation_folder, f"{simulation_name}.cfg"),
-            os.path.join(simulation_folder, "materials.json"),
-            os.path.join(simulation_folder, "boundary_conditions.json")
+            os.path.join(simulation_folder, f"{prefix}{simulation_name}.cfg"),
+            os.path.join(simulation_folder, f"{prefix}materials.json"),
+            os.path.join(
+                simulation_folder,
+                f"{prefix}boundary_conditions.json"
+            )
         ]
         for file_path in necessary_files:
             if not os.path.isfile(file_path):
@@ -587,14 +639,13 @@ class SingleSimulation:
                     "Frequencies file not found for frequency type sim"
                 )
         else:
-            # Load simulation data
             simulation_data = SimulationData(
                 float(settings["simulation"]["delta_t"]),
                 int(settings["simulation"]["number_of_time_steps"]),
                 float(settings["simulation"]["gamma"]),
                 float(settings["simulation"]["beta"]),
             )
-            if simulation_type == "ThermoSimTime":
+            if simulation_type == "ThermoTime":
                 simulation.setup_thermo_time_domain(
                     simulation_data.delta_t,
                     simulation_data.number_of_time_steps,
@@ -602,7 +653,7 @@ class SingleSimulation:
                 )
             elif simulation_type == "PiezoTime":
                 simulation.setup_piezo_time_domain(simulation_data)
-            elif simulation_type == "ThermoPiezo":
+            elif simulation_type == "ThermoPiezoTime":
                 simulation.setup_thermal_piezo_time_domain(simulation_data)
             else:
                 raise IOError(
@@ -620,7 +671,7 @@ class SingleSimulation:
                     ),
                     material_settings[material_name]["physical_group_name"]
                 )
-        simulation.material_manager.initialize_materials()
+            simulation.material_manager.initialize_materials()
 
         # Read boundary conditions
         with open(necessary_files[2], "r", encoding="UTF-8") as fd:
