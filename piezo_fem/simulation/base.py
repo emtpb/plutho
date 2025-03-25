@@ -10,8 +10,8 @@ import numpy.typing as npt
 # Local libraries
 from ..mesh import Mesh
 
-### ENUMS AND DATACLASSES
-# -----------------------
+# -------- ENUMS AND DATACLASSES --------
+
 
 class ModelType(Enum):
     """Containts the model type. Since for different model types
@@ -69,6 +69,7 @@ class ExcitationInfo:
             del content["frequency"]
         content["excitation_type"] = self.excitation_type.value
         return content
+
 
 @dataclass
 class LocalElementData():
@@ -130,7 +131,7 @@ class MaterialData:
         return MaterialData(**contents)
 
 
-### Local functions and integrals
+# Local functions and integrals
 # -------------------------------
 
 def local_shape_functions(s: float, t: float):
@@ -404,7 +405,7 @@ def line_quadrature(func):
     return 0.5*(func(-1/2/np.sqrt(3)+1/2, 0) + func(1/2/np.sqrt(3)+1/2, 0))
 
 
-### Boundary condition functions
+# Boundary condition functions
 # ------------------------------
 
 
@@ -493,6 +494,7 @@ def create_dirichlet_bc_nodes_freq(
     return [dirichlet_nodes_u, dirichlet_nodes_v], \
         [dirichlet_values_u, dirichlet_values_v]
 
+
 def create_dirichlet_bc_nodes(
     mesh: Mesh,
     electrode_excitation: npt.NDArray,
@@ -555,6 +557,7 @@ def create_dirichlet_bc_nodes(
 
     return [dirichlet_nodes_u, dirichlet_nodes_v], \
         [dirichlet_values_u, dirichlet_values_v]
+
 
 def create_local_element_data(
     nodes: npt.NDArray,

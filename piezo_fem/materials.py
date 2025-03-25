@@ -179,10 +179,10 @@ class MaterialManager:
                 name is given in physical_group_name.
         """
         new_material = Material(
-                material_name,
-                material_data,
-                physical_group_name
-            )
+            material_name,
+            material_data,
+            physical_group_name
+        )
         self.materials.append(new_material)
         material_index = len(self.materials)-1
 
@@ -509,7 +509,7 @@ class MaterialManager:
         e33 = self.e33_local[element_index]
 
         return np.array([
-            [  0,   0, e15,   0],
+            [0,   0, e15,   0],
             [e31, e33,   0, e31]
         ])
 
@@ -524,7 +524,7 @@ class MaterialManager:
         return np.array([
             [c11, c13,   0, c12],
             [c13, c33,   0, c13],
-            [  0,   0, c44,   0],
+            [0,   0, c44,   0],
             [c12, c13,   0, c11]
         ])
 
@@ -551,8 +551,8 @@ class MaterialManager:
             self.get_thermal_conductivity(element_index)
         )
 
-### Material datas
-# ----------------
+# -------- Material datas --------
+
 
 pic255 = MaterialData(
     **{
