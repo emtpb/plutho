@@ -179,8 +179,7 @@ cython_debug/
 .vscode/
 
 # Ignore data
-examples/cfs
-examples/simulations
+scripts/simulations
 .env
 mypy.ini
 
