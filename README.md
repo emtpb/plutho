@@ -1,17 +1,64 @@
-# piezo_fem
+# piezo_fem - Simulation of thermo-electro-mechanical fields for piezoceramics
 
-Implements the Finite Element Method for piezoelectric systems.
-Gmsh is internally used to create the mesh.
+This package implements the finite element method (FEM) for piezoelectric
+systems in Python. The solvers are written from scratch only by using
+numpy/scipy as well as gmsh for generating the used meshes.
+Currently the simulation of piezoelectric ceramics are supported. The
+simulations are done in an axisymmetric model such that the ceramics
+have a rectangular cross section.
 
 ## Features
-- Simulation of piezoelectric systems with ro without thermal field
-- Frequency and time domain simulation possible
-- Calculation of charge and impedance curve as well as mechanical losses
-- Nonlinear time domain simulation -> Mechanical nonlinearity
+- Simulation of thermal field in time domain
+- Simulation of piezoelectric (electro-mechanical) field in time and
+  frequency domain
+  - Calculation of charges and impedances in time and frequency domain
+- Simulation of a thermo-piezoeletric field in time domain
+  - Calculation of mechanical losses which are used as a source for the thermal
+    simulation
+- Coupled simulation of a thermo-piezoelectric and a single thermal simulation
+  where the thermo-piezoelectric simulation can be in time or frequency domain
+- Nonlinear time domain simulation
+  - Material nonlinearity
+  - Solver currently is WIP
 - Automatic mesh generation with gmsh
-- Resulting fields can be viewed in gmsh, matplotlib or paraview
+- Exporting functions to plot the fields in gmsh or as csv files
+- Supporting disc and ring shapes for piezoelectric ceramics
 
-## TODO
+## Installation
+
+The package can be cloned using git and installed using pip install. It is
+recommended to install and activate a python virtual environment first.
+```python
+git clone https://atuin.emt.uni-paderborn.de/git/jonasho/piezo_fem.git
+cd piezo_fem
+pip install .
+```
+
+## Usage
+
+Some example simulation setups can be found [here](scripts/basic_example.py).
+
+## Tests
+
+For the solvers some basic tests are implemented. They run simple example
+simulations and compare the results with known test data which is created
+at a verified solver state.
+In order to run the tests it is necessary to install pytest
+```python
+pip install pytest
+```
+
+## For developers
+
+In order to make changes to the local piezo_fem installation make sure to
+install it using the -e parameter:
+```python
+pip intsall -e .
+```
+
+## TODOs
+Here are some additional features and optimizations which could be applied to
+the code. Some of those feature can be discussed and are not mandatory:
 - Add tests for the solvers
   - Thermo simulation DONE (-> Energy check)
   - Piezo time simulation DONE
