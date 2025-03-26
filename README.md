@@ -44,9 +44,13 @@ The examples in this file are documented in detail.
 For the solvers some basic tests are implemented. They run simple example
 simulations and compare the results with known test data which is created
 at a verified solver state.
-In order to run the tests it is necessary to install pytest
+In order to run the tests it is necessary to install pytest.
 ```python
 pip install pytest
+```
+Then the tests can be run using
+```python
+pytest
 ```
 
 ## For developers
