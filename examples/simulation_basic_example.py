@@ -1,147 +1,371 @@
-"""Implements examples on how to use the simulation class of piezo_fem."""
+"""Implements examples on how to use the piezo_fem package."""
 
 # Python standard libraries
 import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Third party libraries
-import gmsh
-
 # Local libraries
 import piezo_fem as pfem
 
 
-def run_ring_simulation(base_directory):
-    """Example for a piezoelectric ring simulation.
+def load_mesh(mesh_file_path):
+    """Loads a mesh file. Creates a default disc mesh it if it does not exists
 
     Parameters:
-        base_directory: Directory where the simulation directory is created.
+        mesh_file_path: Path of the mesh file.
     """
-    sim_directory = os.path.join(base_directory, "ring_sim")
-    sim = pfem.PiezoSimulation(sim_directory, pfem.pic255, "Ring sim")
-    sim.create_ring_mesh(0.002, 0.005, 0.001, 0.00015)
-    sim.set_simulation(
-        delta_t=1e-8,
-        number_of_time_steps=100,
-        gamma=0.5,
-        beta=0.25,
-        simulation_type=pfem.SimulationType.PIEZOELECTRIC,
+    if os.path.exists(mesh_file_path):
+        mesh = pfem.Mesh(mesh_file_path, load=True)
+    else:
+        mesh = pfem.Mesh(mesh_file_path, load=False)
+
+        # When there is no mesh file a new mesh is generated.
+        # mesh_size is the maximum possible distance betweeen two points of the
+        # same triangle in the mesh.
+        mesh.generate_rectangular_mesh(
+            width=0.005,
+            height=0.001,
+            mesh_size=0.00004,
+            x_offset=0
+        )
+
+    return mesh
+
+
+def simulate_piezo_impedance(base_directory, show_results):
+    """Example function on how to run a piezo simulation which calculates
+    the charge and calculates the impedance of the model. The simulation is
+    done in the frequency domain.
+
+    Parameters:
+        base_directory: Directory in which a new simulation directory is
+            created in which the simulation files are added.
+        show_results: Set to True of the resulting impedance shall be plotted.
+    """
+    # First load or create a mesh.
+    # Since the mesh is used in multiple simulations it is saved in the base
+    # directory.
+    mesh = load_mesh(os.path.join(base_directory, "disc_mesh.msh"))
+
+    # Create the simulation
+    sim = pfem.SingleSimulation(
+        # Folder IN which the simulation folder is created
+        working_directory=base_directory,
+        # Name of the simulation & sim folder name
+        simulation_name="pic255_impedance_example",
+        # Mesh which is used in the simulation
+        mesh=mesh
     )
-    sim.set_triangle_pulse_excitation(1)
-    sim.set_boundary_conditions()
-    sim.save_simulation_settings(
-        "An example for a piezo-electric simulation of a ring.")
-    sim.simulate()
-    sim.create_post_processing_views()
-    # gmsh.fltk.run()
 
+    # Frequencies for which the simulation is done
+    frequencies = np.linspace(0, 1e7, 1000)[1:]
+    # Set a frequency domain piezo simulation
+    sim.setup_piezo_freq_domain(frequencies)
 
-def run_disc_simulation(base_directory):
-    """Example for a piezoelectric disc simulation.
-
-    Parameters:
-        base_directory: Directory where the simulation directory is created.
-    """
-    sim_directory = os.path.join(base_directory, "disc_sim")
-    sim = pfem.PiezoSimulation(sim_directory, pfem.pic255, "Disc sim")
-    sim.create_disc_mesh(0.005, 0.001, 0.00015)
-    sim.set_simulation(
-        delta_t=1e-8,
-        number_of_time_steps=100,
-        gamma=0.5,
-        beta=0.25,
-        simulation_type=pfem.SimulationType.PIEZOELECTRIC,
+    # Add a material to the model and specify for which elements this element
+    # is used.
+    sim.add_material(
+        # Name of the material
+        material_name="pic255",
+        # This is a predefined material
+        material_data=pfem.pic255,
+        # Since this is None the material will be applied everywhere
+        physical_group_name=None
     )
-    sim.set_triangle_pulse_excitation(1)
-    sim.set_boundary_conditions()
-    sim.save_simulation_settings(
-        "An example for a piezo-electric simulation of a disc.")
-    sim.simulate()
-    sim.create_post_processing_views()
-    # gmsh.fltk.run()
 
-
-def run_thermal_simulation(base_directory, name):
-    """Example for a thermo piezoelectric simulation of a disc.
-
-    Parameters:
-        base_directory: Directory where the simulation directory is created.
-    """
-    sim_directory = os.path.join(base_directory, name)
-    sim = pfem.PiezoSimulation(sim_directory, pfem.pic255, name)
-    sim.create_disc_mesh(0.005, 0.001, 0.00015)
-    sim.set_simulation(
-        delta_t=1e-8,
-        number_of_time_steps=100,
-        gamma=0.5,
-        beta=0.25,
-        simulation_type=pfem.SimulationType.THERMOPIEZOELECTRIC,
+    # Setup boundary conditions
+    # First two boundary conditions for PHI (electrical potenzial) are added
+    # those implement ground (0 V potential) on the bottom of the ceramic
+    # as well as an arbitrary excitation potential at the top.
+    sim.add_dirichlet_bc(
+        # Name of the field for which the bc is
+        field_type=pfem.FieldType.PHI,
+        # Name of the physical group on which this bc is applied.
+        # In this case this is a line segment of the model.
+        physical_group_name="Electrode",
+        # Values for each simulation step which are equally applied along the
+        # model segment.
+        values=np.ones(len(frequencies))
     )
-    sim.set_triangle_pulse_excitation(1)
-    sim.set_boundary_conditions()
-    sim.save_simulation_settings(
-        "An example for a thermal piezo-electric simulation.")
-    sim.simulate()
+    sim.add_dirichlet_bc(
+        field_type=pfem.FieldType.PHI,
+        physical_group_name="Ground",
+        values=np.zeros(len(frequencies))
+    )
 
-    post_processing_temp(sim)
+    # Additionaly since a disc is simulated which left side is at r=0 an
+    # symmetry boundary condition is needed.
+    sim.add_dirichlet_bc(
+        field_type=pfem.FieldType.U_R,
+        physical_group_name="Symaxis",
+        values=np.zeros(len(frequencies))
+    )
 
+    # Since the charge shall be simulated in order to calculate the impedance
+    # it is necesarry to determine the elements for which a charge is
+    # calculated
+    electrode_elements = mesh.get_elements_by_physical_groups(
+        ["Electrode"]
+    )["Electrode"]
 
-def post_processing_temp(sim: pfem.PiezoSimulation):
-    """Runs post processing for the given simulation object.
+    # Now the simulation can be done
+    sim.simulate(
+        electrode_elements=electrode_elements
+    )
 
-    Parameters:
-        sim: Simulation object where the simulation is already done.
-    """
-    if sim.simulation_type is not pfem.SimulationType.THERMOPIEZOELECTRIC:
-        raise TypeError("Need thermo-piezoelectric simulation for this post"
-                        "processing function")
-    sim.create_post_processing_views()
+    # The simulation settings and results are saved in the simulation folder
+    sim.save_simulation_settings()
     sim.save_simulation_results()
 
-    # Plot fields
-    # gmsh.fltk.run()
+    # Calculate impedance
+    # The charge can be accessed using sim.solver
+    charge = sim.solver.q
 
-    # compare_energies(sim)
-    # plot_impedance_with_opencfs(sim, os.path.)
+    # Since the simulation is already in the frequency domain the impedance
+    # can be calculated directly
+    impedance = np.abs(1/(1j*2*np.pi*frequencies*charge))
+
+    if show_results:
+        # Plot results
+        plt.plot(
+            frequencies/1e6,
+            impedance,
+            label="Impedance PIC255"
+        )
+        plt.xlabel("Frequency $f$ / MHz")
+        plt.ylabel("Impedance $|Z|$ / $\\Omega$")
+        plt.legend()
+        plt.grid()
+        plt.show()
 
 
-def plot_impedance_with_opencfs(sim: pfem.PiezoSimulation, open_cfs_hist_file: str):
-    """Calculates and plots the impedence curves of the given FEM simulation
-    together with OpenCFS results.
+def simulate_thermo_piezo(base_directory):
+    """Runs a thermo-piezoeletric simulation and calculates the thermal
+    field after 20 microseconds.
 
     Parameters:
-        sim: Simulation object where the simulation was already done.
-        open_cfs_hist_file: Hist file cotaining the charge from opencfs
-            simulation.
+        base_directory: Directory in which the simulation folder is created.
     """
-    delta_t = sim.simulation_data.delta_t
-    excitation = sim.excitation
+    mesh = load_mesh(os.path.join(base_directory, "disc_mesh.msh"))
 
-    frequencies_fem, impedence_fem = pfem.calculate_impedance(
-        sim.solver.q, excitation, delta_t)
+    sim = pfem.SingleSimulation(
+        base_directory,
+        "thermo_piezo_sim_20k",
+        mesh
+    )
+    # Simulation parameters
+    NUMBER_OF_TIME_STEPS = 20000
+    DELTA_T = 1e-8
 
-    # Get OpenCFS data
-    _, charge_cfs = pfem.parse_charge_hist_file(open_cfs_hist_file)
-    frequencies_cfs, impedence_cfs = pfem.calculate_impedance(
-        charge_cfs, excitation, delta_t)
+    # Time integration parameters: Those values make sure that the simulation
+    # is unconditionally stable.
+    GAMMA = 0.5
+    BETA = 0.25
 
-    # Plot FEM and OpenCfs
-    plt.plot(frequencies_fem, np.abs(impedence_fem), label="MyFEM")
-    plt.plot(frequencies_cfs, np.abs(impedence_cfs), "+", label="OpenCFS")
-    plt.xlabel("Frequency f / Hz")
-    plt.ylabel("Impedence |Z| / $\\Omega$")
-    plt.yscale("log")
-    plt.legend()
-    plt.grid()
-    plt.show()
+    sim.setup_thermo_piezo_time_domain(
+        NUMBER_OF_TIME_STEPS,
+        DELTA_T,
+        GAMMA,
+        BETA
+    )
+
+    sim.add_material(
+        "pic255",
+        pfem.pic255,
+        None
+    )
+
+    # Triangular excitation
+    excitation = np.zeros(NUMBER_OF_TIME_STEPS)
+    excitation[1:10] = (
+        1 * np.array([0.2, 0.4, 0.6, 0.8, 1, 0.8, 0.6, 0.4, 0.2])
+    )
+
+    sim.add_dirichlet_bc(
+        pfem.FieldType.PHI,
+        "Electrode",
+        excitation
+    )
+    sim.add_dirichlet_bc(
+        pfem.FieldType.PHI,
+        "Ground",
+        np.zeros(NUMBER_OF_TIME_STEPS)
+    )
+    sim.add_dirichlet_bc(
+        pfem.FieldType.U_R,
+        "Symaxis",
+        np.zeros(NUMBER_OF_TIME_STEPS)
+    )
+
+    sim.simulate(calculate_mech_loss=True)
+    sim.save_simulation_settings()
+    sim.save_simulation_results()
+
+
+def simulate_coupled_thermo_time(base_directory):
+    """This function runs a thermo-piezoelectric simulation with a coupled
+    thermo simulation. First the thermo-piezoelectric simulation is run until
+    the mech losses are stationary. Then the constant mech losses are
+    calculated and used as a source in a thermo simulation which is run
+    afterwards
+
+    Parameters:
+        base_directory: Directory in which the simulation folder is created
+    """
+    mesh = load_mesh(os.path.join(base_directory, "disc_mesh.msh"))
+
+    PIEZO_DELTA_T = 1e-8
+    PIEZO_NUMBER_OF_TIME_STEPS = 20000
+
+    THERMO_DELTA_T = 0.001
+    THERMO_NUMBER_OF_TIME_STEPS = 1000
+
+    piezo_sim_data = pfem.SimulationData(
+        PIEZO_DELTA_T,
+        PIEZO_NUMBER_OF_TIME_STEPS,
+        0.5,
+        0.25
+    )
+    thermo_sim_data = pfem.SimulationData(
+        THERMO_DELTA_T,
+        THERMO_NUMBER_OF_TIME_STEPS,
+        0.5,
+        0  # Not needed in thermo simulation
+    )
+
+    coupled_sim = pfem.CoupledThermoPiezoThermoSim(
+        base_directory,
+        "CoupledThermoPiezoelectricSim",
+        piezo_sim_data,
+        thermo_sim_data,
+        mesh
+    )
+
+    coupled_sim.add_material(
+        "pic255",
+        pfem.pic255,
+        None
+    )
+
+    # Excitation for piezoelectric simulation
+    AMPLITUDE = 20
+    FREQUENCY = 2e6
+    time_values = np.arange(PIEZO_NUMBER_OF_TIME_STEPS)*PIEZO_DELTA_T
+    coupled_sim.set_excitation(
+        excitation=AMPLITUDE*np.sin(2*np.pi*FREQUENCY*time_values),
+        is_disc=True
+    )
+
+    coupled_sim.simulate()
+    coupled_sim.save_simulation_settings()
+    coupled_sim.save_simulation_results()
+
+
+def simulate_coupled_thermo_freq(base_directory):
+    """This function implements a thermo-piezoelectric simulation in the
+    frequency domain. The calculated mech losses are embed in a time domain
+    thermo simulation.
+
+    Parameters:
+        base_directory: Directory in which the simulation folder is created
+    """
+    mesh = load_mesh(os.path.join(base_directory, "disc_mesh.msh"))
+
+    THERMO_DELTA_T = 0.001
+    THERMO_NUMBER_OF_TIME_STEPS = 1000
+    FREQUENCY = 2.07e6
+    AMPLITUDE = 1.3
+
+    thermo_sim_data = pfem.SimulationData(
+        THERMO_DELTA_T,
+        THERMO_NUMBER_OF_TIME_STEPS,
+        0.5,
+        0  # Not needed in thermo simulation
+    )
+
+    coupled_sim = pfem.CoupledFreqPiezoTherm(
+        base_directory,
+        "CoupledThermopiezoelectricFreqSim",
+        FREQUENCY,
+        thermo_sim_data,
+        mesh
+    )
+
+    coupled_sim.add_material(
+        "pic184",
+        pfem.materials.pic184_25,
+        None
+    )
+
+    coupled_sim.set_excitation(
+        excitation=AMPLITUDE,
+        is_disc=True
+    )
+
+    coupled_sim.simulate(
+        material_starting_temperature=25,
+        temperature_dependent=False
+    )
+    coupled_sim.save_simulation_settings()
+    coupled_sim.save_simulation_results()
+
+
+def simulate_thermo_time(base_directory):
+    mesh = load_mesh(os.path.join(base_directory, "disc_mesh.msh"))
+
+    sim = pfem.SingleSimulation(base_directory, "ThermoTimeSim", mesh)
+
+    DELTA_T = 0.001
+    NUMBER_OF_TIME_STEPS = 1000
+
+    _, elements = mesh.get_mesh_nodes_and_elements()
+    number_of_elements = len(elements)
+
+    sim.setup_thermo_time_domain(
+        DELTA_T,
+        NUMBER_OF_TIME_STEPS,
+        0.5
+    )
+
+    # As an example set a constant volume heat source
+    sim.solver.set_constant_volume_heat_source(
+        np.ones(number_of_elements),
+        NUMBER_OF_TIME_STEPS
+    )
+
+    # Set convective boundarz condition for the elements on the boundaries
+    elements = mesh.get_elements_by_physical_groups(
+        ["Electrode", "Ground", "RightBoundary"]
+    )
+    convective_boundary_elements = np.vstack(
+        [
+            elements["Electrode"],
+            elements["Ground"],
+            elements["RightBoundary"]
+        ]
+    )
+    sim.solver.set_convection_bc(
+        convective_boundary_elements,
+        80,  # Heat transfer coefficient
+        20  # Outer temperature
+    )
+
+    sim.simulate(initial_theta_field=25)
+    sim.save_simulation_settings()
+    sim.save_simulation_results()
 
 
 if __name__ == "__main__":
-    # cwd = os.path.join(os.path.abspath(os.path.dirname(__file__)),
-    #                   "simulations")
-    # CWD_SCRATCH = "/upb/users/j/jonasho/scratch/piezo_fem/results/"
-    CWD_SCRATCH = "/home/jonash/uni/Masterarbeit/simulations/"
-    # run_disc_simulation(cwd)
-    # run_ring_simulation(cwd)
-    run_thermal_simulation(CWD_SCRATCH, "test")
+    CWD = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "simulations"
+    )
+
+    if not os.path.isdir(CWD):
+        os.makedirs(CWD)
+
+    simulate_piezo_impedance(CWD, False)
+    simulate_thermo_piezo(CWD)
+    simulate_coupled_thermo_time(CWD)
+    simulate_coupled_thermo_freq(CWD)

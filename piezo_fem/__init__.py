@@ -8,4 +8,4 @@ from .postprocessing import calculate_impedance, \
 from .materials import pic255, MaterialManager
 from .single_sim import SingleSimulation, FieldType
 from .mesh import Mesh
-from .coupled_sim import CoupledThermoPiezoThermoSim, CoupledFreqPiezoHeatCond
+from .coupled_sim import CoupledThermoPiezoThermoSim, CoupledFreqPiezoTherm

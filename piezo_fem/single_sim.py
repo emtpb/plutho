@@ -68,7 +68,8 @@ class SingleSimulation:
     dirichlet_values: List[npt.NDArray]
 
     # Simulation
-    solver: Union[ThermoSimTime, PiezoSimFreq, PiezoSimTime, ThermoPiezoSimTime]
+    solver: Union[ThermoSimTime, PiezoSimFreq,
+                  PiezoSimTime, ThermoPiezoSimTime]
     charge_calculated: bool
     mech_loss_calculated: bool
 
@@ -127,7 +128,7 @@ class SingleSimulation:
     def add_dirichlet_bc(
         self,
         field_type: FieldType,
-        physical_group: str,
+        physical_group_name: str,
         values: npt.NDArray
     ):
         """Adds a dirichlet boundary condition (dirichlet bc) to the
@@ -136,7 +137,7 @@ class SingleSimulation:
 
         Parameters:
             field_type: The type of field for which the bc shall be set.
-            physical_group: Name of the physical group for which the boundary
+            physical_group_name: Name of the physical group for which the boundary
                 condition shall be set.
             values: List of values per time step. Value of the bc for each time
                 step. The value for one time step is applied to every element
@@ -159,14 +160,14 @@ class SingleSimulation:
         # Save boundary condition for serialization
         self.boundary_conditions.append({
             "field_type": field_type.name,
-            "physical_group": physical_group,
+            "physical_group": physical_group_name,
             "values": values.tolist()
         })
 
         # Apply the given values for all nodes from the given physical_group
         node_indices = self.mesh.get_nodes_by_physical_groups(
-            [physical_group]
-        )[physical_group]
+            [physical_group_name]
+        )[physical_group_name]
 
         number_of_nodes = len(self.mesh_data.nodes)
         for node_index in node_indices:
@@ -219,17 +220,29 @@ class SingleSimulation:
 
     def setup_piezo_time_domain(
         self,
-        simulation_data: SimulationData
+        number_of_time_steps: int,
+        delta_t: float,
+        gamma: float,
+        beta: float
     ):
         """Sets a electro-mechanical (piezo) simulation in the time domain.
 
         Parameters:
-            simulation_data: Simulation data object.
+            number_of_time_steps: Number of time steps for which the simulation
+                is done
+            delta_t: Distance between two time steps.
+            gamma: Time integration parameter.
+            beta: Time integrationp parameter.
         """
         self.solver = PiezoSimTime(
             self.mesh_data,
             self.material_manager,
-            simulation_data
+            SimulationData(
+                delta_t,
+                number_of_time_steps,
+                gamma,
+                beta
+            )
         )
 
     def setup_piezo_freq_domain(self, frequencies: npt.NDArray):
@@ -245,19 +258,31 @@ class SingleSimulation:
             frequencies
         )
 
-    def setup_thermal_piezo_time_domain(
+    def setup_thermo_piezo_time_domain(
         self,
-        simulation_data: SimulationData
+        number_of_time_steps: int,
+        delta_t: float,
+        gamma: float,
+        beta: float
     ):
         """Sets a thermo-piezoelectrical simulation.
 
         Parameters:
-            simulation_data: SimulationData object.
+            number_of_time_steps: Number of time steps for which the simulation
+                is done.
+            delta_t: Distance between two time steps.
+            gamma: Time integration parameter.
+            beta: Time integrationp parameter.
         """
         self.solver = ThermoPiezoSimTime(
             self.mesh_data,
             self.material_manager,
-            simulation_data
+            SimulationData(
+                delta_t,
+                number_of_time_steps,
+                gamma,
+                beta
+            )
         )
 
     def simulate(
@@ -277,13 +302,11 @@ class SingleSimulation:
         beforehand.
 
         Parameters:
-            starting_temperature: Sets a starting temperature field.
-            initialize_materials: The materials are initialized with
-                the given starting_temperature field.
-            theta_start: Sets the starting field for the pure thermal
+            material_starting_temperature: Sets a starting temperature field.
+            initial_theta_field: Sets the starting field for the pure thermal
                 simulation.
-            time_step': Sets a starting time index for the pure thermal
-                simulation.
+            initial_theta_time_step: Sets a starting time index for the pure
+                thermal simulation.
             electrode_elements: List of element indices for which the
                 charge is calculated.
             calculate_mech_loss: Set to true of the mech loss shall
@@ -291,7 +314,7 @@ class SingleSimulation:
         """
 
         # Check if solver is set
-        if self.solver == None:
+        if self.solver is None:
             raise SimulationException(
                 "Please setup a solver first using any "
                 "setup function"
@@ -313,8 +336,8 @@ class SingleSimulation:
             # Check if material temp is given as float
             if isinstance(material_starting_temperature, float):
                 material_starting_temperature = (
-                        material_starting_temperature
-                        * np.ones(len(self.mesh_data.elements))
+                    material_starting_temperature
+                    * np.ones(len(self.mesh_data.elements))
                 )
 
             self.solver.material_manager.initialize_materials(
@@ -485,7 +508,7 @@ class SingleSimulation:
                     self.solver.q
                 )
 
-    def save_simulation_settings(self, prefix:str = ""):
+    def save_simulation_settings(self, prefix: str = ""):
         """Save the simulation settings to the simulation folder. If a prefix
         is given this is prepend to the name of the output file.
 
@@ -656,7 +679,7 @@ class SingleSimulation:
             elif simulation_type == "PiezoTime":
                 simulation.setup_piezo_time_domain(simulation_data)
             elif simulation_type == "ThermoPiezoTime":
-                simulation.setup_thermal_piezo_time_domain(simulation_data)
+                simulation.setup_thermo_piezo_time_domain(simulation_data)
             else:
                 raise IOError(
                     f"Cannot deserialize {simulation_type} simulation type"

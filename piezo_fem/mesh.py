@@ -105,7 +105,7 @@ class Mesh:
             height: Height of the rect in m.
             mesh_size: Mesh size of the mesh. Equal to the maximum distance
                 between two point in the mesh.
-            x_offset: Moves the rect anlong the x-direction. Default value is
+            x_offset: Moves the rect along the x-direction. Default value is
                 0. For 0 the left side of the rect is on the y-axis.
         """
         gmsh.clear()
@@ -272,7 +272,7 @@ class Mesh:
                     [
                         [field[2*i, time_index],
                          field[2*i+1, time_index], 0] for i in range(
-                         number_of_elements)
+                            number_of_elements)
                     ]
                 )
             gmsh.view.addModelData(
@@ -397,5 +397,3 @@ class Mesh:
         if not os.path.exists(self.output_file_path):
             gmsh.write(self.output_file_path)
         gmsh.view.write(theta_view_tag, self.output_file_path, append)
-
-

@@ -1,7 +1,7 @@
 """Module for coupled simulations."""
 
 # Python stanard libraries
-from typing import Dict
+from typing import Dict, Union
 
 # Third party libraries
 import numpy as np
@@ -55,8 +55,14 @@ class CoupledThermoPiezoThermoSim:
             simulation_name,
             mesh
         )
-        thermo_piezo_sim.setup_thermal_piezo_time_domain(
-            thermo_piezo_simulation_data
+
+        # TODO Unecessary to create a new simulation data object
+        # in the function
+        thermo_piezo_sim.setup_thermo_piezo_time_domain(
+            thermo_piezo_simulation_data.number_of_time_steps,
+            thermo_piezo_simulation_data.delta_t,
+            thermo_piezo_simulation_data.gamma,
+            thermo_piezo_simulation_data.beta
         )
 
         thermo_sim = SingleSimulation(
@@ -77,7 +83,7 @@ class CoupledThermoPiezoThermoSim:
             self,
             material_name: str,
             material_data: MaterialData,
-            physical_group_name: str
+            physical_group_name: Union[str, None]
     ):
         """Add a material to the simulation.
 
@@ -220,7 +226,8 @@ class CoupledThermoPiezoThermoSim:
         self.thermo_piezo_sim.save_simulation_settings("piezo_freq")
         self.thermo_sim.save_simulation_results("heat_cond")
 
-class CoupledFreqPiezoHeatCond:
+
+class CoupledFreqPiezoTherm:
 
     # Basic setup
     working_directory: str
@@ -266,7 +273,7 @@ class CoupledFreqPiezoHeatCond:
         self,
         material_name: str,
         material_data: MaterialData,
-        physical_group_name: str
+        physical_group_name: Union[str, None]
     ):
         """Add a material to the simulation.
 
@@ -317,7 +324,7 @@ class CoupledFreqPiezoHeatCond:
                 np.zeros(1)
             )
 
-    def simulate_coupled(
+    def simulate(
         self,
         material_starting_temperature: float,
         temperature_dependent: bool
@@ -345,8 +352,7 @@ class CoupledFreqPiezoHeatCond:
                 if time_index == 0:
                     self.piezo_freq.simulate(
                         calculate_mech_loss=True,
-                        material_starting_temperature=\
-                            material_starting_temperature
+                        material_starting_temperature=material_starting_temperature
                     )
                 else:
                     if temp_field_per_element is None:
@@ -384,14 +390,12 @@ class CoupledFreqPiezoHeatCond:
                             material_starting_temperature
                             * np.ones(number_of_nodes)
                         ),
-                        material_starting_temperature=\
-                            material_starting_temperature
+                        material_starting_temperature=material_starting_temperature
                     )
                 else:
                     time_index = self.thermo_time_sim.simulate(
                         initial_theta_time_step=time_index,
-                        material_starting_temperature=\
-                            material_starting_temperature
+                        material_starting_temperature=material_starting_temperature
                     )
 
                 if time_index == number_of_time_steps:
@@ -441,4 +445,3 @@ class CoupledFreqPiezoHeatCond:
         """Saves the simulation settings to the simulation folder."""
         self.piezo_freq.save_simulation_settings("piezo_freq")
         self.thermo_time_sim.save_simulation_results("heat_cond")
-
