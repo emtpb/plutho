@@ -28,7 +28,7 @@ have a rectangular cross section.
 
 The package can be cloned using git and installed using pip install. It is
 recommended to install and activate a python virtual environment first.
-```python
+```console
 git clone https://atuin.emt.uni-paderborn.de/git/jonasho/piezo_fem.git
 cd piezo_fem
 pip install .
@@ -45,23 +45,39 @@ For the solvers some basic tests are implemented. They run simple example
 simulations and compare the results with known test data which is created
 at a verified solver state.
 In order to run the tests it is necessary to install pytest.
-```python
+```console
 pip install pytest
 ```
 Then the tests can be run using
-```python
+```console
 pytest
+```
+
+## Documentation
+
+In order to run the documentation sphinx and sphinx_rtd_theme must be
+installed.
+```console
+pip install sphinx sphinx_rtd_theme
+```
+In order to build the documentation the code rst files can be created with
+```console
+sphinx-apidoc -f -o docs piezo_fem
+```
+and afterwards the whole documentation can be build using:
+```console
+sphinx-build -M html docs docs/build
 ```
 
 ## For developers
 
 In order to make changes to the local piezo_fem installation make sure to
 install it using the -e parameter:
-```python
+```console
 pip install -e .
 ```
 
-## TODOs
+### TODOs
 Here are some additional features and optimizations which could be applied to
 the code. Some of those feature can be discussed and are not mandatory:
 - Add tests for the solvers

@@ -519,7 +519,7 @@ def create_dirichlet_bc_nodes(
         electrode_excitation: Excitation values for each time step.
         number_of_time_steps: Total number of time steps of the simulation.
 
-    Returns
+    Returns:
         Tuple of 2 tuples. The first inner tuple is a tuple containing
         the nodes and values for u and the second inner tuple contains
         the nodes and values for v.

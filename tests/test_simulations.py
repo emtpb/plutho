@@ -263,7 +263,7 @@ def test_thermo_piezo_time(tmp_path):
     DELTA_T = 1e-8
     NUMBER_OF_TIME_STEPS = 10000
 
-    sim.setup_thermal_piezo_time_domain(pfem.SimulationData(
+    sim.setup_thermo_piezo_time_domain(pfem.SimulationData(
         number_of_time_steps=NUMBER_OF_TIME_STEPS,
         delta_t=DELTA_T,
         gamma=0.5,

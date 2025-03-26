@@ -9,6 +9,7 @@ import numpy.typing as npt
 from piezo_fem.simulation.base import energy_integral_theta, \
     gradient_local_shape_functions
 
+
 def calculate_impedance(
     q: npt.NDArray,
     excitation: npt.NDArray,
@@ -47,7 +48,8 @@ def calculate_electrical_input_energy(
         delta_t: Time difference also used in the simulation.
 
     Returns:
-        Electric input energy."""
+        Electric input energy.
+    """
     current = np.gradient(charge, delta_t)
 
     return np.trapezoid(current*voltage_excitation, None, delta_t)
@@ -73,7 +75,8 @@ def calculate_stored_thermal_energy(
         density: Density of the model.
 
     Returns:
-        The stored energy either as float or list of floats."""
+        The stored energy either as float or list of floats.
+    """
 
     if len(theta.shape) == 2:
         # Need to calculate for every time step
