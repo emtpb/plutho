@@ -37,6 +37,7 @@ pip install .
 ## Usage
 
 Some example simulation setups can be found [here](scripts/basic_example.py).
+The examples in this file are documented in detail.
 
 ## Tests
 
@@ -53,7 +54,7 @@ pip install pytest
 In order to make changes to the local piezo_fem installation make sure to
 install it using the -e parameter:
 ```python
-pip intsall -e .
+pip install -e .
 ```
 
 ## TODOs
