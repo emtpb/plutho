@@ -365,7 +365,7 @@ if __name__ == "__main__":
     if not os.path.isdir(CWD):
         os.makedirs(CWD)
 
-    simulate_piezo_impedance(CWD, False)
-    simulate_thermo_piezo(CWD)
-    simulate_coupled_thermo_time(CWD)
+    # simulate_piezo_impedance(CWD, False)
+    # simulate_thermo_piezo(CWD)
+    # simulate_coupled_thermo_time(CWD)
     simulate_coupled_thermo_freq(CWD)

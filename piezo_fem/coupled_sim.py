@@ -415,8 +415,7 @@ class CoupledFreqPiezoTherm:
         else:
             # Run piezofreq simulation
             self.piezo_freq.simulate(
-                calculate_mech_loss=True,
-                starting_temperature=material_starting_temperature
+                calculate_mech_loss=True
             )
 
             # Get mech losses
@@ -430,7 +429,6 @@ class CoupledFreqPiezoTherm:
 
             # Run thermo time domain simulation
             self.thermo_time_sim.simulate(
-                material_starting_temperature=material_starting_temperature,
                 initial_theta_field=(
                     material_starting_temperature*np.ones(number_of_nodes)
                 )

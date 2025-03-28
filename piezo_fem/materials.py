@@ -210,6 +210,9 @@ class MaterialManager:
         Parameters:
             starting_temperature: List of temperatures for every element.
         """
+        # TODO Add check: If there is a starting_temperature but the data
+        # is only given for one temperature raise an error
+
         # Initialize local parameters: Material parameter defined for each
         # element
         self.c11_local = np.zeros(self.number_of_elements)
