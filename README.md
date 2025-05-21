@@ -17,9 +17,10 @@ have a rectangular cross section.
     simulation
 - Coupled simulation of a thermo-piezoelectric and a single thermal simulation
   where the thermo-piezoelectric simulation can be in time or frequency domain
-- Nonlinear time domain simulation
-  - Material nonlinearity
-  - Solver currently is WIP
+- Nonlinear simulation
+  - Uses material nonlinearity
+  - For nonlinear hooke law a time dependent and time independent solver
+    is implemented
 - Automatic mesh generation with gmsh
 - Exporting functions to plot the fields in gmsh or as csv files
 - Supporting disc and ring shapes for piezoelectric ceramics
