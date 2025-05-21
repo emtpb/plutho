@@ -283,11 +283,12 @@ class NonlinearPiezoSimTime:
         for time_index in range(1, number_of_time_steps-1):
 
             # Solve for phi
-            right_side_phi = NonlinearPiezoSimTime.apply_dirchlet_bc_loadvector(
-                kuv.T*u[:, time_index],
-                self.dirichlet_nodes_phi,
-                self.dirichlet_values_phi[:, time_index]
-            )
+            right_side_phi = NonlinearPiezoSimTime \
+                .apply_dirchlet_bc_loadvector(
+                    kuv.T*u[:, time_index],
+                    self.dirichlet_nodes_phi,
+                    self.dirichlet_values_phi[:, time_index]
+                )
             phi[:, time_index+1] = linalg.spsolve(
                 system_matrix_phi,
                 right_side_phi
@@ -447,6 +448,19 @@ class NonlinearPiezoSimTime:
         electrode_elements: npt.NDArray,
         nodes: npt.NDArray
     ) -> float:
+        """Calculates the charge using u and phi on the given electrode
+        elements.
+
+        Parameters:
+            u: Mechanical displacement field.
+            phi: Electrical potential field.
+            material_manager: COntains the material data.
+            electrode_elements: Indices of the element on which the charge
+                is calculated.
+            nodes: All nodes from the mesh.
+
+        Returns:
+            The charge on the given elements summed up."""
         q = 0
 
         for element_index, element in enumerate(electrode_elements):

@@ -110,12 +110,12 @@ def test_piezo_time(tmp_path):
         None
     )
 
-    sim.setup_piezo_time_domain(pfem.SimulationData(
+    sim.setup_piezo_time_domain(
         number_of_time_steps=NUMBER_OF_TIME_STEPS,
         delta_t=1e-8,
         gamma=0.5,
         beta=0.25
-    ))
+    )
 
     # Set triangular excitation
     excitation = np.zeros(NUMBER_OF_TIME_STEPS)
@@ -263,12 +263,12 @@ def test_thermo_piezo_time(tmp_path):
     DELTA_T = 1e-8
     NUMBER_OF_TIME_STEPS = 10000
 
-    sim.setup_thermo_piezo_time_domain(pfem.SimulationData(
+    sim.setup_thermo_piezo_time_domain(
         number_of_time_steps=NUMBER_OF_TIME_STEPS,
         delta_t=DELTA_T,
         gamma=0.5,
         beta=0.25
-    ))
+    )
 
     # Set sinusoidal excitation
     AMPLITUDE = 1

@@ -677,9 +677,19 @@ class SingleSimulation:
                     simulation_data.gamma
                 )
             elif simulation_type == "PiezoTime":
-                simulation.setup_piezo_time_domain(simulation_data)
+                simulation.setup_piezo_time_domain(
+                    simulation_data.number_of_time_steps,
+                    simulation_data.delta_t,
+                    simulation_data.gamma,
+                    simulation_data.beta
+                )
             elif simulation_type == "ThermoPiezoTime":
-                simulation.setup_thermo_piezo_time_domain(simulation_data)
+                simulation.setup_thermo_piezo_time_domain(
+                    simulation_data.number_of_time_steps,
+                    simulation_data.delta_t,
+                    simulation_data.gamma,
+                    simulation_data.beta
+                )
             else:
                 raise IOError(
                     f"Cannot deserialize {simulation_type} simulation type"
