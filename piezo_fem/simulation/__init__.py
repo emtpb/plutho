@@ -4,5 +4,4 @@ from .base import MaterialData, SimulationData, MeshData, ModelType, \
     SimulationType
 from .thermo_time import ThermoSimTime
 from .piezo_freq import PiezoSimFreq
-from .nonlinear import NonlinearPiezoSimTime
-
+from .nonlinear import NonlinearPiezoSimTime, NonlinearPiezoSimStationary
