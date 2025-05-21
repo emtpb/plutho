@@ -3,7 +3,6 @@ import os
 
 # Third party libraries
 import numpy as np
-import pytest
 
 # Local libraries
 import piezo_fem as pfem
@@ -305,10 +304,6 @@ def test_thermo_piezo_time(tmp_path):
 
     sim.simulate(electrode_elements=electrode_elements)
 
-    # np.save("tests/data/thermo_piezo_time/u.npy", sim.solver.u[:, -1])
-    # np.save("tests/data/thermo_piezo_time/q.npy", sim.solver.q[-1])
-    # np.save("tests/data/thermo_piezo_time/mech_loss.npy", sim.solver.mech_loss[:, -1])
-
     test_folder = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         "data",
@@ -388,8 +383,8 @@ def generate_data():
     """Generates the data for the tests. Assumes the current implementation of
     piezo_fem is correct."""
     dir = "tests/data"
-    # test_piezo_time(dir)
-    # test_piezo_time(dir)
+    test_piezo_time(dir)
+    test_piezo_time(dir)
     test_thermo_piezo_time(dir)
 
 
