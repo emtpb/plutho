@@ -10,10 +10,10 @@ import piezo_fem as pfem
 
 
 def load_mesh(mesh_file_path):
-    """Loads a mesh file. Creates a default disc mesh it if it does not exists
+    """Loads a mesh file. Creates a default disc mesh if it does not exists.
 
     Parameters:
-        mesh_file_path: Path of the mesh file.
+        mesh_file_path: Path to the mesh file.
     """
     if os.path.exists(mesh_file_path):
         mesh = pfem.Mesh(mesh_file_path, load=True)

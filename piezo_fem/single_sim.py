@@ -100,7 +100,7 @@ class SingleSimulation:
         self,
         material_name: str,
         material_data: MaterialData,
-        physical_group_name: Union[str, None]
+        physical_group_name: str
     ):
         """Adds a material to the simulation
 
@@ -137,8 +137,8 @@ class SingleSimulation:
 
         Parameters:
             field_type: The type of field for which the bc shall be set.
-            physical_group_name: Name of the physical group for which the boundary
-                condition shall be set.
+            physical_group_name: Name of the physical group for which the
+                boundary condition shall be set.
             values: List of values per time step. Value of the bc for each time
                 step. The value for one time step is applied to every element
                 equally. Length: number_of_time_step.
@@ -644,7 +644,7 @@ class SingleSimulation:
             "",
             Mesh(mesh_file, True)
         )
-        # Workaround since the simulation_folder and simulation_name are
+        # Workaround since simulation_folder and simulation_name are
         # combined in the constructor, see empty string above for the
         # constructor
         simulation.simulation_name = simulation_name

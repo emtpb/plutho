@@ -1,3 +1,4 @@
+"""Implements an example on how to run a staionary nonlinear simulation."""
 
 # Python standard libraries
 import os

@@ -36,6 +36,7 @@ def parse_charge_hist_file(file_path: str) -> Tuple[npt.NDArray, npt.NDArray]:
 
     return np.array(time), np.array(charge)
 
+
 def parse_charge_freq_hist_file(
     file_path: str
 ) -> Tuple[npt.NDArray, npt.NDArray]:
@@ -61,6 +62,7 @@ def parse_charge_freq_hist_file(
 
     return np.array(frequencies), np.array(charge)
 
+
 def parse_displacement_hist_file(
     file_path: str
 ) -> Tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
@@ -85,6 +87,7 @@ def parse_displacement_hist_file(
         u_z.append(float(current_u_z))
 
     return np.array(time_steps), np.array(u_r), np.array(u_z)
+
 
 def create_scalar_field_as_csv(
     field_name: str,
@@ -120,6 +123,7 @@ def create_scalar_field_as_csv(
 
         with open(current_file_path, "w", encoding="UTF-8") as fd:
             fd.write(text)
+
 
 def create_vector_field_as_csv(
     u: npt.NDArray,
@@ -167,6 +171,7 @@ def create_vector_field_as_csv(
 
         with open(current_file_path, "w", encoding="UTF-8") as fd:
             fd.write(text)
+
 
 def load_temperature_dependent_material_data_pic181(files):
     """From the given file paths load the material data.
@@ -233,7 +238,7 @@ def load_temperature_dependent_material_data_pic181(files):
             "e33": np.array(e33),
             "eps11": np.array(eps11),
             "eps33": np.array(eps33),
-            #"alpha_m": alpha_m,
+            # "alpha_m": alpha_m,
             "alpha_m": np.zeros(len(alpha_k)),
             "alpha_k": np.array(alpha_k),
             "temperatures": np.array(temperatures),
