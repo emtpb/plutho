@@ -22,85 +22,145 @@ c_nonlin_6x6_nonsymmetric = np.array([
 ])
 
 
-def excitation_sweep_linear_nonlinear(
-    base_directory: str,
+def create_sinusoidal_excitation(
+    amplitude,
+    delta_t,
+    number_of_time_steps,
+    frequency
 ):
-    """Sweeps over different voltage excitation and runs a nonlinear
-    simulation using a set nonlinear stiffness matrix.
+    """Creates a sinusoidal excitation array.
 
     Parameters:
-        base_directory: Directory in which a simulation directory is created.
+        amplitude: Amplitude of the sin function.
+        delta_t: Time difference between each time step.
+        number_of_time_steps: Number of time steps of the excitation. Typically
+            this is the same as for the simulation
+        frequency: Frequency of the sin function.
     """
-    # Set mesh file path
-    mesh_file = os.path.join(
-        base_directory,
-        "disc_mesh_0DOT0001.msh"
-    )
+    time_steps = np.arange(number_of_time_steps)*delta_t
+    return amplitude*np.sin(2*np.pi*frequency*time_steps)
 
-    # Create and initialize simulation
-    nonlin_sim = pfem.PiezoNonlinearStationary(
-        "nonlinear_excitation_sweep",
-        base_directory,
-        mesh_file
-    )
-    nonlin_sim.set_material(
-        "pic255",
-        pfem.materials.pic255_alpha_m_nonzero
-    )
 
-    # Mesh data
-    nodes, _ = nonlin_sim.mesh.get_mesh_nodes_and_elements()
-    number_of_nodes = len(nodes)
+def simulate_nonlinear_stationary(CWD):
+    sim_name = "nonlinear_stationary_sim"
+    mesh_file = os.path.join(CWD, "ring_mesh.msh")
 
-    # Set excitation
-    excitations = np.linspace(0, 1000, num=10)
-
-    # Solution variables
-    linear_sweep = []
-    nonlinear_sweep = []
-    linear_u = None
-    nonlinear_u = None
-
-    # Set to true if the simulations shall be run
-    if True:
-        # Linear sim
-        nonlin_sim.run_simulation(
-            excitations=excitations,
-            is_linear=True,
-            is_disc=False,
-            nonlinear_matrix_factor=0,
-            nonlinear_matrix=np.zeros((6, 6))
+    # Load/create ring mesh
+    if os.path.exists(mesh_file):
+        mesh = pfem.Mesh(mesh_file, True)
+    else:
+        mesh = pfem.Mesh(mesh_file, False)
+        mesh.generate_rectangular_mesh(
+            width=0.00635,
+            height=0.001,
+            x_offset=0.0026,
+            mesh_size=0.0001
         )
-        linear_u = nonlin_sim.u_combined
 
-        # Nonlinear sim
-        nonlin_sim.run_simulation(
-            excitations=excitations,
-            is_linear=False,
-            is_disc=True,
-            nonlinear_matrix_factor=1,
-            nonlinear_matrix=c_nonlin_6x6_nonsymmetric
+    # Create simulation
+    sim = pfem.PiezoNonlinear(
+        sim_name,
+        CWD,
+        mesh
+    )
+
+    # Set materials
+    sim.add_material(
+        material_name="pic181",
+        material_data=pfem.materials.pic181_25,
+        physical_group_name=""  # Means all elements
+    )
+    sim.set_nonlinear_material_6x6(c_nonlin_6x6_nonsymmetric)
+
+    # Set boundary conditions
+    excitation = 1000
+    sim.add_dirichlet_bc(
+        pfem.FieldType.PHI,
+        "Electrode",
+        np.array(excitation)
+    )
+    sim.add_dirichlet_bc(
+        pfem.FieldType.PHI,
+        "Ground",
+        np.array(0)
+    )
+
+    sim.setup_stationary_simulation()
+
+    # For better convergence set u_r and u_z for one node to 0
+    sim.dirichlet_nodes.append([0, 1])
+    sim.dirichlet_values.append([0, 0])
+
+    sim.simulate()
+
+
+def simulate_nonlinaer_time_dep(CWD):
+    sim_name = "nonlinear_time_dep_sim"
+    mesh_file = os.path.join(CWD, "ring_mesh.msh")
+
+    # Load/create ring mesh
+    if os.path.exists(mesh_file):
+        mesh = pfem.Mesh(mesh_file, True)
+    else:
+        mesh = pfem.Mesh(mesh_file, False)
+        mesh.generate_rectangular_mesh(
+            width=0.00635,
+            height=0.001,
+            x_offset=0.0026,
+            mesh_size=0.0001
         )
-        nonlinear_u = nonlin_sim.u_combined
 
-        # Chooses the nodes with the maximum value
-        for excitation in excitations:
-            linear_sweep.append(np.max(
-                linear_u[excitation][:2*number_of_nodes]
-            ))
-            nonlinear_sweep.append(np.max(
-                nonlinear_u[excitation][:2*number_of_nodes]
-            ))
+    # Create simulation
+    sim = pfem.PiezoNonlinear(
+        sim_name,
+        CWD,
+        mesh
+    )
 
-    # Set to true if the results shall be plotted
-    if True:
-        plt.plot(excitations, linear_sweep, label="Linear")
-        plt.plot(excitations, nonlinear_sweep, label="Nonlinear")
-        plt.xlabel("Anregung $\\phi_{ex}$ / V")
-        plt.ylabel("Auslenkng $u$ / m")
-        plt.legend()
-        plt.grid()
-        plt.show()
+    # Set materials
+    sim.add_material(
+        material_name="pic181",
+        material_data=pfem.materials.pic181_25,
+        physical_group_name=""  # Means all elements
+    )
+    sim.set_nonlinear_material_6x6(c_nonlin_6x6_nonsymmetric)
+
+    # Simulation parameters
+    DELTA_T = 1e-8
+    NUMBER_OF_TIME_STEPS = 1000
+
+    # Set boundary conditions
+    excitation = create_sinusoidal_excitation(
+        amplitude=10,
+        delta_t=DELTA_T,
+        number_of_time_steps=NUMBER_OF_TIME_STEPS,
+        frequency=2.07e6
+    )
+    sim.add_dirichlet_bc(
+        pfem.FieldType.PHI,
+        "Electrode",
+        excitation
+    )
+    sim.add_dirichlet_bc(
+        pfem.FieldType.PHI,
+        "Ground",
+        np.zeros(NUMBER_OF_TIME_STEPS)
+    )
+
+    sim.setup_time_dependent_simulation(
+        delta_t=DELTA_T,
+        number_of_time_steps=NUMBER_OF_TIME_STEPS,
+        gamma=0.5,
+        beta=0.25
+    )
+
+    # Needed in order to get the charge
+    electrode_elements = mesh.get_elements_by_physical_groups(
+        ["Electrode"]
+    )["Electrode"]
+
+    # Run simulation
+    sim.simulate(electrode_elements=electrode_elements)
 
 
 if __name__ == "__main__":
@@ -112,4 +172,5 @@ if __name__ == "__main__":
     if not os.path.isdir(CWD):
         os.makedirs(CWD)
 
-    excitation_sweep_linear_nonlinear(CWD)
+    # simulate_nonlinear_stationary(CWD)
+    simulate_nonlinaer_time_dep(CWD)

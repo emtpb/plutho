@@ -334,7 +334,7 @@ def simulate_thermo_time(base_directory):
         NUMBER_OF_TIME_STEPS
     )
 
-    # Set convective boundarz condition for the elements on the boundaries
+    # Set convective boundary condition for the elements on the boundaries
     elements = mesh.get_elements_by_physical_groups(
         ["Electrode", "Ground", "RightBoundary"]
     )

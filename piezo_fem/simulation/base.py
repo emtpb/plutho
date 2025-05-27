@@ -131,8 +131,8 @@ class MaterialData:
         return MaterialData(**contents)
 
 
-# Local functions and integrals
-# -------------------------------
+# -------- Local functions and integrals --------
+
 
 def local_shape_functions(s: float, t: float):
     """Returns the local linear shape functions for the reference triangle.
@@ -405,8 +405,7 @@ def line_quadrature(func):
     return 0.5*(func(-1/2/np.sqrt(3)+1/2, 0) + func(1/2/np.sqrt(3)+1/2, 0))
 
 
-# Boundary condition functions
-# ------------------------------
+# -------- Boundary condition functions --------
 
 
 def apply_dirichlet_bc(
@@ -631,7 +630,8 @@ def get_avg_temp_field_per_element(
         elements: List of elements.
 
     Returns:
-        Mean temperature for each element."""
+        Mean temperature for each element.
+    """
     theta_elements = np.zeros(len(elements))
 
     for element_index, element in enumerate(elements):

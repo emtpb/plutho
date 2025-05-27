@@ -4,6 +4,7 @@
 from typing import List
 import numpy as np
 import numpy.typing as npt
+import scipy
 from scipy import sparse
 from scipy.sparse import linalg
 
@@ -69,11 +70,18 @@ class NonlinearPiezoSimTime:
         kuv: FEM stiffness matrix for the coupling of electrical and
             mechanical field.
         kv: FEM stiffness matrix for the electrical field.
-        k_snake: FEM stiffness matrix for the nonlinear part of the
+        ln: FEM stiffness matrix for the nonlinear part of the
             mechanical field.
         u: Mechanical field vector u(t,r).
         q: List of charges per time step.
         local_elements: List of element data for the local triangles.
+
+    Parameters:
+        mesh_data: MeshData object containing the mesh.
+        material_manager: MaterialManager object containing the set materials
+            for each region.
+        simulation_data:SimulationData object containing information on the
+            time domain simulation.
     """
 
     # Simulation parameters
@@ -82,10 +90,8 @@ class NonlinearPiezoSimTime:
     simulation_data: SimulationData
 
     # Dirichlet boundary condition
-    dirichlet_nodes_u: npt.NDArray
-    dirichlet_values_u: npt.NDArray
-    dirichlet_nodes_phi: npt.NDArray
-    dirichlet_values_phi: npt.NDArray
+    dirichlet_nodes: npt.NDArray
+    dirichlet_values: npt.NDArray
 
     # Resulting fields
     u: npt.NDArray
@@ -93,6 +99,14 @@ class NonlinearPiezoSimTime:
 
     # Internal simulation data
     local_elements: List[LocalElementData]
+
+    # FEM matrices
+    mu: sparse.sparray
+    cu = sparse.sparray
+    kuv = sparse.sparray
+    kv = sparse.sparray
+    lu = sparse.sparray
+    ku = sparse.sparray
 
     def __init__(
         self,
@@ -104,12 +118,16 @@ class NonlinearPiezoSimTime:
         self.material_manager = material_manager
         self.simulation_data = simulation_data
 
+        self.dirichlet_nodes = np.array([])
+        self.dirichlet_values = np.array([])
+
     def assemble(self, nonlinear_elasticity_matrix: npt.NDArray):
         """Assembles the FEM matrices based on the set mesh_data and
         material_data. Resulting FEM matrices are saved in global variables.
 
         Parameters:
-            nonlinear_elasticity_matrix: 4x4 nonlinear material matrix.
+            nonlinear_elasticity_matrix: 4x4 nonlinear material matrix
+                (rotational symmetric).
         """
         # TODO Assembly takes to long rework this algorithm
         # Maybe the 2x2 matrix slicing is not very fast
@@ -130,7 +148,7 @@ class NonlinearPiezoSimTime:
             (2*number_of_nodes, number_of_nodes),
             dtype=np.float64
         )
-        kve = sparse.lil_matrix(
+        kv = sparse.lil_matrix(
             (number_of_nodes, number_of_nodes),
             dtype=np.float64
         )
@@ -211,7 +229,7 @@ class NonlinearPiezoSimTime:
 
                     # KVe_e is a 3x3 matrix and therefore the values can
                     # be set directly.
-                    kve[global_p, global_q] += kve_e[local_p, local_q]
+                    kv[global_p, global_q] += kve_e[local_p, local_q]
 
                     # L_e is similar to Ku_e
                     lu[2*global_p:2*global_p+2, 2*global_q:2*global_q+2] += \
@@ -226,193 +244,217 @@ class NonlinearPiezoSimTime:
             + self.material_manager.get_alpha_k(0) * ku
         )
 
-        self.mu = mu.tolil()
-        self.cu = cu.tolil()
-        self.kuv = kuv.tolil()
-        self.kv = kve.tolil()
-        self.k_snake = lu.tolil()
-        self.ku = ku.tolil()
+        # Calculate block matrices
+        zeros1x1 = np.zeros((number_of_nodes, number_of_nodes))
+        zeros2x1 = np.zeros((2*number_of_nodes, number_of_nodes))
+        zeros1x2 = np.zeros((number_of_nodes, 2*number_of_nodes))
 
-    def solve_time(
+        self.m = sparse.block_array([
+            [mu, zeros2x1],
+            [zeros1x2, zeros1x1],
+        ]).tolil()
+        self.c = sparse.block_array([
+            [cu, zeros2x1],
+            [zeros1x2, zeros1x1],
+        ]).tolil()
+        self.k = sparse.block_array([
+            [ku, kuv],
+            [kuv.T, -1*kv]
+        ]).tolil()
+        self.ln = sparse.block_array([
+            [lu, zeros2x1],
+            [zeros1x2, zeros1x1]
+        ]).tolil()
+
+    def solve_time_implicit(
         self,
-        electrode_elements: npt.NDArray
+        tolerance: float = 1e-11,
+        max_iter: int = 300,
+        electrode_elements: npt.NDArray = np.array([])
     ):
-        """Calculates the electro-mechanical field for each time step using a
-        nonlinear piezo simulation.
-
-        Parameters:
-            electrode_elements: Elements on the electrode for which the charge
-                is calculated.
-        """
         number_of_time_steps = self.simulation_data.number_of_time_steps
         delta_t = self.simulation_data.delta_t
         number_of_nodes = len(self.mesh_data.nodes)
+        beta = self.simulation_data.beta
+        gamma = self.simulation_data.gamma
 
-        mu = self.mu
-        ku = self.ku
-        cu = self.cu
-        kuv = self.kuv
-        kv = self.kv
-        k_snake = self.k_snake
+        m = self.m.copy()
+        c = self.c.copy()
+        k = self.k.copy()
+        ln = self.ln.copy()
+
+        # Time integration constants
+        a1 = 1/(beta*(delta_t**2))
+        a2 = 1/(beta*delta_t)
+        a3 = (1-2*beta)/(2*beta)
+        a4 = gamma/(beta*delta_t)
+        a5 = 1-gamma/beta
+        a6 = (1-gamma/(2*beta))*delta_t
 
         # Init arrays
         # Displacement u which is calculated
         u = np.zeros(
-            (2*number_of_nodes, number_of_time_steps),
+            (3*number_of_nodes, number_of_time_steps),
             dtype=np.float64
         )
-        phi = np.zeros(
-            (number_of_nodes, number_of_time_steps),
+        # Displacement u derived after t (du/dt)
+        v = np.zeros(
+            (3*number_of_nodes, number_of_time_steps),
             dtype=np.float64
         )
-
-        # Charge calculated during simulation (for impedance)
+        # v derived after u (d^2u/dt^2)
+        a = np.zeros(
+            (3*number_of_nodes, number_of_time_steps),
+            dtype=np.float64
+        )
+        # Charge
         q = np.zeros(number_of_time_steps, dtype=np.float64)
 
-        # Set boundary conditions
-        system_matrix_u = NonlinearPiezoSimTime.apply_dirichlet_bc(
-            (mu+delta_t/2*cu).tolil(),
-            self.dirichlet_nodes_u
-        ).tocsc()
-        system_matrix_phi = NonlinearPiezoSimTime.apply_dirichlet_bc(
-            kv,
-            self.dirichlet_nodes_phi
-        ).tocsc()
+        # Apply dirichlet bc to matrices
+        m, c, k, ln = NonlinearPiezoSimTime.apply_dirichlet_bc(
+            m,
+            c,
+            k,
+            ln,
+            self.dirichlet_nodes
+        )
 
-        print("Starting nonlinear piezoelectric simulation")
-        for time_index in range(1, number_of_time_steps-1):
+        print("Starting nonlinear time domain simulation")
+        for time_index in range(number_of_time_steps-1):
+            # Calculate load vector
+            f = self.get_load_vector(
+                self.dirichlet_nodes,
+                self.dirichlet_values[:, time_index+1]
+            )
 
-            # Solve for phi
-            right_side_phi = NonlinearPiezoSimTime \
-                .apply_dirchlet_bc_loadvector(
-                    kuv.T*u[:, time_index],
-                    self.dirichlet_nodes_phi,
-                    self.dirichlet_values_phi[:, time_index]
+            # Residual for the newton iterations
+            def residual(next_u, current_u, v, a, f):
+                return (
+                    m@(a1*(next_u-current_u)-a2*v-a3*a)
+                    + c@(a4*(next_u-current_u)+a5*v+a6*a)
+                    + k@next_u+ln@np.square(next_u)-f
                 )
-            phi[:, time_index+1] = linalg.spsolve(
-                system_matrix_phi,
-                right_side_phi
+
+            # Values of the current time step
+            current_u = u[:, time_index]
+            current_v = v[:, time_index]
+            current_a = a[:, time_index]
+
+            # Current iteration value of u of the next time step
+            # as a start value this is set to the last converged u of the last
+            # time step
+            u_i = current_u.copy()
+
+            # Best values during newton are saved
+            best_u_i = u_i.copy()
+            best_norm = scipy.linalg.norm(residual(
+                u_i,
+                current_u,
+                current_v,
+                current_a,
+                f
+            ))
+
+            # Placeholder for result of newton
+            next_u = np.zeros(3*number_of_nodes)
+            converged = False
+
+            if best_norm > tolerance:
+                # Start newton iterations
+                for i in range(max_iter):
+                    # Calculate tangential stiffness matrix
+                    k_tangent = NonlinearPiezoSimTime. \
+                        calculate_tangent_matrix_hadamard(
+                            u_i,
+                            k,
+                            ln
+                        )
+                    delta_u = linalg.spsolve(
+                        (a1*m+a4*c+k_tangent),
+                        residual(u_i, current_u, current_v, current_a, f)
+                    )
+                    u_i_next = u_i - delta_u
+
+                    # Check for convergence
+                    norm = scipy.linalg.norm(
+                        residual(u_i_next, current_u, current_v, current_a, f)
+                    )
+                    # print(
+                    #     f"Time step: {time_index}, iteration: {i}, "
+                    #     f"norm: {norm}"
+                    # )
+                    if norm < tolerance:
+                        print(
+                            f"Newton converged at time step {time_index} "
+                            f"after {i+1} iteration(s)"
+                        )
+                        # print(u_i_next)
+                        next_u = u_i_next.copy()
+                        converged = True
+                        break
+                    elif norm < best_norm:
+                        best_norm = norm
+                        best_u_i = u_i_next.copy()
+
+                    if i % 100 == 0 and i > 0:
+                        print("Iteration:", i)
+
+                    # Update for next iteration
+                    u_i = u_i_next.copy()
+                if not converged:
+                    print("Newton did not converge.. Choosing best value")
+                    next_u = best_u_i.copy()
+            else:
+                print("Start value norm already below tolerance")
+                next_u = best_u_i.copy()
+
+            # Calculate next v and a
+            a[:, time_index+1] = (
+                a1*(next_u-current_u)
+                - a2*current_v
+                - a3*current_a
+            )
+            v[:, time_index+1] = (
+                a4*(next_u-current_u)
+                + a5*current_v
+                + a6*current_a
             )
 
-            # TODO The whole scheme can be made faster using matrix inversion
-            # Solve for u
-            p = -kuv*phi[:, time_index+1]
-            r = k_snake*np.square(u[:, time_index])+ku*u[:, time_index]
-            right_side_u = NonlinearPiezoSimTime.apply_dirchlet_bc_loadvector(
-                (
-                    (delta_t)**2*(p-r)
-                    + delta_t/2*cu*u[:, time_index-1]
-                    + mu*(2*u[:, time_index]-u[:, time_index-1])
-                ),
-                self.dirichlet_nodes_u,
-                self.dirichlet_values_u[:, time_index]
-            )
-            u[:, time_index+1] = linalg.spsolve(
-                system_matrix_u,
-                right_side_u
-            )
+            # Set u array value
+            u[:, time_index+1] = next_u
 
-            if electrode_elements is not None:
-                # Caluclate charge
+            # Calculate charge
+            if (electrode_elements is not None
+                    and electrode_elements.shape[0] > 0):
                 q[time_index] = NonlinearPiezoSimTime.calculate_charge(
-                    u[:, time_index+1],
-                    phi[:, time_index+1],
+                    u[:2*number_of_nodes, time_index+1],
+                    u[2*number_of_nodes:, time_index+1],
                     self.material_manager,
                     electrode_elements,
                     self.mesh_data.nodes
                 )
-            if time_index % 100 == 0:
-                print(f"Finished time step {time_index}")
 
-        self.phi = phi
-        self.q = q
         self.u = u
+        self.q = q
 
-    def solve_time_implicit(
-        self,
-        electrode_elements: npt.NDArray,
-        max_iter: int,
-        error: float
+    @staticmethod
+    def calculate_tangent_matrix_hadamard(
+        u: npt.NDArray,
+        k: sparse.sparray,
+        ln: sparse.sparray
     ):
-        """Calculates the electro-mechanical field for each time step using an
-        implicit time integration scheme WIP.
+        # TODO Duplicate function in piezo_stationary.py
+        """Calculates the tangent matrix based on an analytically
+        expression.
 
         Parameters:
-            electrode_elements: Elements which are on the electrode. Used to
-                calculate the charge.
-            max_iter: Maximum number of iterations per time step.
-            error: Error which shall be achieved.
+            u: Current mechanical displacement.
+            k: FEM stiffness matrix.
+            ln: FEM nonlinear stiffness matrix.
         """
-        return NotImplementedError
+        k_tangent = k+2*ln@sparse.diags_array(u)
 
-        # TODO Finish function
-        # Setup simulation parameters
-        number_of_nodes = len(self.mesh_data.nodes)
-        number_of_time_steps = self.simulation_data.number_of_time_steps
-        delta_t = self.simulation_data.delta_t
-        gamma = self.simulation_data.gamma
-        beta = self.simulation_data.beta
-
-        # Setup matrices
-        mu = self.mu
-        ku = self.ku
-        cu = self.cu
-        kuv = self.kuv
-        kv = self.kv
-        k_snake = self.k_snake
-        # Init arrays
-        u = np.zeros(
-            (2*number_of_nodes, number_of_time_steps),
-            dtype=np.float64
-        )
-        v = np.zeros(
-            (2*number_of_nodes, number_of_time_steps),
-            dtype=np.float64
-        )
-        a = np.zeros(
-            (2*number_of_nodes, number_of_time_steps),
-            dtype=np.float64
-        )
-        phi = np.zeros(
-            (number_of_nodes, number_of_time_steps),
-            dtype=np.float64
-        )
-
-        print(
-            "Starting nonlinear piezoeletric simulation with implicit "
-            "time integration"
-        )
-
-        for time_index in range(1, number_of_time_steps-1):
-
-            # Solve for phi
-            right_side_phi = NonlinearPiezoSim.apply_dirchlet_bc_loadvector(
-                kuv.T*u[:, time_index],
-                self.dirichlet_nodes_phi,
-                self.dirichlet_values_phi[:, time_index]
-            )
-            phi[:, time_index+1] = linalg.spsolve(
-                system_matrix_phi,
-                right_side_phi
-            )
-
-            # Solve for u
-            p = -kuv*phi[:, time_index+1]
-            f = p+mu*(
-                1/(beta*delta_t**2)*u[:, time_index]
-                + 1/(beta*delta_t)*v[:, time_index]
-                + (1/(2*beta)-1)*a[:, time_index]
-            )
-
-            # Solve nonlinear eq
-            u_est = u[:, time_index]
-            k = 0
-            while (k > max_iter
-                   or np.abs(u_est)/np.abs(u[:, time-index]) <= error):
-                r = k_snake*np.square(u_est)+ku*u_est
-                t = 1/(beta*delta_t**2)*mu*u_est+r
-
-                # TODO Finish implicit simulation type?
+        return k_tangent
 
     def get_load_vector(
         self,
@@ -433,7 +475,7 @@ class NonlinearPiezoSimTime:
 
         # Can be initialized to 0 because external load and volume
         # charge density is 0.
-        f = np.zeros(number_of_nodes, dtype=np.float64)
+        f = np.zeros(3*number_of_nodes, dtype=np.float64)
 
         for node, value in zip(nodes, values):
             f[node] = value
@@ -454,7 +496,7 @@ class NonlinearPiezoSimTime:
         Parameters:
             u: Mechanical displacement field.
             phi: Electrical potential field.
-            material_manager: COntains the material data.
+            material_manager: Contains the material data.
             electrode_elements: Indices of the element on which the charge
                 is calculated.
             nodes: All nodes from the mesh.
@@ -512,43 +554,25 @@ class NonlinearPiezoSimTime:
         return q
 
     @staticmethod
-    def apply_dirchlet_bc_loadvector(
-        load_vector: npt.NDArray,
-        nodes: npt.NDArray,
-        values: npt.NDArray
-    ):
-        """Sets dirichlet boundary conditions on the given load vector
-
-        Parameters:
-            load_vector: Load vector for which the bc is set.
-            nodes: List of node indices on which the bc is defined.
-            values: List of values per node index which gives the value of
-                the bc at the specific node.
-
-        Returns:
-            load vector with the boundary condition set.
-        """
-        for node, value in zip(nodes, values):
-            load_vector[node] = value
-
-        return load_vector
-
-    @staticmethod
     def apply_dirichlet_bc(
-        system_matrix: npt.NDArray,
+        m: sparse.sparray,
+        c: sparse.sparray,
+        k: sparse.sparray,
+        ln: sparse.sparray,
         nodes: npt.NDArray
     ):
-        """Sets dirichlet boundary condition for the given matrix.
+        # TODO Parameters are not really ndarrays
+        # Set rows of matrices to 0 and diagonal of K to 1 (at node points)
 
-        Parameters:
-            system_matrix: Matrix for which the boundary conditions are set.
-            nodes: List of node indices at which the bc are defined.
-
-        Returns:
-            Matrix with set boundary conditions.
-        """
+        # Matrices for u_r component
         for node in nodes:
-            system_matrix[node, :] = 0
-            system_matrix[node, node] = 1
+            # Set rows to 0
+            m[node, :] = 0
+            c[node, :] = 0
+            k[node, :] = 0
+            ln[node, :] = 0
 
-        return system_matrix
+            # Set diagonal values to 1
+            k[node, node] = 1
+
+        return m.tocsc(), c.tocsc(), k.tocsc(), ln.tocsc()

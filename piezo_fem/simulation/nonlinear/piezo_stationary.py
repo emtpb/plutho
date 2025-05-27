@@ -3,6 +3,7 @@ for the case of a time-stationary simulation. (d_t=0)
 """
 
 # Python standard libraries
+from typing import List, Union, Tuple
 
 # Third party libraries
 import numpy as np
@@ -13,7 +14,7 @@ from scipy.sparse import linalg
 
 # Local libraries
 from ..base import MeshData, integral_ku, integral_kuv, integral_kve, \
-    create_local_element_data
+    create_local_element_data, LocalElementData
 from piezo_fem.materials import MaterialManager
 from piezo_fem.simulation.nonlinear.piezo_time import integral_u_nonlinear
 
@@ -26,9 +27,25 @@ class NonlinearPiezoSimStationary:
     function. Additionaly a the corresponding linear system (L=0) can be solved
     too.
     """
+    # TODO Missing 1/2 term for nonlinear part in hooke law
+
+    # Simulation parameters
+    mesh_data: MeshData
+    material_manager: MaterialManager
+
     # Boundary conditions
     dirichlet_nodes: npt.NDArray
     dirichlet_values: npt.NDArray
+
+    # FEM matrices
+    k: sparse.sparray
+    ln: sparse.sparray
+
+    # Internal simulation data
+    local_elements: List[LocalElementData]
+
+    # Resulting fields
+    u: npt.NDArray
 
     def __init__(
         self,
@@ -37,15 +54,16 @@ class NonlinearPiezoSimStationary:
     ):
         self.mesh_data = mesh_data
         self.material_manager = material_manager
-        self.dirichlet_nodes = None
-        self.dirichlet_valuse = None
+        self.dirichlet_nodes = np.array([])
+        self.dirichlet_valuse = np.array([])
 
     def assemble(self, nonlinear_elasticity_matrix: npt.NDArray):
         """Assembles the FEM matrices based on the set mesh_data and
         material_data. Resulting FEM matrices are saved in global variables.
 
         Parameters:
-            nonlinear_elasticity_matrix: 4x4 nonlinear material matrix.
+            nonlinear_elasticity_matrix: 4x4 nonlinear material matrix
+                (rotational symmetric).
         """
         # TODO Assembly takes to long rework this algorithm
         # Maybe the 2x2 matrix slicing is not very fast
@@ -158,52 +176,9 @@ class NonlinearPiezoSimStationary:
     def solve_linear(self):
         """Solves the linear problem Ku=f (ln is not used).
         """
-        number_of_nodes = len(self.mesh_data.nodes)
-
         # Get FEM matrices
         k = self.k.copy()
         ln = self.ln.copy()  # Not used
-
-        # Apply boundary conditions
-        NonlinearPiezoSimStationary.apply_dirichlet_bc(
-            k,
-            ln,
-            self.dirichlet_nodes
-        )
-
-        f = NonlinearPiezoSimStationary.get_load_vector(
-            self.dirichlet_nodes,
-            self.dirichlet_values,
-            number_of_nodes
-        )
-
-        # Calculate u using phi as load vector
-        u = linalg.spsolve(
-            k.tocsc(),
-            f
-        )
-
-        return u
-
-    def solve_least_squares(
-        self,
-        initial_u: npt.NDArray = None,
-        load_factor: float = 1
-    ):
-        """Runs a nonlinear simulation using the scipy least squares
-        algorithm.
-
-        Parameters:
-            initial_u: Start value for least squares. If None is given the
-                solution of the linear system is used a start value.
-            load_factor: Multiplied with the load vector. Used to apply less
-                than than the full excitation. Could improve conversion of the
-                algorithm. Choose a value between 0 and 1.
-        """
-        number_of_nodes = len(self.mesh_data.nodes)
-
-        k = self.k.copy()
-        ln = self.ln.copy()
 
         # Apply boundary conditions
         k, ln = NonlinearPiezoSimStationary.apply_dirichlet_bc(
@@ -212,58 +187,27 @@ class NonlinearPiezoSimStationary:
             self.dirichlet_nodes
         )
 
-        f = NonlinearPiezoSimStationary.get_load_vector(
+        f = self.get_load_vector(
             self.dirichlet_nodes,
-            self.dirichlet_values,
-            number_of_nodes
+            self.dirichlet_values
         )
 
-        # If no start value is given use the linear solution instead
-        if initial_u is None:
-            # Calculate start value using linear simulation
-            initial_u = linalg.spsolve(
-                k.tocsc(),
-                f
-            )
-
-        # Residual for least squares
-        def residuum(u):
-            r = k@u+ln@np.square(u)-load_factor*f
-            return r
-
-        # Jacobian matrix calculated analytically
-        def jacobian(u):
-            return (k+2*ln@sparse.diags_array(u)).tocsr()
-
-        results = scipy.optimize.least_squares(
-            residuum,
-            initial_u,
-            jac=jacobian,
-            method="trf",
-            tr_solver="lsmr",
-            verbose=2,
-            xtol=1e-30,
-            ftol=1e-30,
+        # Calculate u using phi as load vector
+        self.u = linalg.spsolve(
+            k.tocsc(),
+            f
         )
-
-        if not results.success:
-            return None
-
-        print("Least squares optmization was successfull")
-        print("The remaining residual is", results.cost)
-
-        return results.x
 
     def solve_newton(
         self,
-        tolerance: float,
-        max_iter: int = 10000,
-        u_start: npt.NDArray = None,
+        tolerance: float = 1e-11,
+        max_iter: int = 1000,
+        u_start: Union[npt.NDArray, None] = None,
         alpha: float = 1,
         load_factor: float = 1
     ):
         """Solves the system of nonlinear equations using the Newton-Raphson
-        method.
+        method. Saves the result in self.u
 
         Parameters:
             tolerance: Upper bound for the residuum. Iteration stops when the
@@ -279,8 +223,6 @@ class NonlinearPiezoSimStationary:
                 than than the full excitation. Could improve conversion of the
                 algorithm. Choose a value between 0 and 1.
         """
-        number_of_nodes = len(self.mesh_data.nodes)
-
         # Get FEM matrices
         k = self.k.copy()
         ln = self.ln.copy()
@@ -292,10 +234,9 @@ class NonlinearPiezoSimStationary:
             self.dirichlet_nodes
         )
 
-        f = NonlinearPiezoSimStationary.get_load_vector(
+        f = self.get_load_vector(
             self.dirichlet_nodes,
-            self.dirichlet_values,
-            number_of_nodes
+            self.dirichlet_values
         )
 
         # Set start value
@@ -309,21 +250,21 @@ class NonlinearPiezoSimStationary:
         else:
             current_u = u_start
 
-        # Residual or the Newton algorithm
-        def residuum(u):
+        # Residual of the Newton algorithm
+        def residual(u):
             return k@u+ln@np.square(u)-load_factor*f
 
         # Add a best found field parameter which can be returned when the
         # maximum number of iterations were done
         best = current_u.copy()
-        best_norm = scipy.linalg.norm(residuum(best))
+        best_norm = np.linalg.norm(residual(best))
 
         # Check if the initial value already suffices the tolerance condition
         if best_norm < tolerance:
             return best
 
         for iteration_count in range(max_iter):
-            # Calculate tangent stiffness matrix
+            # Calculate tangential stiffness matrix
             k_tangent = NonlinearPiezoSimStationary. \
                 calculate_tangent_matrix_hadamard(
                     current_u,
@@ -334,14 +275,14 @@ class NonlinearPiezoSimStationary:
             # Solve for displacement increment
             delta_u = linalg.spsolve(
                 k_tangent,
-                residuum(current_u)
+                residual(current_u)
             )
 
             # Update step
             next_u = current_u - alpha * delta_u
 
             # Check for convergence
-            norm = np.linalg.norm(residuum(next_u))
+            norm = scipy.linalg.norm(residual(next_u))
             if norm < tolerance:
                 print(
                     f"Solve Newton found solution after {iteration_count} "
@@ -360,7 +301,35 @@ class NonlinearPiezoSimStationary:
 
         print("Simulation did not converge")
         print("Error from best iteration:", best_norm)
-        return best
+        self.u = best
+
+    def get_load_vector(
+        self,
+        nodes: npt.NDArray,
+        values: npt.NDArray
+    ) -> npt.NDArray:
+        """Calculates the load vector (right hand side) vector for the
+        simulation.
+
+        Parameters:
+            nodes: Nodes at which the dirichlet value shall be set.
+            values: Dirichlet value which is set at the corresponding node.
+
+        Returns:
+            Right hand side vector for the simulation.
+        """
+        number_of_nodes = len(self.mesh_data.nodes)
+
+        # Can be initialized to 0 because external load and volume
+        # charge density is 0.
+        f = np.zeros(3*number_of_nodes, dtype=np.float64)
+
+        for node, value in zip(nodes, values):
+            f[node] = value
+
+        return f
+
+# -------- Static functions --------
 
     @staticmethod
     def calculate_tangent_matrix_hadamard(
@@ -368,6 +337,7 @@ class NonlinearPiezoSimStationary:
         k: sparse.sparray,
         ln: sparse.sparray
     ):
+        # TODO Duplicate function in piezo_time.py
         """Calculates the tangent matrix based on an analytically
         expression.
 
@@ -381,33 +351,11 @@ class NonlinearPiezoSimStationary:
         return k_tangent
 
     @staticmethod
-    def apply_dirchlet_bc_loadvector(
-        load_vector: npt.NDArray,
-        nodes: npt.NDArray,
-        values: npt.NDArray
-    ):
-        """Sets dirichlet boundary conditions on the given load vector
-
-        Parameters:
-            load_vector: Load vector for which the bc is set.
-            nodes: List of node indices on which the bc is defined.
-            values: List of values per node index which gives the value of
-                the bc at the specific node.
-
-        Returns:
-            load vector with the boundary condition set.
-        """
-        for node, value in zip(nodes, values):
-            load_vector[node] = value
-
-        return load_vector
-
-    @staticmethod
     def apply_dirichlet_bc(
-        k,
-        ln,
+        k: sparse.sparray,
+        ln: sparse.sparray,
         nodes: npt.NDArray
-    ):
+    ) -> Tuple[sparse.sparray, sparse.sparray]:
         """Sets dirichlet boundary condition for the given matrix.
 
         Parameters:
@@ -425,23 +373,3 @@ class NonlinearPiezoSimStationary:
             k[node, node] = 1
 
         return k, ln
-
-    @staticmethod
-    def get_load_vector(
-        nodes: npt.NDArray,
-        values: npt.NDArray,
-        number_of_nodes: int
-    ):
-        """Calculates the load vector based on the dirichlet nodes and values.
-
-        Parameters:
-            nodes: Dirichlet nodes.
-            values: Dirichlet values (related to the nodes list).
-            number_of_nodes: Total number of nodes of the FEM simulation.
-        """
-        f = np.zeros(3*number_of_nodes, dtype=np.float64)
-
-        for node, value in zip(nodes, values):
-            f[node] = value
-
-        return f
