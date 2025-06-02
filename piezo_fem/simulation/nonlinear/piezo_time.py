@@ -402,7 +402,10 @@ class NonlinearPiezoSimTime:
                     # Update for next iteration
                     u_i = u_i_next.copy()
                 if not converged:
-                    print("Newton did not converge.. Choosing best value")
+                    print(
+                        "Newton did not converge.. Choosing best value: "
+                        f"{best_norm}"
+                    )
                     next_u = best_u_i.copy()
             else:
                 print("Start value norm already below tolerance")

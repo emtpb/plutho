@@ -2,6 +2,8 @@
 # Python standard libraries
 import os
 from typing import Union, Dict, List
+import configparser
+import json
 
 # Third party libraries
 import numpy as np
@@ -43,12 +45,12 @@ class PiezoNonlinear:
 
     def __init__(
         self,
+        working_directory: str,
         sim_name: str,
-        base_directory: str,
         mesh: Mesh
     ):
         self.sim_name = sim_name
-        self.sim_directory = os.path.join(base_directory, sim_name)
+        self.sim_directory = os.path.join(working_directory, sim_name)
 
         if not os.path.isdir(self.sim_directory):
             os.makedirs(self.sim_directory)
@@ -62,6 +64,7 @@ class PiezoNonlinear:
         nodes, elements = mesh.get_mesh_nodes_and_elements()
         self.mesh_data = MeshData(nodes, elements)
         self.material_manager = MaterialManager(len(elements))
+        self.charge_calculated = False
 
     def add_material(
         self,
@@ -275,22 +278,15 @@ class PiezoNonlinear:
         if file_prefix != "":
             file_prefix += "_"
 
+        np.save(
+            os.path.join(
+                self.sim_directory,
+                f"{file_prefix}u.npy"
+            ),
+            self.solver.u
+        )
+
         if isinstance(self.solver, NonlinearPiezoSimTime):
-            np.save(
-                os.path.join(
-                    self.sim_directory,
-                    f"{file_prefix}u.npy"
-                ),
-                self.solver.u
-            )
-        elif isinstance(self.solver, NonlinearPiezoSimStationary):
-            np.save(
-                os.path.join(
-                    self.sim_directory,
-                    f"{file_prefix}u.npy"
-                ),
-                self.solver.u
-            )
             if self.charge_calculated:
                 np.save(
                     os.path.join(
@@ -299,3 +295,200 @@ class PiezoNonlinear:
                     ),
                     self.solver.q
                 )
+
+    def save_simulation_settings(self, prefix: str = ""):
+        if prefix != "":
+            prefix += "_"
+
+        if not os.path.exists(self.sim_directory):
+            os.makedirs(self.sim_directory)
+
+        settings = configparser.ConfigParser()
+
+        if isinstance(self.solver, NonlinearPiezoSimStationary):
+            simulation_type = "NonlinearStationary"
+        elif isinstance(self.solver, NonlinearPiezoSimTime):
+            simulation_type = "NonlinearTime"
+        else:
+            raise ValueError(
+                f"Cannot save simulation type {type(self.solver)}"
+            )
+
+        # General simulation settings
+        general_settings = {
+            "name": self.sim_name,
+            "mesh_file": self.mesh.mesh_file_path,
+            "simulation_type": simulation_type
+        }
+        settings["general"] = general_settings
+
+        # Material setings and data
+        material_settings = {}
+        for material in self.material_manager.materials:
+            material_settings[material.material_name] = material.to_dict()
+        material_settings["nonlinear_piezo_matrix"] = \
+            self.nonlinear_material_matrix.tolist()
+
+        # Simulation data
+        if isinstance(self.solver, NonlinearPiezoSimTime):
+            settings["simulation"] = self.solver.simulation_data.__dict__
+
+        # Boundary conditions
+        boundary_conditions = {}
+        for index, bc in enumerate(self.boundary_conditions):
+            boundary_conditions[index] = bc
+
+        # Save simulation data to config file
+        with open(
+            os.path.join(
+                self.sim_directory,
+                f"{prefix}{self.sim_name}.cfg"
+            ),
+            "w",
+            encoding="UTF-8"
+        ) as fd:
+            settings.write(fd)
+
+        # Save materials to json
+        with open(
+            os.path.join(
+                self.sim_directory,
+                f"{prefix}materials.json"
+            ),
+            "w",
+            encoding="UTF-8"
+        ) as fd:
+            json.dump(material_settings, fd, indent=2)
+
+        # Save boundary conditions to json
+        with open(
+            os.path.join(
+                self.sim_directory,
+                f"{prefix}boundary_conditions.json"
+            ),
+            "w",
+            encoding="UTF-8"
+        ) as fd:
+            json.dump(boundary_conditions, fd, indent=2)
+
+    @staticmethod
+    def load_simulation_settings(
+        simulation_folder: str,
+        prefix: str = ""
+    ):
+        if prefix != "":
+            prefix += "_"
+
+        simulation_name = os.path.basename(simulation_folder)
+
+        # Check if folder has all necessary files
+        necessary_files = [
+            os.path.join(simulation_folder, f"{prefix}{simulation_name}.cfg"),
+            os.path.join(simulation_folder, f"{prefix}materials.json"),
+            os.path.join(
+                simulation_folder,
+                f"{prefix}boundary_conditions.json"
+            )
+        ]
+        for file_path in necessary_files:
+            if not os.path.isfile(file_path):
+                raise IOError(f"{file_path} does not exist.")
+
+        settings = configparser.ConfigParser()
+        settings.read(necessary_files[0])
+
+        # Read general simulation settings
+        mesh_file = settings["general"]["mesh_file"]
+        simulation_type = settings["general"]["simulation_type"]
+        simulation = PiezoNonlinear(
+            simulation_folder,
+            "",
+            Mesh(mesh_file, True)
+        )
+        # Workaround since simulation_folder and simulation_name are
+        # combined in the constructor, see empty string above for the
+        # constructor
+        simulation.sim_name = simulation_name
+
+        if simulation_type == "NonlinearStationary":
+            simulation.setup_stationary_simulation()
+        elif simulation_type == "NonlinearTime":
+            simulation_data = SimulationData(
+                float(settings["simulation"]["delta_t"]),
+                int(settings["simulation"]["number_of_time_steps"]),
+                float(settings["simulation"]["gamma"]),
+                float(settings["simulation"]["beta"]),
+            )
+            simulation.setup_time_dependent_simulation(
+                simulation_data.delta_t,
+                simulation_data.number_of_time_steps,
+                simulation_data.gamma,
+                simulation_data.beta
+            )
+        else:
+            raise IOError(
+                f"Cannot deserialize {simulation_type} simulation type"
+            )
+
+        # Read materials
+        with open(necessary_files[1], "r", encoding="UTF-8") as fd:
+            material_settings = json.load(fd)
+            for material_name in material_settings.keys():
+                if material_name == "nonlinear_piezo_matrix":
+                    simulation.nonlinear_material_matrix = np.array(
+                        material_settings[material_name]
+                    )
+                else:
+                    simulation.add_material(
+                        material_name,
+                        MaterialData(
+                            **material_settings[material_name]["material_data"]
+                        ),
+                        material_settings[material_name]["physical_group_name"]
+                    )
+            simulation.material_manager.initialize_materials()
+
+        # Read boundary conditions
+        with open(necessary_files[2], "r", encoding="UTF-8") as fd:
+            bc_settings = json.load(fd)
+            for index in bc_settings.keys():
+                field_type = getattr(
+                    FieldType,
+                    bc_settings[index]["field_type"]
+                )
+                physical_group = bc_settings[index]["physical_group"]
+                values = np.array(bc_settings[index]["values"])
+
+                simulation.add_dirichlet_bc(
+                    field_type,
+                    physical_group,
+                    values
+                )
+
+        return simulation
+
+    def load_simulation_results(self):
+        if isinstance(self.solver, NonlinearPiezoSimStationary):
+            u_file = os.path.join(
+                self.sim_directory,
+                "u.npy"
+            )
+            self.solver.u = np.load(u_file)
+        elif isinstance(self.solver, NonlinearPiezoSimTime):
+            u_file = os.path.join(
+                self.sim_directory,
+                "u.npy"
+            )
+            q_file = os.path.join(
+                self.sim_directory,
+                "q.npy"
+            )
+
+            self.solver.u = np.load(u_file)
+            if os.path.isfile(q_file):
+                self.solver.q = np.load(q_file)
+        else:
+            raise ValueError(
+                "Cannot load simulation settings of simulation type",
+                type(self.solver)
+            )

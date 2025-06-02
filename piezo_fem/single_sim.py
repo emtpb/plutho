@@ -631,7 +631,7 @@ class SingleSimulation:
         ]
         for file_path in necessary_files:
             if not os.path.isfile(file_path):
-                raise IOError(f"{file_path} odes not exist.")
+                raise IOError(f"{file_path} does not exist.")
 
         settings = configparser.ConfigParser()
         settings.read(necessary_files[0])

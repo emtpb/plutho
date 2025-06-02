@@ -17,10 +17,10 @@ have a rectangular cross section.
     simulation
 - Coupled simulation of a thermo-piezoelectric and a single thermal simulation
   where the thermo-piezoelectric simulation can be in time or frequency domain
-- Nonlinear simulation
-  - Uses material nonlinearity
-  - For nonlinear hooke law a time dependent and time independent solver
-    is implemented
+- Nonlinear simulation using material nonlinearity and third order elastic
+  constants
+  - Time stationary simulation
+  - Time dependent simulation
 - Automatic mesh generation with gmsh
 - Exporting functions to plot the fields in gmsh or as csv files
 - Supporting disc and ring shapes for piezoelectric ceramics
@@ -29,11 +29,6 @@ have a rectangular cross section.
 
 The package can be cloned using git and installed using pip install. It is
 recommended to install and activate a python virtual environment first.
-```console
-git clone https://atuin.emt.uni-paderborn.de/git/jonasho/piezo_fem.git
-cd piezo_fem
-pip install .
-```
 
 ## Usage
 
@@ -87,7 +82,7 @@ the code. Some of those feature can be discussed and are not mandatory:
   - Piezo freq simulation DONE (1 frequency step)
   - Thermo-piezo time simulation DONE (10000 time steps)
   - Test for ring structure?
-- Update importing structure?
+  - Tests for nonlinear solvers
 - Make simulation faster
   - Calculating element nodes and jacobians beforehand and reusing DONE
   - Using lru caches?
@@ -104,5 +99,5 @@ the code. Some of those feature can be discussed and are not mandatory:
   - scipy sparse has no implementation for cholesky decomposition
 - Check if multiple materials already works or if continuity and boundary
   conditions are needed
-- Add docs (.rst)
-- Expand readme (Installation/Usage + More general information)
+- Expand documentation
+- Update importing structure Use __add__ and import *
