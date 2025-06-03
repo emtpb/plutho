@@ -1,4 +1,4 @@
-# piezo_fem - Simulation of thermo-electro-mechanical fields for piezoceramics
+# PLUTHO - Python Library for coUpled THermo-piezOelectric simulations
 
 This package implements the finite element method (FEM) for piezoelectric
 systems in Python. The solvers are written from scratch only by using
@@ -58,7 +58,7 @@ pip install sphinx sphinx_rtd_theme
 ```
 In order to build the documentation the code rst files can be created with
 ```console
-sphinx-apidoc -f -o docs piezo_fem
+sphinx-apidoc -f -o docs plutho
 ```
 and afterwards the whole documentation can be build using:
 ```console
@@ -67,13 +67,14 @@ sphinx-build -M html docs docs/build
 
 ## For developers
 
-In order to make changes to the local piezo_fem installation make sure to
+In order to make changes to the local plutho installation make sure to
 install it using the -e parameter:
 ```console
 pip install -e .
 ```
 
 ### TODOs
+
 Here are some additional features and optimizations which could be applied to
 the code. Some of those feature can be discussed and are not mandatory:
 - Add tests for the solvers

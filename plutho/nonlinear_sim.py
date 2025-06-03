@@ -10,7 +10,7 @@ import numpy as np
 import numpy.typing as npt
 
 # Local libraries
-from piezo_fem import Mesh, MaterialManager, FieldType, MaterialData, \
+from plutho import Mesh, MaterialManager, FieldType, MaterialData, \
     MeshData, SimulationData
 from .simulation import NonlinearPiezoSimStationary, NonlinearPiezoSimTime
 

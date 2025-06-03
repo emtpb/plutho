@@ -1,4 +1,4 @@
-"""Implements examples on how to use the piezo_fem package."""
+"""Implements examples on how to use the plutho package."""
 
 # Python standard libraries
 import os
@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Local libraries
-import piezo_fem as pfem
+import plutho
 
 
 def load_mesh(mesh_file_path):
@@ -16,9 +16,9 @@ def load_mesh(mesh_file_path):
         mesh_file_path: Path to the mesh file.
     """
     if os.path.exists(mesh_file_path):
-        mesh = pfem.Mesh(mesh_file_path, load=True)
+        mesh = plutho.Mesh(mesh_file_path, load=True)
     else:
-        mesh = pfem.Mesh(mesh_file_path, load=False)
+        mesh = plutho.Mesh(mesh_file_path, load=False)
 
         # When there is no mesh file a new mesh is generated.
         # mesh_size is the maximum possible distance betweeen two points of the
@@ -49,7 +49,7 @@ def simulate_piezo_impedance(base_directory, show_results):
     mesh = load_mesh(os.path.join(base_directory, "disc_mesh.msh"))
 
     # Create the simulation
-    sim = pfem.SingleSimulation(
+    sim = plutho.SingleSimulation(
         # Folder IN which the simulation folder is created
         working_directory=base_directory,
         # Name of the simulation & sim folder name
@@ -69,7 +69,7 @@ def simulate_piezo_impedance(base_directory, show_results):
         # Name of the material
         material_name="pic255",
         # This is a predefined material
-        material_data=pfem.pic255,
+        material_data=plutho.pic255,
         # Since this is None the material will be applied everywhere
         physical_group_name=None
     )
@@ -80,7 +80,7 @@ def simulate_piezo_impedance(base_directory, show_results):
     # as well as an arbitrary excitation potential at the top.
     sim.add_dirichlet_bc(
         # Name of the field for which the bc is
-        field_type=pfem.FieldType.PHI,
+        field_type=plutho.FieldType.PHI,
         # Name of the physical group on which this bc is applied.
         # In this case this is a line segment of the model.
         physical_group_name="Electrode",
@@ -89,7 +89,7 @@ def simulate_piezo_impedance(base_directory, show_results):
         values=np.ones(len(frequencies))
     )
     sim.add_dirichlet_bc(
-        field_type=pfem.FieldType.PHI,
+        field_type=plutho.FieldType.PHI,
         physical_group_name="Ground",
         values=np.zeros(len(frequencies))
     )
@@ -97,7 +97,7 @@ def simulate_piezo_impedance(base_directory, show_results):
     # Additionaly since a disc is simulated which left side is at r=0 an
     # symmetry boundary condition is needed.
     sim.add_dirichlet_bc(
-        field_type=pfem.FieldType.U_R,
+        field_type=plutho.FieldType.U_R,
         physical_group_name="Symaxis",
         values=np.zeros(len(frequencies))
     )
@@ -149,7 +149,7 @@ def simulate_thermo_piezo(base_directory):
     """
     mesh = load_mesh(os.path.join(base_directory, "disc_mesh.msh"))
 
-    sim = pfem.SingleSimulation(
+    sim = plutho.SingleSimulation(
         base_directory,
         "thermo_piezo_sim_20k",
         mesh
@@ -172,7 +172,7 @@ def simulate_thermo_piezo(base_directory):
 
     sim.add_material(
         "pic255",
-        pfem.pic255,
+        plutho.pic255,
         None
     )
 
@@ -183,17 +183,17 @@ def simulate_thermo_piezo(base_directory):
     )
 
     sim.add_dirichlet_bc(
-        pfem.FieldType.PHI,
+        plutho.FieldType.PHI,
         "Electrode",
         excitation
     )
     sim.add_dirichlet_bc(
-        pfem.FieldType.PHI,
+        plutho.FieldType.PHI,
         "Ground",
         np.zeros(NUMBER_OF_TIME_STEPS)
     )
     sim.add_dirichlet_bc(
-        pfem.FieldType.U_R,
+        plutho.FieldType.U_R,
         "Symaxis",
         np.zeros(NUMBER_OF_TIME_STEPS)
     )
@@ -221,20 +221,20 @@ def simulate_coupled_thermo_time(base_directory):
     THERMO_DELTA_T = 0.001
     THERMO_NUMBER_OF_TIME_STEPS = 1000
 
-    piezo_sim_data = pfem.SimulationData(
+    piezo_sim_data = plutho.SimulationData(
         PIEZO_DELTA_T,
         PIEZO_NUMBER_OF_TIME_STEPS,
         0.5,
         0.25
     )
-    thermo_sim_data = pfem.SimulationData(
+    thermo_sim_data = plutho.SimulationData(
         THERMO_DELTA_T,
         THERMO_NUMBER_OF_TIME_STEPS,
         0.5,
         0  # Not needed in thermo simulation
     )
 
-    coupled_sim = pfem.CoupledThermoPiezoThermoSim(
+    coupled_sim = plutho.CoupledThermoPiezoThermoSim(
         base_directory,
         "CoupledThermoPiezoelectricSim",
         piezo_sim_data,
@@ -244,7 +244,7 @@ def simulate_coupled_thermo_time(base_directory):
 
     coupled_sim.add_material(
         "pic255",
-        pfem.pic255,
+        plutho.pic255,
         None
     )
 
@@ -277,14 +277,14 @@ def simulate_coupled_thermo_freq(base_directory):
     FREQUENCY = 2.07e6
     AMPLITUDE = 1.3
 
-    thermo_sim_data = pfem.SimulationData(
+    thermo_sim_data = plutho.SimulationData(
         THERMO_DELTA_T,
         THERMO_NUMBER_OF_TIME_STEPS,
         0.5,
         0  # Not needed in thermo simulation
     )
 
-    coupled_sim = pfem.CoupledFreqPiezoTherm(
+    coupled_sim = plutho.CoupledFreqPiezoTherm(
         base_directory,
         "CoupledThermopiezoelectricFreqSim",
         FREQUENCY,
@@ -294,7 +294,7 @@ def simulate_coupled_thermo_freq(base_directory):
 
     coupled_sim.add_material(
         "pic184",
-        pfem.materials.pic184_25,
+        plutho.materials.pic184_25,
         None
     )
 
@@ -314,7 +314,7 @@ def simulate_coupled_thermo_freq(base_directory):
 def simulate_thermo_time(base_directory):
     mesh = load_mesh(os.path.join(base_directory, "disc_mesh.msh"))
 
-    sim = pfem.SingleSimulation(base_directory, "ThermoTimeSim", mesh)
+    sim = plutho.SingleSimulation(base_directory, "ThermoTimeSim", mesh)
 
     DELTA_T = 0.001
     NUMBER_OF_TIME_STEPS = 1000

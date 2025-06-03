@@ -8,9 +8,10 @@ import numpy as np
 import numpy.typing as npt
 
 # Local libraries
-from piezo_fem import SingleSimulation, SimulationData, Mesh, MaterialData, \
+# TODO Make relative
+from plutho import SingleSimulation, SimulationData, Mesh, MaterialData, \
     FieldType
-from piezo_fem.simulation.base import get_avg_temp_field_per_element
+from plutho.simulation.base import get_avg_temp_field_per_element
 
 
 class CoupledThermoPiezoThermoSim:

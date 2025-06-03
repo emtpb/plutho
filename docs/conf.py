@@ -53,11 +53,11 @@ exclude_patterns = ['_build']
 
 
 # -- Project-specific configuration ------------------------------------
-project = 'Piezo FEM'
+project = 'Plutho'
 copyright = "2024, Measurement Engineering Group"
 
 # Get version number from git via setuptools_scm
-release = get_distribution('piezo_fem').version
+release = get_distribution('plutho').version
 version = '.'.join(release.split('.')[:3])
 
 today_fmt = '%Y-%m-%d'
@@ -76,7 +76,7 @@ html_theme = 'sphinx_rtd_theme'
 # html_sidebars = {}
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'piezo_femdoc'
+htmlhelp_basename = 'plutho_femdoc'
 
 
 # -- Options for LaTeX output ------------------------------------------
@@ -95,8 +95,8 @@ latex_elements = {
 }
 
 latex_documents = [
-    ('index', 'piezo_fem.tex',
-     'Piezo FEM Documentation',
+    ('index', 'plutho_fem.tex',
+     'Plutho Documentation',
      'Measurement Engineering Group', 'manual'),
 ]
 

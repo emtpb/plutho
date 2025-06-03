@@ -15,8 +15,8 @@ from scipy.sparse import linalg
 # Local libraries
 from ..base import MeshData, integral_ku, integral_kuv, integral_kve, \
     create_local_element_data, LocalElementData
-from piezo_fem.materials import MaterialManager
-from piezo_fem.simulation.nonlinear.piezo_time import integral_u_nonlinear
+from plutho.materials import MaterialManager
+from plutho.simulation.nonlinear.piezo_time import integral_u_nonlinear
 
 
 class NonlinearPiezoSimStationary:

@@ -1,11 +1,11 @@
 [project]
-name = "piezo_fem"
+name = "Plutho"
 dynamic = ["version"]
 authors = [
-    { name="Jonas Hoelscher", email="jonasho@mail.uni-paderborn.de" }
+    { name="Jonas Hoelscher", email="hoelscher@emt.uni-paderborn.de" }
 ]
 license = { file = "LICENSE" }
-description = "FEM Solver for piezo simulations."
+description = "Python library for coupled thermo-piezoelectric simulations"
 readme = "README.md"
 requires-python = ">3.7"
 dependencies = [

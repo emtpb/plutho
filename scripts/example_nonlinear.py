@@ -8,7 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Local libraries
-import piezo_fem as pfem
+import plutho
 
 
 # Example data for the nonlinear stiffness matrix
@@ -47,9 +47,9 @@ def simulate_nonlinear_stationary(CWD):
 
     # Load/create ring mesh
     if os.path.exists(mesh_file):
-        mesh = pfem.Mesh(mesh_file, True)
+        mesh = plutho.Mesh(mesh_file, True)
     else:
-        mesh = pfem.Mesh(mesh_file, False)
+        mesh = plutho.Mesh(mesh_file, False)
         mesh.generate_rectangular_mesh(
             width=0.00635,
             height=0.001,
@@ -58,7 +58,7 @@ def simulate_nonlinear_stationary(CWD):
         )
 
     # Create simulation
-    sim = pfem.PiezoNonlinear(
+    sim = plutho.PiezoNonlinear(
         sim_name,
         CWD,
         mesh
@@ -67,7 +67,7 @@ def simulate_nonlinear_stationary(CWD):
     # Set materials
     sim.add_material(
         material_name="pic181",
-        material_data=pfem.materials.pic181_25,
+        material_data=plutho.materials.pic181_25,
         physical_group_name=""  # Means all elements
     )
     sim.set_nonlinear_material_6x6(c_nonlin_6x6_nonsymmetric)
@@ -75,12 +75,12 @@ def simulate_nonlinear_stationary(CWD):
     # Set boundary conditions
     excitation = 1000
     sim.add_dirichlet_bc(
-        pfem.FieldType.PHI,
+        plutho.FieldType.PHI,
         "Electrode",
         np.array(excitation)
     )
     sim.add_dirichlet_bc(
-        pfem.FieldType.PHI,
+        plutho.FieldType.PHI,
         "Ground",
         np.array(0)
     )
@@ -100,9 +100,9 @@ def simulate_nonlinaer_time_dep(CWD):
 
     # Load/create ring mesh
     if os.path.exists(mesh_file):
-        mesh = pfem.Mesh(mesh_file, True)
+        mesh = plutho.Mesh(mesh_file, True)
     else:
-        mesh = pfem.Mesh(mesh_file, False)
+        mesh = plutho.Mesh(mesh_file, False)
         mesh.generate_rectangular_mesh(
             width=0.00635,
             height=0.001,
@@ -111,7 +111,7 @@ def simulate_nonlinaer_time_dep(CWD):
         )
 
     # Create simulation
-    sim = pfem.PiezoNonlinear(
+    sim = plutho.PiezoNonlinear(
         sim_name,
         CWD,
         mesh
@@ -120,7 +120,7 @@ def simulate_nonlinaer_time_dep(CWD):
     # Set materials
     sim.add_material(
         material_name="pic181",
-        material_data=pfem.materials.pic181_25,
+        material_data=plutho.materials.pic181_25,
         physical_group_name=""  # Means all elements
     )
     sim.set_nonlinear_material_6x6(c_nonlin_6x6_nonsymmetric)
@@ -137,12 +137,12 @@ def simulate_nonlinaer_time_dep(CWD):
         frequency=2.07e6
     )
     sim.add_dirichlet_bc(
-        pfem.FieldType.PHI,
+        plutho.FieldType.PHI,
         "Electrode",
         excitation
     )
     sim.add_dirichlet_bc(
-        pfem.FieldType.PHI,
+        plutho.FieldType.PHI,
         "Ground",
         np.zeros(NUMBER_OF_TIME_STEPS)
     )

@@ -426,6 +426,7 @@ def apply_dirichlet_bc(
         k: Stiffness matrix K.
         nodes: List of nodes at which a dirichlet boundary condition
             shall be applied.
+
     Returns:
         Modified mass, damping and stiffness matrix.
     """
@@ -453,12 +454,12 @@ def create_dirichlet_bc_nodes_freq(
     """Create the dirichlet boundary condition nodes for a simulation in the
     frequency domain.
 
-    Parameter:
+    Parameters:
         mesh: Mesh class for accessing nodes.
         amplitudes: List of amplitude per frequency step.
         number_of_frequencies: Total number of frequency steps.
-        set_symmetric_bc: Set to True of the left border of the model is on the
-            ordinate axis.
+        set_symmetric_bc: Set to True of the left border of the model is on
+            the ordinate axis.
 
     Returns:
         The dirichlet nodes and values for u and v respectively.

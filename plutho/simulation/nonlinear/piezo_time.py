@@ -14,9 +14,9 @@ from ..base import SimulationData, MeshData, gradient_local_shape_functions, \
     integral_ku, integral_kuv, integral_kve, \
     create_local_element_data, LocalElementData, \
     quadratic_quadrature
-from piezo_fem.simulation.piezo_time import charge_integral_u, \
+from plutho.simulation.piezo_time import charge_integral_u, \
     charge_integral_v
-from piezo_fem.materials import MaterialManager
+from plutho.materials import MaterialManager
 
 
 def integral_u_nonlinear(

@@ -10,7 +10,7 @@ import numpy.typing as npt
 import yaml
 
 # Local libraries
-from piezo_fem import MaterialData
+from .simulation.base import MaterialData
 
 
 def parse_charge_hist_file(file_path: str) -> Tuple[npt.NDArray, npt.NDArray]:

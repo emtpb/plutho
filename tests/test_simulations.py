@@ -5,7 +5,7 @@ import os
 import numpy as np
 
 # Local libraries
-import piezo_fem as pfem
+import plutho
 
 # -------- Global variables --------
 
@@ -31,11 +31,11 @@ def test_thermo_time(tmp_path):
     """
     # Create mesh
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
-    mesh = pfem.Mesh(mesh_path)
+    mesh = plutho.Mesh(mesh_path)
     # TODO Maybe use mesh with smaller element size?
     mesh.generate_rectangular_mesh()
 
-    sim = pfem.SingleSimulation(
+    sim = plutho.SingleSimulation(
         tmp_path,
         "thermo_time_test",
         mesh
@@ -55,7 +55,7 @@ def test_thermo_time(tmp_path):
 
     sim.add_material(
         "pic255",
-        pfem.pic255,
+        plutho.pic255,
         None
     )
 
@@ -68,7 +68,7 @@ def test_thermo_time(tmp_path):
     sim.simulate()
 
     # Calculated thermal stored energy
-    temp_field_energy = pfem.calculate_stored_thermal_energy(
+    temp_field_energy = plutho.calculate_stored_thermal_energy(
         sim.solver.theta[:, -1],
         nodes,
         elements,
@@ -77,7 +77,7 @@ def test_thermo_time(tmp_path):
     )
 
     volume = np.sum(
-        pfem.simulation.base.calculate_volumes(sim.solver.local_elements)
+        plutho.simulation.base.calculate_volumes(sim.solver.local_elements)
     )
 
     input_energy = INPUT_POWER_DENSITY*volume
@@ -93,11 +93,11 @@ def test_piezo_time(tmp_path):
     Tests the simulation for a triangular excitation."""
     # Create mesh
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
-    mesh = pfem.Mesh(mesh_path)
+    mesh = plutho.Mesh(mesh_path)
     # TODO Maybe use mesh with smaller element size?
     mesh.generate_rectangular_mesh()
 
-    sim = pfem.SingleSimulation(
+    sim = plutho.SingleSimulation(
         tmp_path,
         "piezo_time_test",
         mesh
@@ -105,7 +105,7 @@ def test_piezo_time(tmp_path):
 
     sim.add_material(
         "pic255",
-        pfem.pic255,
+        plutho.pic255,
         None
     )
 
@@ -124,17 +124,17 @@ def test_piezo_time(tmp_path):
 
     # Set boundary conditions
     sim.add_dirichlet_bc(
-        pfem.FieldType.PHI,
+        plutho.FieldType.PHI,
         "Electrode",
         excitation
     )
     sim.add_dirichlet_bc(
-        pfem.FieldType.PHI,
+        plutho.FieldType.PHI,
         "Ground",
         np.zeros(NUMBER_OF_TIME_STEPS)
     )
     sim.add_dirichlet_bc(
-        pfem.FieldType.U_R,
+        plutho.FieldType.U_R,
         "Symaxis",
         np.zeros(NUMBER_OF_TIME_STEPS)
     )
@@ -171,11 +171,11 @@ def test_piezo_freq(tmp_path):
     """
     # Create mesh
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
-    mesh = pfem.Mesh(mesh_path)
+    mesh = plutho.Mesh(mesh_path)
     # TODO Maybe use mesh with smaller element size?
     mesh.generate_rectangular_mesh()
 
-    sim = pfem.SingleSimulation(
+    sim = plutho.SingleSimulation(
         tmp_path,
         "piezo_freq_test",
         mesh
@@ -183,7 +183,7 @@ def test_piezo_freq(tmp_path):
 
     sim.add_material(
         "pic255",
-        pfem.pic255,
+        plutho.pic255,
         None
     )
 
@@ -191,17 +191,17 @@ def test_piezo_freq(tmp_path):
 
     # Set boundary conditions
     sim.add_dirichlet_bc(
-        pfem.FieldType.PHI,
+        plutho.FieldType.PHI,
         "Electrode",
         np.ones(1)
     )
     sim.add_dirichlet_bc(
-        pfem.FieldType.PHI,
+        plutho.FieldType.PHI,
         "Ground",
         np.zeros(1)
     )
     sim.add_dirichlet_bc(
-        pfem.FieldType.U_R,
+        plutho.FieldType.U_R,
         "Symaxis",
         np.zeros(1)
     )
@@ -241,12 +241,12 @@ def test_thermo_piezo_time(tmp_path):
     """
     # Create mesh
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
-    mesh = pfem.Mesh(mesh_path)
+    mesh = plutho.Mesh(mesh_path)
     # TODO Maybe use mesh with smaller element size?
     mesh.generate_rectangular_mesh()
     nodes, elements = mesh.get_mesh_nodes_and_elements()
 
-    sim = pfem.SingleSimulation(
+    sim = plutho.SingleSimulation(
         tmp_path,
         "thermo_piezo_time",
         mesh
@@ -254,7 +254,7 @@ def test_thermo_piezo_time(tmp_path):
 
     sim.add_material(
         "pic255",
-        pfem.pic255,
+        plutho.pic255,
         None
     )
 
@@ -283,17 +283,17 @@ def test_thermo_piezo_time(tmp_path):
 
     # Set boundary conditions
     sim.add_dirichlet_bc(
-        pfem.FieldType.PHI,
+        plutho.FieldType.PHI,
         "Electrode",
         excitation
     )
     sim.add_dirichlet_bc(
-        pfem.FieldType.PHI,
+        plutho.FieldType.PHI,
         "Ground",
         np.zeros(NUMBER_OF_TIME_STEPS)
     )
     sim.add_dirichlet_bc(
-        pfem.FieldType.U_R,
+        plutho.FieldType.U_R,
         "Symaxis",
         np.zeros(NUMBER_OF_TIME_STEPS)
     )
@@ -311,14 +311,14 @@ def test_thermo_piezo_time(tmp_path):
     )
 
     # Calculate input energy
-    input_energy = pfem.calculate_electrical_input_energy(
+    input_energy = plutho.calculate_electrical_input_energy(
         excitation,
         sim.solver.q,
         DELTA_T
     )
 
     # Calculate total loss energy
-    volumes = pfem.simulation.base.calculate_volumes(
+    volumes = plutho.simulation.base.calculate_volumes(
         sim.solver.local_elements
     )
     power = np.zeros(NUMBER_OF_TIME_STEPS)
@@ -333,7 +333,7 @@ def test_thermo_piezo_time(tmp_path):
 
     # Calculate stored thermal energy
     theta = sim.solver.u[3*number_of_nodes:]
-    stored_thermal_energy = pfem.calculate_stored_thermal_energy(
+    stored_thermal_energy = plutho.calculate_stored_thermal_energy(
         theta[:, -1],
         nodes,
         elements,
@@ -381,7 +381,7 @@ def test_thermo_piezo_time(tmp_path):
 
 def generate_data():
     """Generates the data for the tests. Assumes the current implementation of
-    piezo_fem is correct."""
+    plutho is correct."""
     dir = "tests/data"
     test_piezo_time(dir)
     test_piezo_time(dir)
