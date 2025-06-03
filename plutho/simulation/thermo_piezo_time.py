@@ -370,7 +370,7 @@ class ThermoPiezoSimTime:
                     self.dirichlet_nodes,
                     self.dirichlet_values[:, time_index+1],
                     mech_loss[:, time_index]
-                    )
+            )
 
             # Perform Newmark method
             # Predictor step
@@ -390,7 +390,8 @@ class ThermoPiezoSimTime:
                     f
                     - c*v_tilde
                     + (1/(beta*delta_t**2)*m
-                       + gamma/(beta*delta_t)*c)*u_tilde))
+                       + gamma/(beta*delta_t)*c)*u_tilde)
+            )
             # Perform corrector step
             a[:, time_index+1] = (u[:, time_index+1]-u_tilde)/(beta*delta_t**2)
             v[:, time_index+1] = v_tilde + gamma*delta_t*a[:, time_index+1]

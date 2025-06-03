@@ -1,11 +1,11 @@
-# PLUTHO - Python Library for coUpled THermo-piezOelectric simulations
+# plutho - Python Library for coUpled THermo-piezOelectric simulations
 
-This package implements the finite element method (FEM) for piezoelectric
+This package implements the finite element method (FEM) for thermo-piezoelectric
 systems in Python. The solvers are written from scratch only by using
 numpy/scipy as well as gmsh for generating the used meshes.
-Currently the simulation of piezoelectric ceramics are supported. The
-simulations are done in an axisymmetric model such that the ceramics
-have a rectangular cross section.
+Currently the simulation of piezoelectric ceramics (discs and rings) are
+supported. The simulations are done in an axisymmetric model such that the
+ceramics have a rectangular cross section.
 
 ## Features
 - Simulation of thermal field in time domain

@@ -41,7 +41,7 @@ def integral_u_nonlinear(
         b_op = b_operator_global(node_points, s, t, jacobian_inverted_t)
         r = local_to_global_coordinates(node_points, s, t)[0]
 
-        return np.dot(np.dot(b_op.T, nonlinear_elasticity_matrix), b_op)*r
+        return 1/2*np.dot(np.dot(b_op.T, nonlinear_elasticity_matrix), b_op)*r
 
     return quadratic_quadrature(inner)
 
