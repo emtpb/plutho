@@ -1,31 +1,31 @@
 # plutho - Python Library for coUpled THermo-piezOelectric simulations
 
-This package implements the finite element method (FEM) for thermo-piezoelectric
-systems in Python. The solvers are written from scratch only by using
-numpy/scipy as well as gmsh for generating the used meshes.
-Currently the simulation of piezoelectric ceramics (discs and rings) are
-supported. The simulations are done in an axisymmetric model such that the
-ceramics have a rectangular cross section.
+This library implements the finite element method (FEM) for various
+thermoi-piezoelectric systems in Python.
+The solvers are written using numpy and scipy as well as gmsh for generating
+2D meshes.
+The models are always assumed to be rotational symmetric but besides that
+arbitray geometies can be simulated.
+Excitations and material parameters can be set freely based on the definition
+of physical groups in gmsh.
 
 ## Features
-- Simulation of thermal field in time domain
-- Simulation of piezoelectric (electro-mechanical) field in time and
-  frequency domain
-  - Calculation of charges and impedances in time and frequency domain
-- Simulation of a thermo-piezoeletric field in time domain
-  - Calculation of mechanical losses which are used as a source for the thermal
-    simulation
-- Coupled simulation of a thermo-piezoelectric and a single thermal simulation
-  where the thermo-piezoelectric simulation can be in time or frequency domain
-- Nonlinear simulation using material nonlinearity and third order elastic
-  constants
-  - Time stationary simulation
-  - Time dependent simulation
-- Automatic mesh generation with gmsh
-- Exporting functions to plot the fields in gmsh or as csv files
-- Supporting disc and ring shapes for piezoelectric ceramics
 
-## Installation
+Right now various simulation types are supported:
+- Heat condution simulation in time domain
+- Piezoelectric simulation (coupled mechanical and electrical field) in
+  time and frequency domain
+- Coupled thermo-piezoelectric simulations in time domain
+- Nonlinear piezoelectric simulations using mechanical quadratic nonlinearities
+  in time and frequency domain
+
+Additionaly there helper classes for specific coupled simulation types:
+- Thermo-piezoelectric simulation in time domain with mechanical loss
+  calculation for hamonic exictations with a subsequent separate heat
+  conduction simulation utilizing the averaged mechanical losses
+- Thermo-piezoelectric simulation in frequency domain with a subsequent
+  heat conduction simulation in time domain which can utilize temperature
+  dependent material parameters## Installation
 
 The package can be cloned using git and installed using pip install. It is
 recommended to install and activate a python virtual environment first.
@@ -78,28 +78,17 @@ pip install -e .
 Here are some additional features and optimizations which could be applied to
 the code. Some of those feature can be discussed and are not mandatory:
 - Remove print statements and implement logging
-- Add tests for the solvers
-  - Thermo simulation DONE (-> Energy check)
-  - Piezo time simulation DONE
-  - Piezo freq simulation DONE (1 frequency step)
-  - Thermo-piezo time simulation DONE (10000 time steps)
-  - Test for ring structure?
-  - Tests for nonlinear solvers
-- Make simulation faster
-  - Calculating element nodes and jacobians beforehand and reusing DONE
+- Add tests for the nonlinear solvers
+- Simulation speedups
   - Using lru caches?
   - Using jit from numba?
   - Parallelizing assembly procedure?
-  - Updating only changed material matrices in temperature dependent
-    simulation?
-- Creating post processing views for gmsh takes a very long time
 - When creating the simulation results folder the simulation name can be
   removed from the file names
-- Is the boundary condition for u_r at the symmetry axis even needed?
-- Make explicit time solving scheme in nonlinear simulation faster by using
-  matrix decomposition and inversion
-  - scipy sparse has no implementation for cholesky decomposition
+- Update importing structure Use __add__ and import *
 - Check if multiple materials already works or if continuity and boundary
   conditions are needed
-- Expand documentation
-- Update importing structure Use __add__ and import *
+
+### Issues
+
+- Creating post processing views for gmsh takes a very long time

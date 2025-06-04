@@ -2,8 +2,8 @@
 Welcome to the documentation of PiezoFEM!
 *******************************************
 
-Simulation of thermo-electro-mechanical fields for piezoceramics of disc and
-ring type.
+Simulation of thermo-electro-mechanical fields for piezoceramics for arbitrary
+rotational symmetric shapes.
 
 Contents
 ========
