@@ -13,6 +13,27 @@ NUMBER_OF_TIME_STEPS = 1000
 MAX_ERROR = 1e-15
 
 
+pic255 = plutho.MaterialData(
+    **{
+        "c11": 1.19e11,
+        "c12": 0.84e11,
+        "c13": 0.83e11,
+        "c33": 1.17e11,
+        "c44": 0.21e11,
+        "e15": 12.09,
+        "e31": -6.03,
+        "e33": 15.49,
+        "eps11": 8.15e-9,
+        "eps33": 6.58e-9,
+        "alpha_m": 0,
+        "alpha_k": 6.259e-10,
+        "density": 7800,
+        "heat_capacity": 350,
+        "thermal_conductivity": 1.1,
+        "temperatures": 20
+    }
+)
+
 # -------- Helper functions --------
 
 def compare_numpy_array(a, b):
@@ -20,6 +41,7 @@ def compare_numpy_array(a, b):
         return False
 
     return np.allclose(a, b, atol=MAX_ERROR)
+
 
 
 # -------- Test functions --------
@@ -55,7 +77,7 @@ def test_thermo_time(tmp_path):
 
     sim.add_material(
         "pic255",
-        plutho.pic255,
+        pic255,
         None
     )
 
@@ -105,7 +127,7 @@ def test_piezo_time(tmp_path):
 
     sim.add_material(
         "pic255",
-        plutho.pic255,
+        pic255,
         None
     )
 
@@ -183,7 +205,7 @@ def test_piezo_freq(tmp_path):
 
     sim.add_material(
         "pic255",
-        plutho.pic255,
+        pic255,
         None
     )
 
@@ -254,7 +276,7 @@ def test_thermo_piezo_time(tmp_path):
 
     sim.add_material(
         "pic255",
-        plutho.pic255,
+        pic255,
         None
     )
 

@@ -8,6 +8,49 @@ import matplotlib.pyplot as plt
 # Local libraries
 import plutho
 
+# Material data needed for the simulations
+pic255 = plutho.MaterialData(
+    **{
+        "c11": 1.19e11,
+        "c12": 0.84e11,
+        "c13": 0.83e11,
+        "c33": 1.17e11,
+        "c44": 0.21e11,
+        "e15": 12.09,
+        "e31": -6.03,
+        "e33": 15.49,
+        "eps11": 8.15e-9,
+        "eps33": 6.58e-9,
+        "alpha_m": 0,
+        "alpha_k": 6.259e-10,
+        "density": 7800,
+        "heat_capacity": 350,
+        "thermal_conductivity": 1.1,
+        "temperatures": 20
+    }
+)
+
+pic184 = plutho.MaterialData(
+    **{
+        "c11": 141496343521.27835,
+        "c12": 86169430271.64551,
+        "c13": 79915318364.24962,
+        "c33": 124909327336.97089,
+        "c44": 26771638883.39679,
+        "e15": 13.815676514507956,
+        "e31": -4.004768707540417,
+        "e33": 13.168634717101696,
+        "eps11": 1.086683329447101e-08,
+        "eps33": 5.6431956643221666e-09,
+        "alpha_m": 0.0,
+        "alpha_k": 5.143833571076851e-10,
+        "density": 7850,
+        "heat_capacity": 350,
+        "thermal_conductivity": 1.1,
+        "temperatures": 25
+    }
+)
+
 
 def load_mesh(mesh_file_path):
     """Loads a mesh file. Creates a default disc mesh if it does not exists.
@@ -69,7 +112,7 @@ def simulate_piezo_impedance(base_directory, show_results):
         # Name of the material
         material_name="pic255",
         # This is a predefined material
-        material_data=plutho.pic255,
+        material_data=pic255,
         # Since this is None the material will be applied everywhere
         physical_group_name=None
     )
@@ -172,7 +215,7 @@ def simulate_thermo_piezo(base_directory):
 
     sim.add_material(
         "pic255",
-        plutho.pic255,
+        pic255,
         None
     )
 
@@ -244,7 +287,7 @@ def simulate_coupled_thermo_time(base_directory):
 
     coupled_sim.add_material(
         "pic255",
-        plutho.pic255,
+        pic255,
         None
     )
 
@@ -294,7 +337,7 @@ def simulate_coupled_thermo_freq(base_directory):
 
     coupled_sim.add_material(
         "pic184",
-        plutho.materials.pic184_25,
+        pic184,
         None
     )
 
@@ -326,6 +369,12 @@ def simulate_thermo_time(base_directory):
         DELTA_T,
         NUMBER_OF_TIME_STEPS,
         0.5
+    )
+
+    sim.add_material(
+        "pic255",
+        pic255,
+        None
     )
 
     # As an example set a constant volume heat source

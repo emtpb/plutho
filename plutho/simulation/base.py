@@ -1,6 +1,8 @@
 """Module for base functionalities needed for the simulations."""
 
 # Python standard libraries
+import os
+import json
 from typing import Tuple, Callable, List, Any, Union
 from dataclasses import dataclass, fields
 from enum import Enum
@@ -129,6 +131,22 @@ class MaterialData:
                 contents[key] = np.array(value)
 
         return MaterialData(**contents)
+
+    @staticmethod
+    def load_from_file(file_path: str):
+        """Load the data from given file.
+
+        Parameters:
+            file_path: Path to the file
+        """
+        if not os.path.exists(file_path):
+            raise IOError(
+                "Given file path {} does not exist. Cannot load "
+                "material data."
+            )
+
+        with open(file_path, "r", encoding="UTF-8") as fd:
+            return MaterialData.from_dict(json.load(fd))
 
 
 # -------- Local functions and integrals --------
