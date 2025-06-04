@@ -21,14 +21,12 @@ from plutho.simulation.nonlinear.piezo_time import integral_u_nonlinear
 
 class NonlinearPiezoSimStationary:
     """Implements a nonlinear time stationary simulation. The nonlinearity
-    is embed in the hooke law: T_i=C_ij*S_j+L_ijk*S_j*S_k.
+    is embed in the hooke law: T_i=C_ij*S_j+1/2*L_ijk*S_j*S_k.
     In order to solve this system a Newton-Raphson algorithm is implemented.
     For comparison a simulation can also be done using the scipy least squares
     function. Additionaly a the corresponding linear system (L=0) can be solved
     too.
     """
-    # TODO Missing 1/2 term for nonlinear part in hooke law
-
     # Simulation parameters
     mesh_data: MeshData
     material_manager: MaterialManager

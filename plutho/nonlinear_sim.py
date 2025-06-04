@@ -226,7 +226,7 @@ class PiezoNonlinear:
                 convergence.
             - "load_factor" (float): Can only be set for the stationary
                 simulation. Is multiplied with the load vector. Therefore the
-                given can be adjusted to achieve a faster convergence.
+                given load can be adjusted to achieve a faster convergence.
         """
         # Check if materials are set
         if self.material_manager is None:

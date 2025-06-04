@@ -77,6 +77,7 @@ pip install -e .
 
 Here are some additional features and optimizations which could be applied to
 the code. Some of those feature can be discussed and are not mandatory:
+- Remove print statements and implement logging
 - Add tests for the solvers
   - Thermo simulation DONE (-> Energy check)
   - Piezo time simulation DONE
