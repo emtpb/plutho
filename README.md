@@ -25,7 +25,9 @@ Additionaly there helper classes for specific coupled simulation types:
   conduction simulation utilizing the averaged mechanical losses
 - Thermo-piezoelectric simulation in frequency domain with a subsequent
   heat conduction simulation in time domain which can utilize temperature
-  dependent material parameters## Installation
+  dependent material parameters
+
+## Installation
 
 The package can be cloned using git and installed using pip install. It is
 recommended to install and activate a python virtual environment first.

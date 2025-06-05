@@ -11,7 +11,7 @@ This project is created and maintained by the Measurement Engineering Group
 The following individuals have contributed to this project:
 
 Developers
----------------
+----------
 - **Jonas Hoelscher** <hoelscher@emt.uni-paderborn.de>
 
 How to Contribute

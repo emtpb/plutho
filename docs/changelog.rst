@@ -1,10 +1,12 @@
-====================
+=========
 Changelog
-====================
+=========
 
 This document lists all notable changes to this project.
 
-Version 0.0.1 (2025-03-26)
---------------------------
+`0.1.0`_ - 2025-06-05
+---------------------
+
+Added
 - Initial project
 

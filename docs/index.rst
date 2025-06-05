@@ -1,8 +1,8 @@
-*******************************************
-Welcome to the documentation of PiezoFEM!
-*******************************************
+***************************************
+Welcome to the documentation of Plutho!
+***************************************
 
-Simulation of thermo-electro-mechanical fields for piezoceramics for arbitrary
+A python library for coupled thermo-piezoelectric simulations for arbitrary
 rotational symmetric shapes.
 
 Contents
