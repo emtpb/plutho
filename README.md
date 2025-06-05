@@ -1,7 +1,7 @@
 # plutho - Python Library for coUpled THermo-piezOelectric simulations
 
 This library implements the finite element method (FEM) for various
-thermoi-piezoelectric systems in Python.
+thermo-piezoelectric systems in Python.
 The solvers are written using numpy and scipy as well as gmsh for generating
 2D meshes.
 The models are always assumed to be rotational symmetric but besides that
@@ -58,11 +58,11 @@ installed.
 ```console
 pip install sphinx sphinx_rtd_theme
 ```
-In order to build the documentation the code rst files can be created with
+In order to build the documentation the code *.rst files can be created with
 ```console
 sphinx-apidoc -f -o docs plutho
 ```
-and afterwards the whole documentation can be build using:
+and afterwards, the whole documentation can be built using:
 ```console
 sphinx-build -M html docs docs/build
 ```
