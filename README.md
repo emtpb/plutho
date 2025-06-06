@@ -1,5 +1,7 @@
 # plutho - Python Library for coUpled THermo-piezOelectric simulations
 
+[![DOI](https://zenodo.org/badge/997346473.svg)](https://zenodo.org/badge/latestdoi/997346473)
+
 This library implements the finite element method (FEM) for various
 thermo-piezoelectric systems in Python.
 The solvers are written using numpy and scipy as well as gmsh for generating
