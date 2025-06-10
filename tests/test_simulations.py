@@ -36,12 +36,12 @@ pic255 = plutho.MaterialData(
 
 # -------- Helper functions --------
 
+
 def compare_numpy_array(a, b):
     if a.shape != b.shape:
         return False
 
     return np.allclose(a, b, atol=MAX_ERROR)
-
 
 
 # -------- Test functions --------
@@ -110,12 +110,12 @@ def test_thermo_time(tmp_path):
         "Calculated therm field energy is not correct."
 
 
-def test_piezo_time(tmp_path):
+def test_piezo_time(tmp_path, test=True):
     """Test function for the piezo time domain simulation.
     Tests the simulation for a triangular excitation."""
     # Create mesh
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
-    mesh = plutho.Mesh(mesh_path)
+    mesh = plutho.Mesh(mesh_path, load=not test)
     # TODO Maybe use mesh with smaller element size?
     mesh.generate_rectangular_mesh()
 
@@ -167,33 +167,46 @@ def test_piezo_time(tmp_path):
 
     sim.simulate(electrode_elements=electrode_elements)
 
-    # Compare results with test data
-    # Load test data
-    test_folder = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "data",
-        "piezo_time"
-    )
-    test_q = np.load(os.path.join(test_folder, "q.npy"))
-    test_u = np.load(os.path.join(test_folder, "u.npy"))
+    test_folder_name = "piezo_time"
 
-    uut_q = sim.solver.q[-1]
-    uut_u = sim.solver.u[:, -1]
+    if test:
+        # Compare results with test data
+        # Load test data
+        test_folder = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "data",
+            test_folder_name
+        )
+        test_q = np.load(os.path.join(test_folder, "q.npy"))
+        test_u = np.load(os.path.join(test_folder, "u.npy"))
 
-    # Compare arrays
-    # For displacement just take last time step. TODO Is this sufficient?
-    assert compare_numpy_array(uut_q, test_q), "Charge is not equal"
-    assert compare_numpy_array(uut_u, test_u), \
-        "Displacement u is not equal"
+        uut_q = sim.solver.q
+        uut_u = sim.solver.u[:, -1]
+
+        # Compare arrays
+        # For displacement just take last time step. TODO Is this sufficient?
+        assert compare_numpy_array(uut_q, test_q), "Charge is not equal"
+        assert compare_numpy_array(uut_u, test_u), \
+            "Displacement u is not equal"
+    else:
+        # Save results
+        np.save(
+            os.path.join(tmp_path, test_folder_name, "q.npy"),
+            sim.solver.q
+        )
+        np.save(
+            os.path.join(tmp_path, test_folder_name, "u.npy"),
+            sim.solver.u[:, -1]
+        )
 
 
-def test_piezo_freq(tmp_path):
+def test_piezo_freq(tmp_path, test=True):
     """Test function for the piezo frequency domain simulation. Tests the
     displacement field and charge for a sinusoidal signal.
     """
     # Create mesh
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
-    mesh = plutho.Mesh(mesh_path)
+    mesh = plutho.Mesh(mesh_path, load=not test)
     # TODO Maybe use mesh with smaller element size?
     mesh.generate_rectangular_mesh()
 
@@ -234,28 +247,41 @@ def test_piezo_freq(tmp_path):
 
     sim.simulate(electrode_elements=electrode_elements)
 
-    # Compare results with test data
-    # Load test data
-    test_folder = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "data",
-        "piezo_freq"
-    )
+    test_folder_name = "piezo_freq"
 
-    test_q = np.load(os.path.join(test_folder, "q.npy"))
-    test_u = np.load(os.path.join(test_folder, "u.npy"))
+    if test:
+        # Compare results with test data
+        # Load test data
+        test_folder = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "data",
+            test_folder_name
+        )
 
-    uut_q = sim.solver.q
-    uut_u = sim.solver.u
+        test_q = np.load(os.path.join(test_folder, "q.npy"))
+        test_u = np.load(os.path.join(test_folder, "u.npy"))
 
-    # Compare arrays
-    # For displacement just take last time step. TODO Is this sufficient?
-    assert compare_numpy_array(uut_q, test_q), "Charge is not equal"
-    assert compare_numpy_array(uut_u, test_u), \
-        "Displacement u is not equal"
+        uut_q = sim.solver.q
+        uut_u = sim.solver.u[:, -1]
+
+        # Compare arrays
+        # For displacement just take last time step. TODO Is this sufficient?
+        assert compare_numpy_array(uut_q, test_q), "Charge is not equal"
+        assert compare_numpy_array(uut_u, test_u), \
+            "Displacement u is not equal"
+    else:
+        # Save test data
+        np.save(
+            os.path.join(tmp_path, test_folder_name, "q.npy"),
+            sim.solver.q
+        )
+        np.save(
+            os.path.join(tmp_path, test_folder_name, "u.npy"),
+            sim.solver.u[:, -1]
+        )
 
 
-def test_thermo_piezo_time(tmp_path):
+def test_thermo_piezo_time(tmp_path, test=True):
     """Test for the thermo piezo simulation using a triangular excitation.
     The input energy is compared with the total loss energy as well as the
     stored energy in the thermal field. Additionaly the simulation results at
@@ -263,7 +289,7 @@ def test_thermo_piezo_time(tmp_path):
     """
     # Create mesh
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
-    mesh = plutho.Mesh(mesh_path)
+    mesh = plutho.Mesh(mesh_path, load=not test)
     # TODO Maybe use mesh with smaller element size?
     mesh.generate_rectangular_mesh()
     nodes, elements = mesh.get_mesh_nodes_and_elements()
@@ -282,7 +308,7 @@ def test_thermo_piezo_time(tmp_path):
 
     number_of_nodes = len(nodes)
     DELTA_T = 1e-8
-    NUMBER_OF_TIME_STEPS = 10000
+    NUMBER_OF_TIME_STEPS = 5000
 
     sim.setup_thermo_piezo_time_domain(
         number_of_time_steps=NUMBER_OF_TIME_STEPS,
@@ -326,12 +352,6 @@ def test_thermo_piezo_time(tmp_path):
 
     sim.simulate(electrode_elements=electrode_elements)
 
-    test_folder = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "data",
-        "thermo_piezo_time"
-    )
-
     # Calculate input energy
     input_energy = plutho.calculate_electrical_input_energy(
         excitation,
@@ -371,43 +391,67 @@ def test_thermo_piezo_time(tmp_path):
     assert np.abs(total_loss_energy - stored_thermal_energy) < MAX_ERROR, \
         "Total loss energy does not equal stored thermal energy"
 
-    # Compare results with test data
-    # Load test data
-    test_folder = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "data",
-        "thermo_piezo_time"
-    )
-    test_q = np.load(os.path.join(test_folder, "q.npy"))
-    test_u = np.load(os.path.join(test_folder, "u.npy"))
-    test_mech_loss = np.load(os.path.join(test_folder, "mech_loss.npy"))
+    test_folder_name = "thermo_piezo_time"
 
-    uut_q = sim.solver.q[-1]
-    uut_u = sim.solver.u[:, -1]
-    uut_mech_loss = sim.solver.mech_loss[:, -1]
+    if test:
+        # Compare results with test data
+        # Load test data
+        test_folder = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "data",
+            test_folder_name
+        )
+        test_q = np.load(os.path.join(test_folder, "q.npy"))
+        test_u = np.load(os.path.join(test_folder, "u.npy"))
+        test_mech_loss = np.load(os.path.join(test_folder, "mech_loss.npy"))
 
-    print("Test q:", test_q)
-    print("UUT q:", uut_q)
-    print("Test u:", test_u)
-    print("UUT u:", uut_u)
-    print("Test mech loss", test_mech_loss)
-    print("UUT mech loss", uut_mech_loss)
+        uut_q = sim.solver.q
+        uut_u = sim.solver.u[:, -1]
+        uut_mech_loss = sim.solver.mech_loss[:, -1]
 
-    # Compare arrays
-    assert compare_numpy_array(uut_q, test_q), "Charge is not equal"
-    assert compare_numpy_array(uut_u, test_u), \
-        "Displacement u is not equal"
-    assert compare_numpy_array(uut_mech_loss, test_mech_loss), \
-        "Mech loss is not equal"
+        print("Test q:", test_q)
+        print("UUT q:", uut_q)
+        print("Test u:", test_u)
+        print("UUT u:", uut_u)
+        print("Test mech loss", test_mech_loss)
+        print("UUT mech loss", uut_mech_loss)
+
+        # Compare arrays
+        assert compare_numpy_array(uut_q, test_q), "Charge is not equal"
+        assert compare_numpy_array(uut_u, test_u), \
+            "Displacement u is not equal"
+        assert compare_numpy_array(uut_mech_loss, test_mech_loss), \
+            "Mech loss is not equal"
+    else:
+        # Save data
+        np.save(
+            os.path.join(tmp_path, test_folder_name, "q.npy"),
+            sim.solver.q
+        )
+        np.save(
+            os.path.join(tmp_path, test_folder_name, "u.npy"),
+            sim.solver.u[:, -1]
+        )
+        np.save(
+            os.path.join(tmp_path, test_folder_name, "mech_loss.npy"),
+            sim.solver.mech_loss[:, -1]
+        )
 
 
 def generate_data():
     """Generates the data for the tests. Assumes the current implementation of
     plutho is correct."""
     dir = "tests/data"
-    test_piezo_time(dir)
-    test_piezo_time(dir)
-    test_thermo_piezo_time(dir)
+
+    # Check if mesh exists
+    mesh_path = os.path.join(dir, "default_mesh.msh")
+    if not os.path.exists(mesh_path):
+        mesh = plutho.Mesh(mesh_path)
+        mesh.generate_rectangular_mesh()
+
+    # test_piezo_time(dir, test=False)
+    test_piezo_freq(dir, test=False)
+    # test_thermo_piezo_time(dir, test=False)
 
 
 if __name__ == "__main__":

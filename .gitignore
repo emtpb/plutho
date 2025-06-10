@@ -185,3 +185,6 @@ mypy.ini
 
 # Ignore swap files
 *.swo
+
+# Ignore test data
+tests/data/default_mesh.msh

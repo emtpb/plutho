@@ -1,5 +1,5 @@
 [project]
-name = "Plutho"
+name = "plutho"
 description = "Python library for coupled thermo-piezoelectric simulations"
 dynamic = ["version"]
 authors = [
