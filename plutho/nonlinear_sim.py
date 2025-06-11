@@ -145,6 +145,12 @@ class PiezoNonlinear:
             self.dirichlet_nodes.append(real_index)
             self.dirichlet_values.append(values)
 
+    def clear_dirichlet_bcs(self):
+        """Resets the dirichlet boundary conditions."""
+        self.boundary_conditions = []
+        self.dirichlet_nodes = []
+        self.dirichlet_values = []
+
     def setup_stationary_simulation(self):
         """Set the simulation type to a nonlinaer stationary simulation.
         """
