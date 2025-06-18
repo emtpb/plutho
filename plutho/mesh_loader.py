@@ -171,13 +171,48 @@ class GmshData:
         self,
         physical_group_name: str
     ) -> npt.NDArray:
-        pass
+        # First get the corresponding elements
+        # Then extract the nodes from the elements
+        elements = self.get_elements_by_physical_group(physical_group_name)
+
+        node_indices = []
+        for element in elements:
+            for node_index in element:
+                node_indices.append(node_index)
+
+        # Remove duplicates  TODO Make it a set directly?
+        return np.array(list(set(node_indices)), dtype=np.int64)
 
     def get_elements_by_physical_group(
         self,
         physical_group_name: str
     ) -> npt.NDArray:
-        pass
+        # Check if physical group exists
+        if physical_group_name not in self.physical_names.keys():
+            raise ValueError(
+                f"Physical group {physical_group_name} not found in mesh."
+            )
+
+        physical_group = self.physical_names[physical_group_name]
+        dimension = physical_group["dimension"]
+        tag = physical_group["tag"]
+
+        # Find elements with the corresponding dimension and tag
+        found_elements = []
+        for element in self.elements:
+            if dimension != element.type:
+                continue
+
+            if tag in element.tags:
+                found_elements.append(element.node_indices)
+
+        if not found_elements:
+            raise ValueError(
+                "No elements found with given physical group "
+                f"{physical_group_name}"
+            )
+
+        return np.array(found_elements)
 
 
 class MeshParser:
@@ -370,3 +405,44 @@ class MeshParser:
                     f"Line {current_token.line}: Unknown section "
                     f"type: {current_token.value}"
                 )
+
+if __name__ == "__main__":
+    mesh_file_v2 = "mesh_v2.msh"
+    mesh_file_v4 = "mesh_v4.msh"
+
+    physical_groups = ["load", "ground", "axis"]
+
+    # GMSH Parser
+    import plutho
+    mesh_v4 = plutho.Mesh(mesh_file_v4, True)
+    nodes_v4, elements_v4 = mesh_v4.get_mesh_nodes_and_elements()
+    pg_nodes_v4 = mesh_v4.get_nodes_by_physical_groups(physical_groups)
+    pg_elements_v4 = mesh_v4.get_elements_by_physical_groups(physical_groups)
+
+    # Mesh loader
+    mesh_v2 = GmshData(mesh_file_v2)
+    nodes_v2, elements_v2 = mesh_v2.get_mesh_nodes_and_elements()
+    pg_nodes_v2 = {}
+    pg_elements_v2 = {}
+    for pg in physical_groups:
+        pg_nodes_v2[pg] = mesh_v2.get_nodes_by_physical_group(pg)
+        pg_elements_v2[pg] = mesh_v2.get_elements_by_physical_group(pg)
+
+    if not np.array_equal(nodes_v2, nodes_v4):
+        print("Nodes not equal")
+    if not np.array_equal(elements_v2, elements_v4):
+        print("Elements not equal")
+
+    for pg in physical_groups:
+        nodes_v2 = pg_nodes_v2[pg]
+        nodes_v4 = pg_nodes_v4[pg]
+        elements_v2 = pg_elements_v2[pg]
+        elements_v4 = pg_elements_v4[pg]
+
+        print(nodes_v2)
+        print(nodes_v4)
+
+        if not np.array_equal(nodes_v2, nodes_v4):
+            print(f"({pg}) Physical group nodes not equal")
+        if not np.array_equal(elements_v2, elements_v4):
+            print(f"({pg}) Physical group elements not equal")
