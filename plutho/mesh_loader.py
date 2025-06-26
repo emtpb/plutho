@@ -439,8 +439,8 @@ if __name__ == "__main__":
         elements_v2 = pg_elements_v2[pg]
         elements_v4 = pg_elements_v4[pg]
 
-        print(nodes_v2)
-        print(nodes_v4)
+        print("Elements v2", elements_v2)
+        print("Elements v4", elements_v4)
 
         if not np.array_equal(nodes_v2, nodes_v4):
             print(f"({pg}) Physical group nodes not equal")
