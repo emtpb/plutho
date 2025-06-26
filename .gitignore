@@ -188,3 +188,5 @@ mypy.ini
 
 # Ignore test data
 tests/data/default_mesh.msh
+*.msh
+*.geo
