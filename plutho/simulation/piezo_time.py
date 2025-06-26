@@ -25,10 +25,10 @@ def charge_integral_u(
     """Calculates the integral of eBu of the given element.
 
     Parameters:
-        node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
-            one triangle.
+        node_points: List of node points [[x1, x2], [y1, y2]] of
+            one line.
         u_e: List of u values at the nodes of the triangle
-            [u1_r, u1_z, u2_r, u2_z, u3_r, u3_z].
+            [u1_r, u1_z, u2_r, u2_z].
         piezo_matrix: Piezo matrix for the current element (e matrix).
         jacobian_inverted_t: Jacobian matrix inverted and transposed, needed
             for calculation of global derivatives.
@@ -36,13 +36,14 @@ def charge_integral_u(
     Returns:
         Float: Integral of eBu of the current triangle.
     """
-    def inner(s, t):
-        r = local_to_global_coordinates(node_points, s, t)[0]
+    def inner(s):
+        r = local_to_global_coordinates(node_points, s, 0)[0]
         b_opt_global = b_operator_global(
             node_points,
+            jacobian_inverted_t,
             s,
-            t,
-            jacobian_inverted_t)
+            0
+        )
         # [1] commponent is taken because the normal of the
         # boundary line is in z-direction
         # -1 because the normal points inwards
@@ -60,10 +61,10 @@ def charge_integral_v(
     """Calculates the integral of epsilonBVe of the given element.
 
     Parameters:
-        node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
-            one triangle.
-        v_e: List of u values at the nodes of the triangle
-            [v1, v2, v3].
+        node_points: List of node points [[x1, x2], [y1, y2]] of
+            one line.
+        v_e: List of u values at the nodes of the line
+            [v1, v2].
         permittivity_matrix: Permittivity matrix for the current
             element (e matrix).
         jacobian_inverted_t: Jacobian matrix inverted and transposed, needed
@@ -72,9 +73,9 @@ def charge_integral_v(
     Returns:
         Float: Integral of epsilonBVe of the current triangle.
     """
-    def inner(s, t):
-        r = local_to_global_coordinates(node_points, s, t)[0]
-        dn = gradient_local_shape_functions()
+    def inner(s):
+        r = local_to_global_coordinates(node_points, s, 0)[0]
+        dn = gradient_local_shape_functions(2)
         global_dn = np.dot(jacobian_inverted_t, dn)
 
         return -np.dot(np.dot(permittivity_matrix, global_dn), v_e)[1]*r
@@ -100,14 +101,14 @@ def calculate_charge(
     q = 0
 
     for element_index, element in enumerate(elements):
-        dn = gradient_local_shape_functions()
+        dn = gradient_local_shape_functions(2)
         node_points = np.array([
             [nodes[element[0]][0],
              nodes[element[1]][0],
              nodes[element[2]][0]],
             [nodes[element[0]][1],
              nodes[element[1]][1],
-             nodes[element[2]][1]]
+             nodes[element[2]][1]],
         ])
 
         # TODO Check why the jacobian_det did not work
@@ -119,19 +120,25 @@ def calculate_charge(
         # triangles are aligned in a line.
         # it is necessarry to use a different determinant. In this case the
         # determinant is the difference between the.
-        # first 2 points of the triangle (which are always on the boundary
-        # line in gmsh).
         jacobian_det = nodes[element[0]][0]-nodes[element[1]][0]
+        #jacobian_det = np.sqrt(
+        #    np.square(nodes[element[1]][0]-nodes[element[0]][0])
+        #    + np.square(nodes[element[1]][1]-nodes[element[0]][1])
+        #)
 
-        u_e = np.array([u[2*element[0]],
-                        u[2*element[0]+1],
-                        u[2*element[1]],
-                        u[2*element[1]+1],
-                        u[2*element[2]],
-                        u[2*element[2]+1]])
-        ve_e = np.array([u[element[0]+2*number_of_nodes],
-                         u[element[1]+2*number_of_nodes],
-                         u[element[2]+2*number_of_nodes]])
+        u_e = np.array([
+            u[2*element[0]],
+            u[2*element[0]+1],
+            u[2*element[1]],
+            u[2*element[1]+1],
+            u[2*element[2]],
+            u[2*element[2]+1]
+        ])
+        ve_e = np.array([
+            u[element[0]+2*number_of_nodes],
+            u[element[1]+2*number_of_nodes],
+            u[element[2]+2*number_of_nodes]
+        ])
 
         q_u = charge_integral_u(
             node_points,
@@ -416,13 +423,14 @@ class PiezoSimTime:
             v[:, time_index+1] = v_tilde + gamma*delta_t*a[:, time_index+1]
 
             # Calculate charge
-            if electrode_elements is not None:
-                q[time_index+1] = calculate_charge(
-                    u[:, time_index+1],
-                    self.material_manager,
-                    electrode_elements,
-                    self.mesh_data.nodes
-                )
+            if False:
+                if electrode_elements is not None:
+                    q[time_index+1] = calculate_charge(
+                        u[:, time_index+1],
+                        self.material_manager,
+                        electrode_elements,
+                        self.mesh_data.nodes
+                    )
 
             if (time_index + 1) % 100 == 0:
                 print(f"Finished time step {time_index+1}")

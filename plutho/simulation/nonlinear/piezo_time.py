@@ -38,7 +38,11 @@ def integral_u_nonlinear(
         npt.NDArray: 6x6 Ku matrix for the given element.
     """
     def inner(s, t):
-        b_op = b_operator_global(node_points, s, t, jacobian_inverted_t)
+        b_op = b_operator_global(
+            node_points, jacobian_inverted_t,
+            s,
+            t,
+        )
         r = local_to_global_coordinates(node_points, s, t)[0]
 
         return 1/2*np.dot(np.dot(b_op.T, nonlinear_elasticity_matrix), b_op)*r
