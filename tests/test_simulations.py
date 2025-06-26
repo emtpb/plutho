@@ -166,7 +166,6 @@ def test_piezo_time(tmp_path, test=True):
     )["Electrode"]
 
     sim.simulate(electrode_elements=electrode_elements)
-
     test_folder_name = "piezo_time"
 
     if test:
@@ -185,9 +184,10 @@ def test_piezo_time(tmp_path, test=True):
 
         # Compare arrays
         # For displacement just take last time step. TODO Is this sufficient?
-        assert compare_numpy_array(uut_q, test_q), "Charge is not equal"
         assert compare_numpy_array(uut_u, test_u), \
             "Displacement u is not equal"
+        assert compare_numpy_array(uut_q, test_q), "Charge is not equal"
+
     else:
         # Save results
         np.save(
@@ -266,9 +266,10 @@ def test_piezo_freq(tmp_path, test=True):
 
         # Compare arrays
         # For displacement just take last time step. TODO Is this sufficient?
-        assert compare_numpy_array(uut_q, test_q), "Charge is not equal"
         assert compare_numpy_array(uut_u, test_u), \
             "Displacement u is not equal"
+        assert compare_numpy_array(uut_q, test_q), "Charge is not equal"
+
     else:
         # Save test data
         np.save(
@@ -449,9 +450,9 @@ def generate_data():
         mesh = plutho.Mesh(mesh_path)
         mesh.generate_rectangular_mesh()
 
-    # test_piezo_time(dir, test=False)
-    test_piezo_freq(dir, test=False)
-    # test_thermo_piezo_time(dir, test=False)
+    test_piezo_time(dir, test=False)
+    #test_piezo_freq(dir, test=False)
+    #test_thermo_piezo_time(dir, test=False)
 
 
 if __name__ == "__main__":

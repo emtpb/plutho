@@ -19,7 +19,6 @@ from ..materials import MaterialManager
 def loss_integral_scs(
     node_points: npt.NDArray,
     u_e: npt.NDArray,
-    angular_frequency: float,
     jacobian_inverted_t: npt.NDArray,
     elasticity_matrix: npt.NDArray
 ):
@@ -38,7 +37,12 @@ def loss_integral_scs(
     """
     def inner(s, t):
         r = local_to_global_coordinates(node_points, s, t)[0]
-        b_opt = b_operator_global(node_points, s, t, jacobian_inverted_t)
+        b_opt = b_operator_global(
+            node_points,
+            jacobian_inverted_t,
+            s,
+            t
+        )
 
         s_e = np.dot(b_opt, u_e)
 
@@ -321,7 +325,6 @@ class PiezoSimFreq:
                         loss_integral_scs(
                             node_points,
                             u_e,
-                            angular_frequency,
                             jacobian_inverted_t,
                             self.material_manager.get_elasticity_matrix(
                                 element_index
