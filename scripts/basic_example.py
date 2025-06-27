@@ -151,10 +151,15 @@ def simulate_piezo_impedance(base_directory, show_results):
     electrode_elements = mesh.get_elements_by_physical_groups(
         ["Electrode"]
     )["Electrode"]
+    # Additionally the orientation of the electrode elements is needed to
+    # calculate the charge. Since they all lie on the uppder electrode, the
+    # (outer) normal vector only points in z direction.
+    electrode_normals = np.array([[0, 1]] * len(electrode_elements))
 
     # Now the simulation can be done
     sim.simulate(
-        electrode_elements=electrode_elements
+        electrode_elements=electrode_elements,
+        electrode_normals=electrode_normals
     )
 
     # The simulation settings and results are saved in the simulation folder
