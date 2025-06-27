@@ -164,7 +164,7 @@ def test_piezo_time(tmp_path, test=True):
     electrode_elements = mesh.get_elements_by_physical_groups(
         ["Electrode"]
     )["Electrode"]
-    electrode_normals = np.array([[0, 1]] * len(electrode_elements))
+    electrode_normals = np.tile([0, 1], (len(electrode_elements), 1)) 
 
     sim.simulate(
         electrode_elements=electrode_elements,
