@@ -1,4 +1,4 @@
-"""Simple parser for version 2 gmsh files"""
+"""Module for loading the gmsh mesh files using a custom parser."""
 
 # Python standard libraries
 import os
@@ -128,33 +128,38 @@ def expect_token(given_token, expected_type):
         )
 
 
-class GmshData:
+class CustomParser:
+
+    # Internal attributes
+    _tokens: List[Token]
+    _token_index: int
+
+    # Parsed mesh information
     mesh_format: MeshFormat
     physical_names: Dict
     nodes: npt.NDArray
     elements: List[Element]
 
     def __init__(self, file_path: str):
-        if not os.path.exists(file_path):
-            raise IOError(
-                f"Cannot read mesh since file does not exist {file_path}"
-            )
+        if not os.path.isfile(file_path):
+            raise IOError(f"Mesh file {file_path} not found.")
 
+        # Load text
         mesh_text = ""
         with open(file_path, "r", encoding="UTF-8") as fd:
             mesh_text = fd.read()
 
-        tokens = tokenize(mesh_text)
+        # Tokenize
+        self._tokens = tokenize(mesh_text)
 
-        # Sets the class attribues
-        parser = MeshParser(tokens, self)
-        parser.parse_tokens()
+        # Start parsing
+        self._parse_tokens()
 
     def get_mesh_nodes_and_elements(self) -> Tuple[npt.NDArray, npt.NDArray]:
         # The nodes array is properly assigned but the z coordinate can be
         # dispensed
         # The elements array can be assembled by searching for all elements
-        # with 3 nodes
+        # with 3 node
         nodes = self.nodes[:, :2]
 
         triangle_elements = []
@@ -242,49 +247,37 @@ class GmshData:
 
         return np.array(triangle_elements)
 
+    def _next_token(self):
+        self._token_index += 1
+        return self._tokens[self._token_index-1]
 
-class MeshParser:
-
-    tokens: List[Token]
-    token_index: int
-    gmsh_data: GmshData
-
-    def __init__(self, tokens: List[Token], gmsh_data: GmshData):
-        self.tokens = tokens
-        self.token_index = 0
-        self.gmsh_data = gmsh_data
-
-    def next_token(self):
-        self.token_index += 1
-        return self.tokens[self.token_index-1]
-
-    def parse_mesh_format(self):
-        token = self.next_token()
+    def _parse_mesh_format(self):
+        token = self._next_token()
         expect_token(token, TokenType.TokenFloat)
         version = float(token.value)
 
-        token = self.next_token()
+        token = self._next_token()
         expect_token(token, TokenType.TokenInt)
         file_type = int(token.value)
 
-        token = self.next_token()
+        token = self._next_token()
         expect_token(token, TokenType.TokenInt)
         data_size = int(token.value)
 
         # SectionEnd token
-        token = self.next_token()
+        token = self._next_token()
         expect_token(token, TokenType.SectionEnd)
 
         # Write mesh format to gmsh_data object
-        self.gmsh_data.mesh_format = MeshFormat(
+        self.mesh_format = MeshFormat(
             version,
             file_type,
             data_size
         )
 
-    def parse_physical_names(self):
+    def _parse_physical_names(self):
         # Get number of physical groups
-        token = self.next_token()
+        token = self._next_token()
         expect_token(token, TokenType.TokenInt)
         physical_name_count = int(token.value)
 
@@ -293,17 +286,17 @@ class MeshParser:
         # For each physical group get
         for _ in range(physical_name_count):
             # Dimension
-            token = self.next_token()
+            token = self._next_token()
             expect_token(token, TokenType.TokenInt)
             dimension = int(token.value)
 
             # Tag
-            token = self.next_token()
+            token = self._next_token()
             expect_token(token, TokenType.TokenInt)
             tag = int(token.value)
 
             # Name
-            token = self.next_token()
+            token = self._next_token()
             expect_token(token, TokenType.TokenString)
             name = str(token.value)
 
@@ -313,15 +306,15 @@ class MeshParser:
             }
 
         # SectionEnd token
-        token = self.next_token()
+        token = self._next_token()
         expect_token(token, TokenType.SectionEnd)
 
         # Add to gmsh data
-        self.gmsh_data.physical_names = physical_names
+        self.physical_names = physical_names
 
-    def parse_nodes(self):
+    def _parse_nodes(self):
         # Get number of nodes
-        token = self.next_token()
+        token = self._next_token()
         expect_token(token, TokenType.TokenInt)
         number_of_nodes = int(token.value)
 
@@ -330,7 +323,7 @@ class MeshParser:
         # Iterate over all nodes
         for _ in range(number_of_nodes):
             # Get node index
-            token = self.next_token()
+            token = self._next_token()
             expect_token(token, TokenType.TokenInt)
             # Since in gmsh the indices start at 1
             token_index = int(token.value)-1
@@ -339,7 +332,7 @@ class MeshParser:
             # Can be int or float in the mesh file, but are converted to
             # float anyway
             for j in range(3):  # for x, y, z
-                token = self.next_token()
+                token = self._next_token()
                 if (token.token_type is TokenType.TokenInt or
                         token.token_type is TokenType.TokenFloat):
                     nodes[token_index, j] = float(token.value)
@@ -350,15 +343,15 @@ class MeshParser:
                     )
 
         # SectionEnd token
-        token = self.next_token()
+        token = self._next_token()
         expect_token(token, TokenType.SectionEnd)
 
         # Set nodes
-        self.gmsh_data.nodes = nodes
+        self.nodes = nodes
 
-    def parse_elements(self):
+    def _parse_elements(self):
         # Get number of elements
-        token = self.next_token()
+        token = self._next_token()
         expect_token(token, TokenType.TokenInt)
         number_of_elements = int(token.value)
 
@@ -369,25 +362,25 @@ class MeshParser:
         # Now parse the elements one by one
         for _ in range(number_of_elements):
             # Get index
-            token = self.next_token()
+            token = self._next_token()
             expect_token(token, TokenType.TokenInt)
             # Since in gmsh the indices start at 1
             element_index = int(token.value)-1
 
             # Get type
-            token = self.next_token()
+            token = self._next_token()
             expect_token(token, TokenType.TokenInt)
             element_type = int(token.value)
 
             # Get number of tags
-            token = self.next_token()
+            token = self._next_token()
             expect_token(token, TokenType.TokenInt)
             number_of_tags = int(token.value)
 
             # Parse each tag
             tags = []
             for _ in range(number_of_tags):
-                token = self.next_token()
+                token = self._next_token()
                 expect_token(token, TokenType.TokenInt)
                 tags.append(int(token.value))
 
@@ -396,7 +389,7 @@ class MeshParser:
             # element_type = 2 -> Triangle -> 3 Points
             nodes = []
             for _ in range(element_type+1):
-                token = self.next_token()
+                token = self._next_token()
                 expect_token(token, TokenType.TokenInt)
                 # Subtract 1 because in gmsh the indices start at 1
                 nodes.append(int(token.value)-1)
@@ -408,26 +401,26 @@ class MeshParser:
             )
 
         # SectionEnd token
-        token = self.next_token()
+        token = self._next_token()
         expect_token(token, TokenType.SectionEnd)
 
-        self.gmsh_data.elements = elements
+        self.elements = elements
 
-    def parse_tokens(self):
-        self.token_index = 0
+    def _parse_tokens(self):
+        self._token_index = 0
 
-        while self.token_index < len(self.tokens):
-            current_token = self.next_token()
+        while self._token_index < len(self._tokens):
+            current_token = self._next_token()
             expect_token(current_token, TokenType.SectionStart)
 
             if current_token.value == "MeshFormat":
-                self.parse_mesh_format()
+                self._parse_mesh_format()
             elif current_token.value == "PhysicalNames":
-                self.parse_physical_names()
+                self._parse_physical_names()
             elif current_token.value == "Nodes":
-                self.parse_nodes()
+                self._parse_nodes()
             elif current_token.value == "Elements":
-                self.parse_elements()
+                self._parse_elements()
             else:
                 raise ValueError(
                     f"Line {current_token.line}: Unknown section "
