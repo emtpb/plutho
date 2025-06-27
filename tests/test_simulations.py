@@ -78,7 +78,7 @@ def test_thermo_time(tmp_path):
     sim.add_material(
         "pic255",
         pic255,
-        None
+        ""
     )
 
     # Set constant volume loss density
@@ -128,7 +128,7 @@ def test_piezo_time(tmp_path, test=True):
     sim.add_material(
         "pic255",
         pic255,
-        None
+        ""
     )
 
     sim.setup_piezo_time_domain(
@@ -164,8 +164,12 @@ def test_piezo_time(tmp_path, test=True):
     electrode_elements = mesh.get_elements_by_physical_groups(
         ["Electrode"]
     )["Electrode"]
+    electrode_normals = np.array([[0, 1]] * len(electrode_elements))
 
-    sim.simulate(electrode_elements=electrode_elements)
+    sim.simulate(
+        electrode_elements=electrode_elements,
+        electrode_normals=electrode_normals
+    )
     test_folder_name = "piezo_time"
 
     if test:
@@ -219,7 +223,7 @@ def test_piezo_freq(tmp_path, test=True):
     sim.add_material(
         "pic255",
         pic255,
-        None
+        ""
     )
 
     sim.setup_piezo_freq_domain(np.array([2e6]))
@@ -244,8 +248,12 @@ def test_piezo_freq(tmp_path, test=True):
     electrode_elements = mesh.get_elements_by_physical_groups(
         ["Electrode"]
     )["Electrode"]
+    electrode_normals = np.array([[0, 1]] * len(electrode_elements))
 
-    sim.simulate(electrode_elements=electrode_elements)
+    sim.simulate(
+        electrode_elements=electrode_elements,
+        electrode_normals=electrode_normals
+    )
 
     test_folder_name = "piezo_freq"
 
@@ -304,7 +312,7 @@ def test_thermo_piezo_time(tmp_path, test=True):
     sim.add_material(
         "pic255",
         pic255,
-        None
+        ""
     )
 
     number_of_nodes = len(nodes)
@@ -350,8 +358,12 @@ def test_thermo_piezo_time(tmp_path, test=True):
     electrode_elements = mesh.get_elements_by_physical_groups(
         ["Electrode"]
     )["Electrode"]
+    electrode_normals = np.array([[0, 1]] * len(electrode_elements))
 
-    sim.simulate(electrode_elements=electrode_elements)
+    sim.simulate(
+        electrode_elements=electrode_elements,
+        electrode_normals=electrode_normals
+    )
 
     # Calculate input energy
     input_energy = plutho.calculate_electrical_input_energy(
