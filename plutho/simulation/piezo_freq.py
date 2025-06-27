@@ -89,9 +89,9 @@ class PiezoSimFreq:
     dirichlet_values: npt.NDArray
 
     # FEM matrices
-    m: npt.NDArray
-    c: npt.NDArray
-    k: npt.NDArray
+    m: sparse.lil_array
+    c: sparse.lil_array
+    k: sparse.lil_array
 
     # Resulting fields
     u: npt.NDArray
@@ -238,6 +238,7 @@ class PiezoSimFreq:
     def solve_frequency(
         self,
         electrode_elements: npt.NDArray,
+        electrode_normals: npt.NDArray,
         calculate_mech_loss: bool
     ):
         """Run the frequency simulation using the given frequencies.
@@ -247,7 +248,10 @@ class PiezoSimFreq:
         Parameters:
             frequencies: Array of frequencies at which the simulation is done.
             electrode_elements: Array of element indices. At those indices
-                the charge is calculated, summed up and saved in q."""
+                the charge is calculated, summed up and saved in q.
+            electrode_normals: List of normal vectors corresponding to the
+                electrode_elements list.
+        """
         m = self.m
         c = self.c
         k = self.k
@@ -300,6 +304,7 @@ class PiezoSimFreq:
                     u[:, frequency_index],
                     self.material_manager,
                     electrode_elements,
+                    electrode_normals,
                     self.mesh_data.nodes
                 )
 

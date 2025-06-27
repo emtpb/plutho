@@ -8,6 +8,7 @@ from dataclasses import dataclass, fields
 from enum import Enum
 import numpy as np
 import numpy.typing as npt
+from scipy import sparse
 
 # Local libraries
 from ..mesh import Mesh
@@ -283,22 +284,7 @@ def b_operator_global(
             ],
         ]
 
-    #return b
-    return np.array([
-        [
-            global_dn[0][0], 0, global_dn[0][1], 0, global_dn[0][2], 0
-        ],
-        [
-            0, global_dn[1][0], 0, global_dn[1][1], 0, global_dn[1][2]
-        ],
-        [
-            global_dn[1][0], global_dn[0][0], global_dn[1][1],
-            global_dn[0][1], global_dn[1][2], global_dn[0][2]
-        ],
-        [
-            n[0]/r, 0, n[1]/r, 0, n[2]/r, 0
-        ],
-    ])
+    return b
 
 
 def integral_m(node_points: npt.NDArray):
@@ -493,11 +479,11 @@ def line_quadrature(func):
 
 
 def apply_dirichlet_bc(
-    m: npt.NDArray,
-    c: npt.NDArray,
-    k: npt.NDArray,
+    m: sparse.lil_array,
+    c: sparse.lil_array,
+    k: sparse.lil_array,
     nodes: npt.NDArray
-) -> Tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+) -> Tuple[sparse.lil_array, sparse.lil_array, sparse.lil_array]:
     """Prepares the given matrices m, c and k for the dirichlet boundary
     conditions. This is done by setting the corresponding rows to 0
     excepct for the node which will contain the specific value (this is set
