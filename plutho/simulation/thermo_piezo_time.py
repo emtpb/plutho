@@ -277,6 +277,7 @@ class ThermoPiezoSimTime:
     def solve_time(
         self,
         electrode_elements: npt.NDArray,
+        electrode_normals: npt.NDArray,
         theta_start = None
     ):
         """Runs the simulation using the assembled m, c and k matrices as well
@@ -291,6 +292,8 @@ class ThermoPiezoSimTime:
         Parameters:
             electrode_elements: List of all elements which are in
                 the electrode.
+            electrode_normals: List of normal vectors corresponding to the
+                electrode_elements list.
             set_symmetric_bc: True if the symmetric boundary condition for u
                 shall be set. False otherwise.
         """
@@ -406,6 +409,7 @@ class ThermoPiezoSimTime:
                     u[:, time_index+1],
                     self.material_manager,
                     electrode_elements,
+                    electrode_normals,
                     nodes
                 )
 

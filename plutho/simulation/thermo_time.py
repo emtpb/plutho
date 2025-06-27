@@ -30,9 +30,9 @@ def integral_heat_flux(
 
     Returns:
         npt.NDArray heat flux integral on each point."""
-    def inner(s, t):
-        n = local_shape_functions(s, t)
-        r = local_to_global_coordinates(node_points, s, t)[0]
+    def inner(s):
+        n = local_shape_functions(s)
+        r = local_to_global_coordinates(node_points, s)[0]
 
         return n*heat_flux*r
 
@@ -301,29 +301,26 @@ class ThermoSimTime:
         for _, element in enumerate(boundary_elements):
             node_points = np.array([
                 [nodes[element[0]][0],
-                 nodes[element[1]][0],
-                 nodes[element[2]][0]],
+                 nodes[element[1]][0]],
                 [nodes[element[0]][1],
-                 nodes[element[1]][1],
-                 nodes[element[2]][1]]
+                 nodes[element[1]][1]]
             ])
-            min_r = np.min([nodes[element[0]][0], nodes[element[1]][0]])
-            max_r = np.max([nodes[element[0]][0], nodes[element[1]][0]])
-            jacobian_det = min_r-max_r
+            jacobian_det = np.sqrt(
+                np.square(nodes[element[1]][0]-nodes[element[0]][0])
+                + np.square(nodes[element[1]][1]-nodes[element[0]][1])
+            )
             theta_e = np.array([
                 theta[element[0]],
-                theta[element[1]],
-                theta[element[2]]
+                theta[element[1]]
             ])
 
-            heat_flux = alpha*(theta_e-np.ones(3)*outer_temperature)
-            heat_flux[2] = 0  # No heat flux for the inner element
+            heat_flux = alpha*(theta_e-np.ones(2)*outer_temperature)
             f_e = (
                 integral_heat_flux(node_points, heat_flux)
                 * 2 * np.pi * jacobian_det
             )
 
-            for local_p, global_p in enumerate(element):
+            for local_p, global_p in enumerate(element[:2]):
                 f[global_p] += f_e[local_p]
 
         return f

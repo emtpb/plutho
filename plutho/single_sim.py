@@ -302,8 +302,10 @@ class SingleSimulation:
         initial_theta_field: Union[npt.NDArray, float, None] = None,
         initial_theta_time_step: Union[npt.NDArray, None] = None,
         electrode_elements: Union[npt.NDArray, None] = None,
+        electrode_normals: Union[npt.NDArray, None] = None,
         calculate_mech_loss: bool = False
     ):
+        # TODO Move parameters to **kwargs?
         """Runs a simulation. Note that a simulation must be setup
         beforehand.
 
@@ -315,6 +317,8 @@ class SingleSimulation:
                 thermal simulation.
             electrode_elements: List of element indices for which the
                 charge is calculated.
+            electrode_normals: List of normal vectors corresponding to each
+                electrode element (same index).
             calculate_mech_loss: Set to true of the mech loss shall
                 be calculated.
         """
@@ -328,14 +332,16 @@ class SingleSimulation:
 
         # Check if there is a material defined for every point
         if np.any(self.material_manager.element_index_to_material_data == -1):
-            print(
+            raise SimulationException(
                 "Not every node has a material defined."
                 "Cannot start simulation."
             )
 
         # Check if mesh data is set
         if self.mesh_data.nodes is None or self.mesh_data.elements is None:
-            print("Please setup mesh before starting simulation.")
+            raise SimulationException(
+                "Please setup mesh before starting simulation."
+            )
 
         # Set material starting temperature if given
         if material_starting_temperature is not None:
@@ -351,6 +357,12 @@ class SingleSimulation:
             )
         else:
             self.solver.material_manager.initialize_materials()
+
+        if electrode_elements is not None and electrode_normals is None:
+            raise SimulationException(
+                "If electrode elements are given, electrode normals "
+                "must be set too"
+            )
 
         # Get boundary condition lists
         self.solver.dirichlet_nodes = np.array(self.dirichlet_nodes)
@@ -394,6 +406,7 @@ class SingleSimulation:
 
             self.solver.solve_frequency(
                 electrode_elements,
+                electrode_normals,
                 calculate_mech_loss
             )
         elif isinstance(self.solver, PiezoSimTime):
@@ -402,7 +415,8 @@ class SingleSimulation:
                 self.charge_calculated = True
 
             self.solver.solve_time(
-                electrode_elements
+                electrode_elements,
+                electrode_normals
             )
         elif isinstance(self.solver, ThermoPiezoSimTime):
             # Check if electrode_elements are given
@@ -423,6 +437,7 @@ class SingleSimulation:
 
             self.solver.solve_time(
                 electrode_elements,
+                electrode_normals,
                 initial_theta_field
             )
         else:

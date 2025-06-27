@@ -44,10 +44,8 @@ def charge_integral_u(
             s,
             0
         )
-        # [1] commponent is taken because the normal of the
-        # boundary line is in z-direction
-        # -1 because the normal points inwards
-        return -np.dot(np.dot(piezo_matrix, b_opt_global), u_e)[1]*r
+
+        return -np.dot(np.dot(piezo_matrix, b_opt_global), u_e)*r
 
     return line_quadrature(inner)
 
@@ -75,10 +73,10 @@ def charge_integral_v(
     """
     def inner(s):
         r = local_to_global_coordinates(node_points, s, 0)[0]
-        dn = gradient_local_shape_functions(2)
+        dn = gradient_local_shape_functions()
         global_dn = np.dot(jacobian_inverted_t, dn)
 
-        return -np.dot(np.dot(permittivity_matrix, global_dn), v_e)[1]*r
+        return -np.dot(np.dot(permittivity_matrix, global_dn), v_e)*r
 
     return line_quadrature(inner)
 
@@ -87,6 +85,7 @@ def calculate_charge(
     u: npt.NDArray,
     material_manager: MaterialManager,
     elements: npt.NDArray,
+    element_normals: npt.NDArray,
     nodes
 ) -> float:
     """Calculates the charge of the given elements.
@@ -95,6 +94,8 @@ def calculate_charge(
         u: List of u values for every node.
         material_manager: MaterialManager object.
         elements: Elements for which the charge shall be calculated.
+        element_normals: List of element normal vectors (index corresponding to
+            the elements list).
         nodes: All nodes used in the simulation.
     """
     number_of_nodes = len(nodes)
@@ -110,22 +111,24 @@ def calculate_charge(
              nodes[element[1]][1],
              nodes[element[2]][1]],
         ])
-
-        # TODO Check why the jacobian_det did not work
-        # It should work with line elements instead of triangle elements
+        # This calculation of the jacobian does only work for triangle elements
+        # and not for line elements, since for line elements the resulting
+        # jacobian is non invertible.
         jacobian = np.dot(node_points, dn.T)
         jacobian_inverted_t = np.linalg.inv(jacobian).T
 
-        # Since its a line integral along the top edge of the model where the
-        # triangles are aligned in a line.
-        # it is necessarry to use a different determinant. In this case the
-        # determinant is the difference between the.
-        jacobian_det = nodes[element[0]][0]-nodes[element[1]][0]
-        #jacobian_det = np.sqrt(
-        #    np.square(nodes[element[1]][0]-nodes[element[0]][0])
-        #    + np.square(nodes[element[1]][1]-nodes[element[0]][1])
-        #)
+        # The integration is always done along the first two points of the
+        # triangle.
+        jacobian_det = np.sqrt(
+            np.square(nodes[element[1]][0]-nodes[element[0]][0])
+            + np.square(nodes[element[1]][1]-nodes[element[0]][1])
+        )
 
+        # Altough it is a line integral, it is necessary to take the field of
+        # all element points even if they are not on the line.
+        # This is due to the charge calculation needing the derivatives of the
+        # shape function (dN_i/dr and dN_i/dz) which are (+/-) 1 along the
+        # whole triangle for all 3 points.
         u_e = np.array([
             u[2*element[0]],
             u[2*element[0]+1],
@@ -152,7 +155,12 @@ def calculate_charge(
             material_manager.get_permittivity_matrix(element_index),
             jacobian_inverted_t
         ) * 2 * np.pi * jacobian_det
-        q += q_u - q_v
+
+        # Now take the component normal to the line (outer direction)
+        q_u_normal = np.dot(q_u, element_normals[element_index])
+        q_v_normal = np.dot(q_v, element_normals[element_index])
+
+        q += q_u_normal - q_v_normal
 
     return q
 
@@ -194,9 +202,9 @@ class PiezoSimTime:
     dirichlet_values: npt.NDArray
 
     # FEM matrices
-    m: npt.NDArray
-    c: npt.NDArray
-    k: npt.NDArray
+    m: sparse.lil_array
+    c: sparse.lil_array
+    k: sparse.lil_array
 
     # Resulting fields
     u: npt.NDArray
@@ -344,7 +352,8 @@ class PiezoSimTime:
 
     def solve_time(
         self,
-        electrode_elements: npt.NDArray
+        electrode_elements: npt.NDArray,
+        electrode_normals: npt.NDArray
     ):
         """Runs the simulation using the assembled m, c and k matrices as well
         as the set excitation.
@@ -355,7 +364,9 @@ class PiezoSimTime:
 
         Parameters:
             electrode_elements: List of all elements which are in
-            the electrode.
+                the electrode.
+            electrode_normals: List of normal vectors corresponding to the
+                electrode_elements list.
         """
         number_of_time_steps = self.simulation_data.number_of_time_steps
         beta = self.simulation_data.beta
@@ -365,6 +376,9 @@ class PiezoSimTime:
         m = self.m
         c = self.c
         k = self.k
+
+        if m is None or c is None or k is None:
+            print("Cannot solve simulation since matrices are not assembled")
 
         # Init arrays
         # Displacement u which is calculated
@@ -423,14 +437,14 @@ class PiezoSimTime:
             v[:, time_index+1] = v_tilde + gamma*delta_t*a[:, time_index+1]
 
             # Calculate charge
-            if False:
-                if electrode_elements is not None:
-                    q[time_index+1] = calculate_charge(
-                        u[:, time_index+1],
-                        self.material_manager,
-                        electrode_elements,
-                        self.mesh_data.nodes
-                    )
+            if electrode_elements is not None:
+                q[time_index+1] = calculate_charge(
+                    u[:, time_index+1],
+                    self.material_manager,
+                    electrode_elements,
+                    electrode_normals,
+                    self.mesh_data.nodes
+                )
 
             if (time_index + 1) % 100 == 0:
                 print(f"Finished time step {time_index+1}")
