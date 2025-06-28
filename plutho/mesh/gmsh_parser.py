@@ -10,6 +10,8 @@ import numpy as np
 import numpy.typing as npt
 
 class GmshParser:
+    """Class to use the gmsh python interface to read the mesh files.
+    """
 
     def __init__(self, file_path):
         if not gmsh.is_initialized():
@@ -77,15 +79,15 @@ class GmshParser:
 
         Returns:
             List of nodes and elements"""
-        nodes = Mesh._get_nodes(*gmsh.model.mesh.getNodes())
-        elements = Mesh._get_elements(*gmsh.model.mesh.getElements())
+        nodes = self._get_nodes(*gmsh.model.mesh.getNodes())
+        elements = self._get_elements(*gmsh.model.mesh.getElements())
 
         return nodes, elements
 
     def get_nodes_by_physical_groups(
         self,
         needed_pg_names: List[str]
-    ) -> Dict[str, List]:
+    ) -> Dict[str, npt.NDArray]:
         """Returns the node indices of each physical group given by
         needed_pg_names list.
 
@@ -158,6 +160,7 @@ class GmshParser:
 
     def create_element_post_processing_view(
         self,
+        output_file_path: str,
         field: npt.NDArray,
         number_of_time_steps: int,
         delta_t: float,
@@ -205,12 +208,13 @@ class GmshParser:
                 time_index*delta_t,
                 field_dimension if field_dimension != 2 else 3)
 
-        if not os.path.exists(self.output_file_path):
-            gmsh.write(self.output_file_path)
-        gmsh.view.write(view_tag, self.output_file_path, append)
+        if not os.path.exists(output_file_path):
+            gmsh.write(output_file_path)
+        gmsh.view.write(view_tag, output_file_path, append)
 
     def create_u_default_post_processing_view(
         self,
+        output_file_path: str,
         u: npt.NDArray,
         number_of_time_steps: int,
         delta_t: float,
@@ -274,15 +278,16 @@ class GmshParser:
                     current_theta,
                     time_index*delta_t,
                     1)
-        if not os.path.exists(self.output_file_path):
-            gmsh.write(self.output_file_path)
-        gmsh.view.write(u_view_tag, self.output_file_path, append)
-        gmsh.view.write(v_view_tag, self.output_file_path, True)
+        if not os.path.exists(output_file_path):
+            gmsh.write(output_file_path)
+        gmsh.view.write(u_view_tag, output_file_path, append)
+        gmsh.view.write(v_view_tag, output_file_path, True)
         if temperature_field:
-            gmsh.view.write(theta_view_tag, self.output_file_path, True)
+            gmsh.view.write(theta_view_tag, output_file_path, True)
 
     def create_theta_post_processing_view(
         self,
+        output_file_path: str,
         theta: npt.NDArray,
         number_of_time_steps: int,
         delta_t: float,
@@ -314,6 +319,6 @@ class GmshParser:
                 current_theta,
                 time_index*delta_t,
                 1)
-        if not os.path.exists(self.output_file_path):
-            gmsh.write(self.output_file_path)
-        gmsh.view.write(theta_view_tag, self.output_file_path, append)
+        if not os.path.exists(output_file_path):
+            gmsh.write(output_file_path)
+        gmsh.view.write(theta_view_tag, output_file_path, append)
