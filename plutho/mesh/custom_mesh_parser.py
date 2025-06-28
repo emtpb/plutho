@@ -157,9 +157,9 @@ class CustomParser:
 
     def get_mesh_nodes_and_elements(self) -> Tuple[npt.NDArray, npt.NDArray]:
         # The nodes array is properly assigned but the z coordinate can be
-        # dispensed
+        # dispensed.
         # The elements array can be assembled by searching for all elements
-        # with 3 node
+        # with 3 node.
         nodes = self.nodes[:, :2]
 
         triangle_elements = []
@@ -168,10 +168,16 @@ class CustomParser:
                 triangle_elements.append(element)
 
         number_of_triangle_elements = len(triangle_elements)
-        elements = np.zeros(shape=(number_of_triangle_elements, 3))
+        elements = np.zeros(
+            shape=(number_of_triangle_elements, 3),
+            dtype=np.int64
+        )
 
         for index, triangle_element in enumerate(triangle_elements):
-            elements[index] = np.array(triangle_element.node_indices)
+            elements[index] = np.array(
+                triangle_element.node_indices,
+                dtype=np.int64
+            )
 
         return nodes, elements
 
@@ -220,7 +226,7 @@ class CustomParser:
                 f"{physical_group_name}"
             )
 
-        return np.array(found_elements)
+        return np.array(found_elements, dtype=np.int64)
 
     def get_triangle_elements_by_physical_group(
         self,
@@ -245,7 +251,7 @@ class CustomParser:
                 if found:
                     triangle_elements.append(element)
 
-        return np.array(triangle_elements)
+        return np.array(triangle_elements, dtype=np.int64)
 
     def _next_token(self):
         self._token_index += 1
@@ -426,61 +432,3 @@ class CustomParser:
                     f"Line {current_token.line}: Unknown section "
                     f"type: {current_token.value}"
                 )
-
-if __name__ == "__main__":
-    mesh_file_v2 = "mesh_v2.msh"
-    mesh_file_v4 = "mesh_v4.msh"
-
-    physical_groups = ["load", "ground", "axis"]
-
-    # GMSH Parser
-    import plutho
-    mesh_v4 = plutho.Mesh(mesh_file_v4, True)
-    nodes_v4, elements_v4 = mesh_v4.get_mesh_nodes_and_elements()
-    pg_nodes_v4 = mesh_v4.get_nodes_by_physical_groups(physical_groups)
-    pg_elements_v4 = mesh_v4.get_elements_by_physical_groups(physical_groups)
-
-    # Mesh loader
-    mesh_v2 = GmshData(mesh_file_v2)
-    nodes_v2, elements_v2 = mesh_v2.get_mesh_nodes_and_elements()
-    pg_nodes_v2 = {}
-    pg_elements_v2 = {}
-    for pg in physical_groups:
-        pg_nodes_v2[pg] = mesh_v2.get_nodes_by_physical_group(pg)
-        pg_elements_v2[pg] = mesh_v2.get_triangle_elements_by_physical_group(
-            pg
-        )
-
-    if not np.array_equal(nodes_v2, nodes_v4):
-        print("Nodes not equal")
-    if not np.array_equal(elements_v2, elements_v4):
-        print("Elements not equal")
-
-    def check_same_contents(l1, l2):
-        for item in l1:
-            if item not in l2:
-                return False
-
-        for item in l2:
-            if item not in l1:
-                return False
-
-        return True
-
-    # The physical group lists could be ordered differently
-    for pg in physical_groups:
-        nodes_v2 = pg_nodes_v2[pg]
-        nodes_v4 = pg_nodes_v4[pg]
-        elements_v2 = pg_elements_v2[pg]
-        elements_v4 = pg_elements_v4[pg]
-
-        if not check_same_contents(nodes_v2, nodes_v4):
-            print(f"({pg}) Physical group nodes not equal")
-            print("Nodes v2", nodes_v2)
-            print("Nodes v4", nodes_v4)
-        if not check_same_contents(elements_v2, elements_v4):
-            print(f"({pg}) Physical group elements not equal")
-            print("Elements v2", elements_v2)
-            print("Elements v4", elements_v4)
-            e = mesh_v2.get_elements_by_physical_group(pg)
-            print(f"{pg} Elements:", e)

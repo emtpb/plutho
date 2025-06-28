@@ -10,4 +10,3 @@ from .single_sim import SingleSimulation, FieldType
 from .mesh import Mesh
 from .coupled_sim import CoupledThermoPiezoThermoSim, CoupledFreqPiezoTherm
 from .nonlinear_sim import PiezoNonlinear
-from .mesh_loader import GmshData

@@ -2,18 +2,19 @@
 
 # Python standard libraries
 import os
-from typing import Union, Tuple
+from typing import Union, Tuple, Dict, List
 
 # Third party libraries
 import gmsh
 import numpy.typing as npt
 
 # Local libraries
-from gmsh_parser import GmshParser
-from custom_mesh_parser import CustomParser
+from .gmsh_parser import GmshParser
+from .custom_mesh_parser import CustomParser
+
 
 class Mesh:
-    """Class to handle, generate and read meshes.
+    """Class to generate and read meshes.
 
     Attributes:
         mesh_file_path: Path to the mesh. File must exist.
@@ -44,7 +45,6 @@ class Mesh:
             version, _, _ = second_line.split(" ")
             self.file_version = version
 
-
         if version.startswith("2"):
             self.parser = CustomParser(file_path)
         else:
@@ -53,15 +53,17 @@ class Mesh:
     def get_mesh_nodes_and_elements(self) -> Tuple[npt.NDArray, npt.NDArray]:
         return self.parser.get_mesh_nodes_and_elements()
 
-    def get_nodes_by_physical_group(
+    def get_nodes_by_physical_groups(
         self,
-        physical_group_names: str
-    ) -> npt.NDArray:
+        physical_group_names: List[str]
+    ) -> Dict[str, npt.NDArray]:
         if isinstance(self.parser, CustomParser):
             pg_nodes = {}
             for pg in physical_group_names:
                 # TODO Maybe let get nodes function run with multple pg names
                 pg_nodes[pg] = self.parser.get_nodes_by_physical_group(pg)
+
+            return pg_nodes
         elif isinstance(self.parser, GmshParser):
             return self.parser.get_nodes_by_physical_groups(
                 physical_group_names
@@ -72,16 +74,18 @@ class Mesh:
                 f"{type(self.parser)}"
             )
 
-    def get_elements_by_physical_group(
+    def get_elements_by_physical_groups(
         self,
         physical_group_names
-    ) -> npt.NDArray:
+    ) -> Dict[str, npt.NDArray]:
         if isinstance(self.parser, CustomParser):
             pg_nodes = {}
             for pg in physical_group_names:
                 # TODO Maybe let get nodes function run with multple pg names
                 pg_nodes[pg] = self.parser. \
                     get_triangle_elements_by_physical_group(pg)
+
+            return pg_nodes
         elif isinstance(self.parser, GmshParser):
             return self.parser.get_elements_by_physical_groups(
                 physical_group_names
