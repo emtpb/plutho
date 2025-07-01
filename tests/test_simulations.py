@@ -51,11 +51,10 @@ def test_thermo_time(tmp_path):
     """Test for the thermal simulation. Calculates the total stored energy in
     the simulation and compares it with the input energy.
     """
-    # Create mesh
+    # Create and load mesh; TODO maybe use smaller mesh size?
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
+    plutho.Mesh.generate_rectangular_mesh(mesh_path)
     mesh = plutho.Mesh(mesh_path)
-    # TODO Maybe use mesh with smaller element size?
-    mesh.generate_rectangular_mesh()
 
     sim = plutho.SingleSimulation(
         tmp_path,
@@ -113,11 +112,10 @@ def test_thermo_time(tmp_path):
 def test_piezo_time(tmp_path, test=True):
     """Test function for the piezo time domain simulation.
     Tests the simulation for a triangular excitation."""
-    # Create mesh
+    # Create and load mesh; TODO maybe use smaller mesh size?
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
-    mesh = plutho.Mesh(mesh_path, load=not test)
-    # TODO Maybe use mesh with smaller element size?
-    mesh.generate_rectangular_mesh()
+    plutho.Mesh.generate_rectangular_mesh(mesh_path)
+    mesh = plutho.Mesh(mesh_path)
 
     sim = plutho.SingleSimulation(
         tmp_path,
@@ -164,7 +162,7 @@ def test_piezo_time(tmp_path, test=True):
     electrode_elements = mesh.get_elements_by_physical_groups(
         ["Electrode"]
     )["Electrode"]
-    electrode_normals = np.tile([0, 1], (len(electrode_elements), 1)) 
+    electrode_normals = np.tile([0, 1], (len(electrode_elements), 1))
 
     sim.simulate(
         electrode_elements=electrode_elements,
@@ -208,11 +206,10 @@ def test_piezo_freq(tmp_path, test=True):
     """Test function for the piezo frequency domain simulation. Tests the
     displacement field and charge for a sinusoidal signal.
     """
-    # Create mesh
+    # Create and load mesh; TODO maybe use smaller mesh size?
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
-    mesh = plutho.Mesh(mesh_path, load=not test)
-    # TODO Maybe use mesh with smaller element size?
-    mesh.generate_rectangular_mesh()
+    plutho.Mesh.generate_rectangular_mesh(mesh_path)
+    mesh = plutho.Mesh(mesh_path)
 
     sim = plutho.SingleSimulation(
         tmp_path,
@@ -296,12 +293,10 @@ def test_thermo_piezo_time(tmp_path, test=True):
     stored energy in the thermal field. Additionaly the simulation results at
     last time step are compared with fixed results.
     """
-    # Create mesh
+    # Create and load mesh; TODO maybe use smaller mesh size?
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
-    mesh = plutho.Mesh(mesh_path, load=not test)
-    # TODO Maybe use mesh with smaller element size?
-    mesh.generate_rectangular_mesh()
-    nodes, elements = mesh.get_mesh_nodes_and_elements()
+    plutho.Mesh.generate_rectangular_mesh(mesh_path)
+    mesh = plutho.Mesh(mesh_path)
 
     sim = plutho.SingleSimulation(
         tmp_path,
@@ -314,6 +309,8 @@ def test_thermo_piezo_time(tmp_path, test=True):
         pic255,
         ""
     )
+
+    nodes, elements = mesh.get_mesh_nodes_and_elements()
 
     number_of_nodes = len(nodes)
     DELTA_T = 1e-8

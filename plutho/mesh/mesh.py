@@ -108,45 +108,53 @@ class Mesh:
         size and the x_offset.
 
         Parameters:
-            width: With of the rect in m.
+            width: Width of the rect in m.
             height: Height of the rect in m.
             mesh_size: Mesh size of the mesh. Equal to the maximum distance
-                between two point in the mesh.
-            x_offset: Moves the rect along the x-direction. Default value is
-                0. For 0 the left side of the rect is on the y-axis.
+                between two point in the mesh in m.
+            x_offset: Moves the rect along the horizontal direction. Default
+                value is 0. For 0 the left side of the rect is on the
+                ordinate.
         """
 
         if not gmsh.is_initialized():
             gmsh.initialize()
 
-        gmsh.open(file_path)
         gmsh.clear()
 
-        corner_points = [[x_offset, 0],
-                         [width+x_offset, 0],
-                         [width+x_offset, height],
-                         [x_offset, height]]
+        corner_points = [
+            [x_offset, 0],
+            [width+x_offset, 0],
+            [width+x_offset, height],
+            [x_offset, height]
+        ]
 
         gmsh_point_indices = []
         for point in corner_points:
             gmsh_point_indices.append(gmsh.model.geo.addPoint(
-                point[0], point[1], 0, mesh_size))
+                point[0], point[1], 0, mesh_size
+            ))
 
         bottom_line = gmsh.model.geo.addLine(
             gmsh_point_indices[0],
-            gmsh_point_indices[1])
+            gmsh_point_indices[1]
+        )
         right_line = gmsh.model.geo.addLine(
             gmsh_point_indices[1],
-            gmsh_point_indices[2])
+            gmsh_point_indices[2]
+        )
         top_line = gmsh.model.geo.addLine(
             gmsh_point_indices[2],
-            gmsh_point_indices[3])
+            gmsh_point_indices[3]
+        )
         left_line = gmsh.model.geo.addLine(
             gmsh_point_indices[3],
-            gmsh_point_indices[0])
+            gmsh_point_indices[0]
+        )
 
         curve_loop = gmsh.model.geo.addCurveLoop(
-            [bottom_line, right_line, top_line, left_line])
+            [bottom_line, right_line, top_line, left_line]
+        )
         surface = gmsh.model.geo.addPlaneSurface([curve_loop])
 
         boundary_top = gmsh.model.geo.addPhysicalGroup(1, [top_line])
