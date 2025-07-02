@@ -34,7 +34,7 @@ The ``base.py`` module contains a lot of different functions and classes which
 are used in all the different solvers and are useable in a general way.
 Functions which are specific to single solver types can be found in the module
 of the specific solver.
-Additionaly a ``plutho/simulation/nonlinear`` can be found containing
+Additionally a ``plutho/simulation/nonlinear`` can be found containing
 a solver for a nonlinear simulation. The ``nonlinear_sim.py`` is a wrapper
 class for the two nonlinear simulation types currently supported. The interface
 is similar to the SingleSimulation class.

@@ -50,7 +50,12 @@ def loss_integral_scs(
     """
     def inner(s, t):
         r = local_to_global_coordinates(node_points, s, t)[0]
-        b_opt = b_operator_global(node_points, s, t, jacobian_inverted_t)
+        b_opt = b_operator_global(
+            node_points,
+            jacobian_inverted_t,
+            s,
+            t
+        )
 
         s_e = np.dot(b_opt, u_e_t)
         s_e_t_minus_1 = np.dot(b_opt, u_e_t_minus_1)
@@ -272,6 +277,7 @@ class ThermoPiezoSimTime:
     def solve_time(
         self,
         electrode_elements: npt.NDArray,
+        electrode_normals: npt.NDArray,
         theta_start = None
     ):
         """Runs the simulation using the assembled m, c and k matrices as well
@@ -286,6 +292,8 @@ class ThermoPiezoSimTime:
         Parameters:
             electrode_elements: List of all elements which are in
                 the electrode.
+            electrode_normals: List of normal vectors corresponding to the
+                electrode_elements list.
             set_symmetric_bc: True if the symmetric boundary condition for u
                 shall be set. False otherwise.
         """
@@ -401,6 +409,7 @@ class ThermoPiezoSimTime:
                     u[:, time_index+1],
                     self.material_manager,
                     electrode_elements,
+                    electrode_normals,
                     nodes
                 )
 

@@ -1,42 +1,26 @@
+"""Module for loading the meshes using the gmsh python interface."""
 
 # Python standard libraries
 import os
-from typing import List, Dict, Tuple
+from typing import Tuple, Dict, List
 
 # Third party libraries
+import gmsh
 import numpy as np
 import numpy.typing as npt
-import gmsh
 
-
-class Mesh:
-    """Class to handle generate and read meshes.
-
-    Attributes:
-        mesh_file_path: Path to the mesh.
+class GmshParser:
+    """Class to use the gmsh python interface to read the mesh files.
     """
-    mesh_file_path: str
 
-    def __init__(
-        self,
-        file_path: str,
-        load: bool = False
-    ):
+    def __init__(self, file_path):
         if not gmsh.is_initialized():
             gmsh.initialize()
 
-        self.mesh_file_path = file_path
-        if load:
-            if os.path.isfile(file_path):
-                gmsh.open(file_path)
-            else:
-                raise IOError(f"Mesh file {file_path} not found.")
+        if os.path.isfile(file_path):
+            gmsh.open(file_path)
         else:
-            if os.path.isfile(file_path):
-                raise IOError(
-                    "Mesh file already exists. If the file shall be loaded,"
-                    "set the load parameter to True."
-                )
+            raise IOError(f"Mesh file {file_path} not found.")
 
     @staticmethod
     def _get_nodes(node_tags, node_coords, _=None) -> npt.NDArray:
@@ -54,8 +38,8 @@ class Mesh:
             [[x1, y1], [x2, y2], ...]
         """
         nodes = np.zeros(shape=(len(node_tags), 2))
-        for i, _ in enumerate(node_tags):
-            nodes[i] = (node_coords[3*i], node_coords[3*i+1])
+        for i, node_tag in enumerate(node_tags):
+            nodes[node_tag-1] = (node_coords[3*i], node_coords[3*i+1])
 
         return nodes
 
@@ -90,82 +74,20 @@ class Mesh:
 
         return elements
 
-    def generate_rectangular_mesh(
-        self,
-        width: float = 0.005,
-        height: float = 0.001,
-        mesh_size: float = 0.00015,
-        x_offset: float = 0
-    ):
-        """Creates a gmsh rectangular mesh given the width, height, the mesh
-        size and the x_offset.
-
-        Parameters:
-            width: With of the rect in m.
-            height: Height of the rect in m.
-            mesh_size: Mesh size of the mesh. Equal to the maximum distance
-                between two point in the mesh.
-            x_offset: Moves the rect along the x-direction. Default value is
-                0. For 0 the left side of the rect is on the y-axis.
-        """
-        gmsh.clear()
-        corner_points = [[x_offset, 0],
-                         [width+x_offset, 0],
-                         [width+x_offset, height],
-                         [x_offset, height]]
-
-        gmsh_point_indices = []
-        for point in corner_points:
-            gmsh_point_indices.append(gmsh.model.geo.addPoint(
-                point[0], point[1], 0, mesh_size))
-
-        bottom_line = gmsh.model.geo.addLine(
-            gmsh_point_indices[0],
-            gmsh_point_indices[1])
-        right_line = gmsh.model.geo.addLine(
-            gmsh_point_indices[1],
-            gmsh_point_indices[2])
-        top_line = gmsh.model.geo.addLine(
-            gmsh_point_indices[2],
-            gmsh_point_indices[3])
-        left_line = gmsh.model.geo.addLine(
-            gmsh_point_indices[3],
-            gmsh_point_indices[0])
-
-        curve_loop = gmsh.model.geo.addCurveLoop(
-            [bottom_line, right_line, top_line, left_line])
-        surface = gmsh.model.geo.addPlaneSurface([curve_loop])
-
-        boundary_top = gmsh.model.geo.addPhysicalGroup(1, [top_line])
-        gmsh.model.setPhysicalName(1, boundary_top, "Electrode")
-        boundary_left = gmsh.model.geo.addPhysicalGroup(1, [left_line])
-        gmsh.model.setPhysicalName(1, boundary_left, "Symaxis")
-        boundary_bottom = gmsh.model.geo.addPhysicalGroup(1, [bottom_line])
-        gmsh.model.setPhysicalName(1, boundary_bottom, "Ground")
-        boundary_right = gmsh.model.geo.addPhysicalGroup(1, [right_line])
-        gmsh.model.setPhysicalName(1, boundary_right, "RightBoundary")
-
-        model = gmsh.model.geo.addPhysicalGroup(2, [surface])
-        gmsh.model.setPhysicalName(2, model, "Surface")
-
-        gmsh.model.geo.synchronize()
-        gmsh.model.mesh.generate(2)
-        gmsh.write(self.mesh_file_path)
-
     def get_mesh_nodes_and_elements(self) -> Tuple[npt.NDArray, npt.NDArray]:
         """Creates the nodes and elements lists as used in the simulation.
 
         Returns:
             List of nodes and elements"""
-        nodes = Mesh._get_nodes(*gmsh.model.mesh.getNodes())
-        elements = Mesh._get_elements(*gmsh.model.mesh.getElements())
+        nodes = self._get_nodes(*gmsh.model.mesh.getNodes())
+        elements = self._get_elements(*gmsh.model.mesh.getElements())
 
         return nodes, elements
 
     def get_nodes_by_physical_groups(
         self,
         needed_pg_names: List[str]
-    ) -> Dict[str, List]:
+    ) -> Dict[str, npt.NDArray]:
         """Returns the node indices of each physical group given by
         needed_pg_names list.
 
@@ -238,6 +160,7 @@ class Mesh:
 
     def create_element_post_processing_view(
         self,
+        output_file_path: str,
         field: npt.NDArray,
         number_of_time_steps: int,
         delta_t: float,
@@ -285,12 +208,13 @@ class Mesh:
                 time_index*delta_t,
                 field_dimension if field_dimension != 2 else 3)
 
-        if not os.path.exists(self.output_file_path):
-            gmsh.write(self.output_file_path)
-        gmsh.view.write(view_tag, self.output_file_path, append)
+        if not os.path.exists(output_file_path):
+            gmsh.write(output_file_path)
+        gmsh.view.write(view_tag, output_file_path, append)
 
     def create_u_default_post_processing_view(
         self,
+        output_file_path: str,
         u: npt.NDArray,
         number_of_time_steps: int,
         delta_t: float,
@@ -354,15 +278,16 @@ class Mesh:
                     current_theta,
                     time_index*delta_t,
                     1)
-        if not os.path.exists(self.output_file_path):
-            gmsh.write(self.output_file_path)
-        gmsh.view.write(u_view_tag, self.output_file_path, append)
-        gmsh.view.write(v_view_tag, self.output_file_path, True)
+        if not os.path.exists(output_file_path):
+            gmsh.write(output_file_path)
+        gmsh.view.write(u_view_tag, output_file_path, append)
+        gmsh.view.write(v_view_tag, output_file_path, True)
         if temperature_field:
-            gmsh.view.write(theta_view_tag, self.output_file_path, True)
+            gmsh.view.write(theta_view_tag, output_file_path, True)
 
     def create_theta_post_processing_view(
         self,
+        output_file_path: str,
         theta: npt.NDArray,
         number_of_time_steps: int,
         delta_t: float,
@@ -394,6 +319,6 @@ class Mesh:
                 current_theta,
                 time_index*delta_t,
                 1)
-        if not os.path.exists(self.output_file_path):
-            gmsh.write(self.output_file_path)
-        gmsh.view.write(theta_view_tag, self.output_file_path, append)
+        if not os.path.exists(output_file_path):
+            gmsh.write(output_file_path)
+        gmsh.view.write(theta_view_tag, output_file_path, append)

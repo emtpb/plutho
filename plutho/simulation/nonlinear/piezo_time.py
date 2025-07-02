@@ -38,7 +38,11 @@ def integral_u_nonlinear(
         npt.NDArray: 6x6 Ku matrix for the given element.
     """
     def inner(s, t):
-        b_op = b_operator_global(node_points, s, t, jacobian_inverted_t)
+        b_op = b_operator_global(
+            node_points, jacobian_inverted_t,
+            s,
+            t,
+        )
         r = local_to_global_coordinates(node_points, s, t)[0]
 
         return 1/2*np.dot(np.dot(b_op.T, nonlinear_elasticity_matrix), b_op)*r
@@ -270,7 +274,8 @@ class NonlinearPiezoSimTime:
         self,
         tolerance: float = 1e-11,
         max_iter: int = 300,
-        electrode_elements: npt.NDArray = np.array([])
+        electrode_elements: npt.NDArray = np.array([]),
+        element_normals: npt.NDArray = np.array([])
     ):
         number_of_time_steps = self.simulation_data.number_of_time_steps
         delta_t = self.simulation_data.delta_t
@@ -434,6 +439,7 @@ class NonlinearPiezoSimTime:
                     u[2*number_of_nodes:, time_index+1],
                     self.material_manager,
                     electrode_elements,
+                    element_normals,
                     self.mesh_data.nodes
                 )
 
@@ -491,6 +497,7 @@ class NonlinearPiezoSimTime:
         phi: npt.NDArray,
         material_manager: MaterialManager,
         electrode_elements: npt.NDArray,
+        element_normals: npt.NDArray,
         nodes: npt.NDArray
     ) -> float:
         """Calculates the charge using u and phi on the given electrode
@@ -521,7 +528,10 @@ class NonlinearPiezoSimTime:
 
             jacobian = np.dot(node_points, dn.T)
             jacobian_inverted_t = np.linalg.inv(jacobian).T
-            jacobian_det = nodes[element[0]][0]-nodes[element[1]][0]
+            jacobian_det = np.sqrt(
+                np.square(nodes[element[1]][0]-nodes[element[0]][0])
+                + np.square(nodes[element[1]][1]-nodes[element[0]][1])
+            )
 
             u_e = np.array([
                 u[2*element[0]],
@@ -549,7 +559,12 @@ class NonlinearPiezoSimTime:
                 material_manager.get_permittivity_matrix(element_index),
                 jacobian_inverted_t
             ) * 2 * np.pi * jacobian_det
-            q += q_u - q_v
+
+            # Now take the component normal to the line (outer direction)
+            q_u_normal = np.dot(q_u, element_normals[element_index])
+            q_v_normal = np.dot(q_v, element_normals[element_index])
+
+            q += q_u_normal - q_v_normal
 
         if np.isnan(q):
             print("Calculated charge is nan")

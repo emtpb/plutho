@@ -19,7 +19,6 @@ from ..materials import MaterialManager
 def loss_integral_scs(
     node_points: npt.NDArray,
     u_e: npt.NDArray,
-    angular_frequency: float,
     jacobian_inverted_t: npt.NDArray,
     elasticity_matrix: npt.NDArray
 ):
@@ -38,7 +37,12 @@ def loss_integral_scs(
     """
     def inner(s, t):
         r = local_to_global_coordinates(node_points, s, t)[0]
-        b_opt = b_operator_global(node_points, s, t, jacobian_inverted_t)
+        b_opt = b_operator_global(
+            node_points,
+            jacobian_inverted_t,
+            s,
+            t
+        )
 
         s_e = np.dot(b_opt, u_e)
 
@@ -85,9 +89,9 @@ class PiezoSimFreq:
     dirichlet_values: npt.NDArray
 
     # FEM matrices
-    m: npt.NDArray
-    c: npt.NDArray
-    k: npt.NDArray
+    m: sparse.lil_array
+    c: sparse.lil_array
+    k: sparse.lil_array
 
     # Resulting fields
     u: npt.NDArray
@@ -234,6 +238,7 @@ class PiezoSimFreq:
     def solve_frequency(
         self,
         electrode_elements: npt.NDArray,
+        electrode_normals: npt.NDArray,
         calculate_mech_loss: bool
     ):
         """Run the frequency simulation using the given frequencies.
@@ -243,7 +248,10 @@ class PiezoSimFreq:
         Parameters:
             frequencies: Array of frequencies at which the simulation is done.
             electrode_elements: Array of element indices. At those indices
-                the charge is calculated, summed up and saved in q."""
+                the charge is calculated, summed up and saved in q.
+            electrode_normals: List of normal vectors corresponding to the
+                electrode_elements list.
+        """
         m = self.m
         c = self.c
         k = self.k
@@ -296,6 +304,7 @@ class PiezoSimFreq:
                     u[:, frequency_index],
                     self.material_manager,
                     electrode_elements,
+                    electrode_normals,
                     self.mesh_data.nodes
                 )
 
@@ -321,7 +330,6 @@ class PiezoSimFreq:
                         loss_integral_scs(
                             node_points,
                             u_e,
-                            angular_frequency,
                             jacobian_inverted_t,
                             self.material_manager.get_elasticity_matrix(
                                 element_index

@@ -51,11 +51,10 @@ def test_thermo_time(tmp_path):
     """Test for the thermal simulation. Calculates the total stored energy in
     the simulation and compares it with the input energy.
     """
-    # Create mesh
+    # Create and load mesh; TODO maybe use smaller mesh size?
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
+    plutho.Mesh.generate_rectangular_mesh(mesh_path)
     mesh = plutho.Mesh(mesh_path)
-    # TODO Maybe use mesh with smaller element size?
-    mesh.generate_rectangular_mesh()
 
     sim = plutho.SingleSimulation(
         tmp_path,
@@ -78,7 +77,7 @@ def test_thermo_time(tmp_path):
     sim.add_material(
         "pic255",
         pic255,
-        None
+        ""
     )
 
     # Set constant volume loss density
@@ -113,11 +112,10 @@ def test_thermo_time(tmp_path):
 def test_piezo_time(tmp_path, test=True):
     """Test function for the piezo time domain simulation.
     Tests the simulation for a triangular excitation."""
-    # Create mesh
+    # Create and load mesh; TODO maybe use smaller mesh size?
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
-    mesh = plutho.Mesh(mesh_path, load=not test)
-    # TODO Maybe use mesh with smaller element size?
-    mesh.generate_rectangular_mesh()
+    plutho.Mesh.generate_rectangular_mesh(mesh_path)
+    mesh = plutho.Mesh(mesh_path)
 
     sim = plutho.SingleSimulation(
         tmp_path,
@@ -128,7 +126,7 @@ def test_piezo_time(tmp_path, test=True):
     sim.add_material(
         "pic255",
         pic255,
-        None
+        ""
     )
 
     sim.setup_piezo_time_domain(
@@ -164,9 +162,12 @@ def test_piezo_time(tmp_path, test=True):
     electrode_elements = mesh.get_elements_by_physical_groups(
         ["Electrode"]
     )["Electrode"]
+    electrode_normals = np.tile([0, 1], (len(electrode_elements), 1))
 
-    sim.simulate(electrode_elements=electrode_elements)
-
+    sim.simulate(
+        electrode_elements=electrode_elements,
+        electrode_normals=electrode_normals
+    )
     test_folder_name = "piezo_time"
 
     if test:
@@ -185,9 +186,10 @@ def test_piezo_time(tmp_path, test=True):
 
         # Compare arrays
         # For displacement just take last time step. TODO Is this sufficient?
-        assert compare_numpy_array(uut_q, test_q), "Charge is not equal"
         assert compare_numpy_array(uut_u, test_u), \
             "Displacement u is not equal"
+        assert compare_numpy_array(uut_q, test_q), "Charge is not equal"
+
     else:
         # Save results
         np.save(
@@ -204,11 +206,10 @@ def test_piezo_freq(tmp_path, test=True):
     """Test function for the piezo frequency domain simulation. Tests the
     displacement field and charge for a sinusoidal signal.
     """
-    # Create mesh
+    # Create and load mesh; TODO maybe use smaller mesh size?
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
-    mesh = plutho.Mesh(mesh_path, load=not test)
-    # TODO Maybe use mesh with smaller element size?
-    mesh.generate_rectangular_mesh()
+    plutho.Mesh.generate_rectangular_mesh(mesh_path)
+    mesh = plutho.Mesh(mesh_path)
 
     sim = plutho.SingleSimulation(
         tmp_path,
@@ -219,7 +220,7 @@ def test_piezo_freq(tmp_path, test=True):
     sim.add_material(
         "pic255",
         pic255,
-        None
+        ""
     )
 
     sim.setup_piezo_freq_domain(np.array([2e6]))
@@ -244,8 +245,12 @@ def test_piezo_freq(tmp_path, test=True):
     electrode_elements = mesh.get_elements_by_physical_groups(
         ["Electrode"]
     )["Electrode"]
+    electrode_normals = np.array([[0, 1]] * len(electrode_elements))
 
-    sim.simulate(electrode_elements=electrode_elements)
+    sim.simulate(
+        electrode_elements=electrode_elements,
+        electrode_normals=electrode_normals
+    )
 
     test_folder_name = "piezo_freq"
 
@@ -266,9 +271,10 @@ def test_piezo_freq(tmp_path, test=True):
 
         # Compare arrays
         # For displacement just take last time step. TODO Is this sufficient?
-        assert compare_numpy_array(uut_q, test_q), "Charge is not equal"
         assert compare_numpy_array(uut_u, test_u), \
             "Displacement u is not equal"
+        assert compare_numpy_array(uut_q, test_q), "Charge is not equal"
+
     else:
         # Save test data
         np.save(
@@ -287,12 +293,10 @@ def test_thermo_piezo_time(tmp_path, test=True):
     stored energy in the thermal field. Additionaly the simulation results at
     last time step are compared with fixed results.
     """
-    # Create mesh
+    # Create and load mesh; TODO maybe use smaller mesh size?
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
-    mesh = plutho.Mesh(mesh_path, load=not test)
-    # TODO Maybe use mesh with smaller element size?
-    mesh.generate_rectangular_mesh()
-    nodes, elements = mesh.get_mesh_nodes_and_elements()
+    plutho.Mesh.generate_rectangular_mesh(mesh_path)
+    mesh = plutho.Mesh(mesh_path)
 
     sim = plutho.SingleSimulation(
         tmp_path,
@@ -303,8 +307,10 @@ def test_thermo_piezo_time(tmp_path, test=True):
     sim.add_material(
         "pic255",
         pic255,
-        None
+        ""
     )
+
+    nodes, elements = mesh.get_mesh_nodes_and_elements()
 
     number_of_nodes = len(nodes)
     DELTA_T = 1e-8
@@ -349,8 +355,12 @@ def test_thermo_piezo_time(tmp_path, test=True):
     electrode_elements = mesh.get_elements_by_physical_groups(
         ["Electrode"]
     )["Electrode"]
+    electrode_normals = np.array([[0, 1]] * len(electrode_elements))
 
-    sim.simulate(electrode_elements=electrode_elements)
+    sim.simulate(
+        electrode_elements=electrode_elements,
+        electrode_normals=electrode_normals
+    )
 
     # Calculate input energy
     input_energy = plutho.calculate_electrical_input_energy(
@@ -443,15 +453,9 @@ def generate_data():
     plutho is correct."""
     dir = "tests/data"
 
-    # Check if mesh exists
-    mesh_path = os.path.join(dir, "default_mesh.msh")
-    if not os.path.exists(mesh_path):
-        mesh = plutho.Mesh(mesh_path)
-        mesh.generate_rectangular_mesh()
-
-    # test_piezo_time(dir, test=False)
+    test_piezo_time(dir, test=False)
     test_piezo_freq(dir, test=False)
-    # test_thermo_piezo_time(dir, test=False)
+    test_thermo_piezo_time(dir, test=False)
 
 
 if __name__ == "__main__":
