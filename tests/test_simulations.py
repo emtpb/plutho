@@ -453,9 +453,6 @@ def generate_data():
     plutho is correct."""
     dir = "tests/data"
 
-    # Check if mesh exists
-    mesh_path = os.path.join(dir, "default_mesh.msh")
-
     test_piezo_time(dir, test=False)
     test_piezo_freq(dir, test=False)
     test_thermo_piezo_time(dir, test=False)
