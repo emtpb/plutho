@@ -275,7 +275,7 @@ class NonlinearPiezoSimTime:
         tolerance: float = 1e-11,
         max_iter: int = 300,
         electrode_elements: npt.NDArray = np.array([]),
-        element_normals: npt.NDArray = np.array([])
+        electrode_normals: npt.NDArray = np.array([])
     ):
         number_of_time_steps = self.simulation_data.number_of_time_steps
         delta_t = self.simulation_data.delta_t
@@ -439,7 +439,7 @@ class NonlinearPiezoSimTime:
                     u[2*number_of_nodes:, time_index+1],
                     self.material_manager,
                     electrode_elements,
-                    element_normals,
+                    electrode_normals,
                     self.mesh_data.nodes
                 )
 

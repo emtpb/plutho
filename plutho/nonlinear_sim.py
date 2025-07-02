@@ -222,6 +222,8 @@ class PiezoNonlinear:
                 dependent simulation. If the charge shall be calculated it is
                 necessary to set this parameter. Set it to the indices of the
                 elements on which the charge shall be calculated.
+            - "electrode_normals" (npt.NDArray): List of normal vectors
+                corresponding to each electrode element (same index).
             - "u_start" (npt.NDArray): Can only be set for the stationary
                 simulation. Gives a initial guess for u to achieve a faster
                 convergence.
