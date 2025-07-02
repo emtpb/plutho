@@ -38,8 +38,8 @@ class GmshParser:
             [[x1, y1], [x2, y2], ...]
         """
         nodes = np.zeros(shape=(len(node_tags), 2))
-        for i, _ in enumerate(node_tags):
-            nodes[i] = (node_coords[3*i], node_coords[3*i+1])
+        for i, node_tag in enumerate(node_tags):
+            nodes[node_tag-1] = (node_coords[3*i], node_coords[3*i+1])
 
         return nodes
 
