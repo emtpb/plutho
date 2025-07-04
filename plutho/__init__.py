@@ -1,6 +1,6 @@
 from .simulation import PiezoSimTime, ThermoPiezoSimTime, MeshData, \
     SimulationData, MaterialData, SimulationType, ModelType, \
-    ThermoSimTime
+    ThermoSimTime, NonlinearType
 from .io import parse_charge_hist_file, parse_displacement_hist_file, \
     create_vector_field_as_csv, create_scalar_field_as_csv
 from .postprocessing import calculate_impedance, \

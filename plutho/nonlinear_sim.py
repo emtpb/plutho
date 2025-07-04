@@ -12,7 +12,8 @@ import numpy.typing as npt
 # Local libraries
 from plutho import Mesh, MaterialManager, FieldType, MaterialData, \
     MeshData, SimulationData
-from .simulation import NonlinearPiezoSimStationary, NonlinearPiezoSimTime
+from .simulation import NonlinearPiezoSimStationary, NonlinearPiezoSimTime, \
+    NonlinearType
 
 
 class PiezoNonlinear:
@@ -39,7 +40,7 @@ class PiezoNonlinear:
     sim_directory: str
     mesh: Mesh
     material_manager: MaterialManager
-    solver: Union[NonlinearPiezoSimTime, NonlinearPiezoSimStationary]
+    solver: Union[None, NonlinearPiezoSimTime, NonlinearPiezoSimStationary]
     nonlinear_material_matrix: npt.NDArray
     boundary_conditions: List[Dict]
 
@@ -186,18 +187,39 @@ class PiezoNonlinear:
             )
         )
 
-    def set_nonlinear_material_6x6(self, mmatrix: npt.NDArray):
-        """Sets the nonlinear matrix matrix based on a given 6x6 C matrix.
+    def set_nonlinearity_type(self, ntype: NonlinearType, **kwargs):
+        """Sets the type of nonlinearity for the simulation.
 
         Parameters:
-            mmatrix: Material matrix 6x6.
+            ntype: NonlinearType object.
+            kwargs: Can contain different parameters based on the nonlinear
+                type:
+                - If ntype=NonlinearType.Rayleigh:
+                    "zeta" (float): Scalar nonlinearity parameter.
+                - If ntype=NonlinearType.Custom:
+                    "nonlinear_matrix" (npt.NDArray): 6x6 custom nonlinear
+                        material matrix.
         """
-        self.nonlinear_material_matrix = np.array([
-            [mmatrix[0, 0], mmatrix[0, 2], 0, mmatrix[0, 1]],
-            [mmatrix[0, 2], mmatrix[2, 2], 0, mmatrix[0, 2]],
-            [0, 0, mmatrix[3, 3], 0],
-            [mmatrix[0, 1], mmatrix[0, 2], 0, mmatrix[0, 0]]
-        ])
+        # TODO (almost) Duplicate code with nonlinear/piezo_time.py
+        if ntype is NonlinearType.Rayleigh:
+            if "zeta" not in kwargs:
+                raise ValueError(
+                    "Missing 'zeta' parameter for nonlinear type: Rayleigh"
+                )
+        elif ntype is NonlinearType.Custom:
+            if "nonlinear_matrix" not in kwargs:
+                raise ValueError(
+                    "Nonlinearity matrix is missing as parameter for curstom "
+                    "nonlinearity"
+                )
+        else:
+            raise NotImplementedError(
+                f"Nonlinearity type {NonlinearType.value} is not implemented"
+            )
+
+        self.nonlinear_type = ntype
+        self.nonlinear_params = kwargs
+
 
     def simulate(
         self,
@@ -254,9 +276,13 @@ class PiezoNonlinear:
         self.solver.dirichlet_nodes = np.array(self.dirichlet_nodes)
         self.solver.dirichlet_values = np.array(self.dirichlet_values)
 
-        # Run the simulation
-        self.solver.assemble(self.nonlinear_material_matrix)
+        # Assemble
+        self.solver.assemble(
+            self.nonlinear_type,
+            nonlinear_matrix=self.nonlinear_material_matrix
+        )
 
+        # Run simulation
         if isinstance(self.solver, NonlinearPiezoSimTime):
             if kwargs["electrode_elements"] is not None:
                 self.charge_calculated = True
@@ -411,7 +437,7 @@ class PiezoNonlinear:
         simulation = PiezoNonlinear(
             simulation_folder,
             "",
-            Mesh(mesh_file, True)
+            Mesh(mesh_file)
         )
         # Workaround since simulation_folder and simulation_name are
         # combined in the constructor, see empty string above for the

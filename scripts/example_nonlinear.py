@@ -5,10 +5,31 @@ import os
 
 # Third party libraries
 import numpy as np
-import matplotlib.pyplot as plt
 
 # Local libraries
 import plutho
+
+
+pic181 = plutho.MaterialData(
+    **{
+      "c11": 141218192791.12772,
+      "c12": 82292914124.0279,
+      "c13": 80362329625.75212,
+      "c33": 137188538228.6311,
+      "c44": 29848846049.816402,
+      "e15": 13.216444117013664,
+      "e31": -4.979419636068149,
+      "e33": 14.149818966822629,
+      "eps11": 1.3327347064648263e-08,
+      "eps33": 5.380490373139249e-09,
+      "alpha_m": 0.0,
+      "alpha_k": 1.289813815258054e-10,
+      "thermal_conductivity": 1.1,
+      "heat_capacity": 350,
+      "temperatures": 25,
+      "density": 7850
+    }
+)
 
 
 # Example data for the nonlinear stiffness matrix
@@ -46,16 +67,15 @@ def simulate_nonlinear_stationary(CWD):
     mesh_file = os.path.join(CWD, "ring_mesh.msh")
 
     # Load/create ring mesh
-    if os.path.exists(mesh_file):
-        mesh = plutho.Mesh(mesh_file, True)
-    else:
-        mesh = plutho.Mesh(mesh_file, False)
-        mesh.generate_rectangular_mesh(
+    if not os.path.exists(mesh_file):
+        plutho.Mesh.generate_rectangular_mesh(
+            mesh_file,
             width=0.00635,
             height=0.001,
             x_offset=0.0026,
             mesh_size=0.0001
         )
+    mesh = plutho.Mesh(mesh_file)
 
     # Create simulation
     sim = plutho.PiezoNonlinear(
@@ -67,10 +87,13 @@ def simulate_nonlinear_stationary(CWD):
     # Set materials
     sim.add_material(
         material_name="pic181",
-        material_data=plutho.materials.pic181_25,
+        material_data=pic181,
         physical_group_name=""  # Means all elements
     )
-    sim.set_nonlinear_material_6x6(c_nonlin_6x6_nonsymmetric)
+    sim.set_nonlinearity_type(
+        plutho.NonlinearType.Custom,
+        nonlinear_matrix=c_nonlin_6x6_nonsymmetric
+    )
 
     # Set boundary conditions
     excitation = 1000
@@ -88,10 +111,14 @@ def simulate_nonlinear_stationary(CWD):
     sim.setup_stationary_simulation()
 
     # For better convergence set u_r and u_z for one node to 0
-    sim.dirichlet_nodes.append([0, 1])
-    sim.dirichlet_values.append([0, 0])
+    sim.dirichlet_nodes.append(0)
+    sim.dirichlet_nodes.append(1)
+    sim.dirichlet_values.append(0)
+    sim.dirichlet_values.append(0)
 
-    sim.simulate()
+    sim.simulate(
+        tolerance=1e-10
+    )
 
 
 def simulate_nonlinaer_time_dep(CWD):
@@ -99,16 +126,15 @@ def simulate_nonlinaer_time_dep(CWD):
     mesh_file = os.path.join(CWD, "ring_mesh.msh")
 
     # Load/create ring mesh
-    if os.path.exists(mesh_file):
-        mesh = plutho.Mesh(mesh_file, True)
-    else:
-        mesh = plutho.Mesh(mesh_file, False)
-        mesh.generate_rectangular_mesh(
+    if not os.path.exists(mesh_file):
+        plutho.Mesh.generate_rectangular_mesh(
+            mesh_file,
             width=0.00635,
             height=0.001,
             x_offset=0.0026,
             mesh_size=0.0001
         )
+    mesh = plutho.Mesh(mesh_file)
 
     # Create simulation
     sim = plutho.PiezoNonlinear(
@@ -120,10 +146,13 @@ def simulate_nonlinaer_time_dep(CWD):
     # Set materials
     sim.add_material(
         material_name="pic181",
-        material_data=plutho.materials.pic181_25,
+        material_data=pic181,
         physical_group_name=""  # Means all elements
     )
-    sim.set_nonlinear_material_6x6(c_nonlin_6x6_nonsymmetric)
+    sim.set_nonlinearity_type(
+        plutho.NonlinearType.Custom,
+        nonlinear_matrix=c_nonlin_6x6_nonsymmetric
+    )
 
     # Simulation parameters
     DELTA_T = 1e-8
@@ -158,9 +187,13 @@ def simulate_nonlinaer_time_dep(CWD):
     electrode_elements = mesh.get_elements_by_physical_groups(
         ["Electrode"]
     )["Electrode"]
+    electrode_normals = np.tile([0, 1], (len(electrode_elements), 1))
 
     # Run simulation
-    sim.simulate(electrode_elements=electrode_elements)
+    sim.simulate(
+        electrode_elements=electrode_elements,
+        electrode_normals=electrode_normals
+    )
 
 
 if __name__ == "__main__":
@@ -172,5 +205,5 @@ if __name__ == "__main__":
     if not os.path.isdir(CWD):
         os.makedirs(CWD)
 
-    # simulate_nonlinear_stationary(CWD)
+    simulate_nonlinear_stationary(CWD)
     simulate_nonlinaer_time_dep(CWD)

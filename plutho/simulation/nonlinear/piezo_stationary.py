@@ -13,10 +13,9 @@ from scipy import sparse
 from scipy.sparse import linalg
 
 # Local libraries
-from ..base import MeshData, integral_ku, integral_kuv, integral_kve, \
-    create_local_element_data, LocalElementData
+from .base import assemble, NonlinearType
+from ..base import MeshData, LocalElementData
 from plutho.materials import MaterialManager
-from plutho.simulation.nonlinear.piezo_time import integral_u_nonlinear
 
 
 class NonlinearPiezoSimStationary:
@@ -36,8 +35,8 @@ class NonlinearPiezoSimStationary:
     dirichlet_values: npt.NDArray
 
     # FEM matrices
-    k: sparse.sparray
-    ln: sparse.sparray
+    k: sparse.lil_array
+    ln: sparse.lil_array
 
     # Internal simulation data
     local_elements: List[LocalElementData]
@@ -55,121 +54,16 @@ class NonlinearPiezoSimStationary:
         self.dirichlet_nodes = np.array([])
         self.dirichlet_valuse = np.array([])
 
-    def assemble(self, nonlinear_elasticity_matrix: npt.NDArray):
-        """Assembles the FEM matrices based on the set mesh_data and
-        material_data. Resulting FEM matrices are saved in global variables.
-
-        Parameters:
-            nonlinear_elasticity_matrix: 4x4 nonlinear material matrix
-                (rotational symmetric).
-        """
-        # TODO Assembly takes to long rework this algorithm
-        # Maybe the 2x2 matrix slicing is not very fast
-        nodes = self.mesh_data.nodes
-        elements = self.mesh_data.elements
-        self.local_elements = create_local_element_data(nodes, elements)
-
-        number_of_nodes = len(nodes)
-        ku = sparse.lil_matrix(
-            (2*number_of_nodes, 2*number_of_nodes),
-            dtype=np.float64
+    def assemble(self, nonlinear_type: NonlinearType, **kwargs):
+        """Redirect to general nonlinear assembly function"""
+        _, _, k, ln = assemble(
+            self.mesh_data,
+            self.material_manager,
+            nonlinear_type,
+            **kwargs
         )
-        kuv = sparse.lil_matrix(
-            (2*number_of_nodes, number_of_nodes),
-            dtype=np.float64
-        )
-        kve = sparse.lil_matrix(
-            (number_of_nodes, number_of_nodes),
-            dtype=np.float64
-        )
-        lu = sparse.lil_matrix(
-            (2*number_of_nodes, 2*number_of_nodes),
-            dtype=np.float64
-        )
-
-        for element_index, element in enumerate(self.mesh_data.elements):
-            # Get local element nodes and matrices
-            local_element = self.local_elements[element_index]
-            node_points = local_element.node_points
-            jacobian_inverted_t = local_element.jacobian_inverted_t
-            jacobian_det = local_element.jacobian_det
-
-            # TODO Check if its necessary to calculate all integrals
-            # --> Dirichlet nodes could be leaved out?
-            # Multiply with jac_det because its integrated with respect to
-            # local coordinates.
-            # Mutiply with 2*pi because theta is integrated from 0 to 2*pi
-            ku_e = (
-                integral_ku(
-                    node_points,
-                    jacobian_inverted_t,
-                    self.material_manager.get_elasticity_matrix(element_index)
-                )
-                * jacobian_det * 2 * np.pi
-            )
-            kuv_e = (
-                integral_kuv(
-                    node_points,
-                    jacobian_inverted_t,
-                    self.material_manager.get_piezo_matrix(element_index)
-                )
-                * jacobian_det * 2 * np.pi
-            )
-            kve_e = (
-                integral_kve(
-                    node_points,
-                    jacobian_inverted_t,
-                    self.material_manager.get_permittivity_matrix(
-                        element_index
-                    )
-                )
-                * jacobian_det * 2 * np.pi
-            )
-            lu_e = (
-                integral_u_nonlinear(
-                    node_points,
-                    jacobian_inverted_t,
-                    nonlinear_elasticity_matrix
-                ) * jacobian_det * 2 * np.pi
-            )
-
-            # Now assemble all element matrices
-            for local_p, global_p in enumerate(element):
-                for local_q, global_q in enumerate(element):
-                    # Ku_e is a 6x6 matrix and 2x2 matrices are sliced out
-                    # of it.
-                    ku[2*global_p:2*global_p+2, 2*global_q:2*global_q+2] += \
-                        ku_e[2*local_p:2*local_p+2, 2*local_q:2*local_q+2]
-
-                    # KuV_e is a 6x3 matrix and 2x1 vectors are sliced out.
-                    # [:, None] converts to a column vector.
-                    kuv[2*global_p:2*global_p+2, global_q] += \
-                        kuv_e[2*local_p:2*local_p+2, local_q][:, None]
-
-                    # KVe_e is a 3x3 matrix and therefore the values can
-                    # be set directly.
-                    kve[global_p, global_q] += kve_e[local_p, local_q]
-
-                    # L_e is similar to Ku_e
-                    lu[2*global_p:2*global_p+2, 2*global_q:2*global_q+2] += \
-                        lu_e[2*local_p:2*local_p+2, 2*local_q:2*local_q+2]
-
-        # Calculate block matrices
-        zeros1x1 = np.zeros((number_of_nodes, number_of_nodes))
-        zeros2x1 = np.zeros((2*number_of_nodes, number_of_nodes))
-        zeros1x2 = np.zeros((number_of_nodes, 2*number_of_nodes))
-
-        k = sparse.block_array([
-            [ku, kuv],
-            [kuv.T, -1*kve]
-        ])
-        ln = sparse.block_array([
-            [lu, zeros2x1],
-            [zeros1x2, zeros1x1]
-        ])
-
-        self.k = k.tolil()
-        self.ln = ln.tolil()
+        self.k = k
+        self.ln = ln
 
     def solve_linear(self):
         """Solves the linear problem Ku=f (ln is not used).
