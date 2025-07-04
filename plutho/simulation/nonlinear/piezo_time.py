@@ -35,16 +35,13 @@ class NonlinearPiezoSimTime:
             the electrical field.
         dirichlet_values_phi: Values which are set at the node from the nodes
             list for the electrical field.
-        mu: FEM mass matrix for the mechanical field.
-        ku: FEM stiffness matrix for the mechanical field.
-        cu: FEM damping matrix for the mechanical field.
-        kuv: FEM stiffness matrix for the coupling of electrical and
-            mechanical field.
-        kv: FEM stiffness matrix for the electrical field.
+        m: FEM mass matrix for the mechanical field.
+        k: FEM stiffness matrix for the mechanical field.
+        c: FEM damping matrix for the mechanical field.
         ln: FEM stiffness matrix for the nonlinear part of the
             mechanical field.
-        u: Mechanical field vector u(t,r).
-        q: List of charges per time step.
+        u: Mechanical field vector u(element, t).
+        q: Charge q(t).
         local_elements: List of element data for the local triangles.
 
     Parameters:
