@@ -58,20 +58,15 @@ def load_mesh(mesh_file_path):
     Parameters:
         mesh_file_path: Path to the mesh file.
     """
-    if os.path.exists(mesh_file_path):
-        mesh = plutho.Mesh(mesh_file_path, load=True)
-    else:
-        mesh = plutho.Mesh(mesh_file_path, load=False)
-
-        # When there is no mesh file a new mesh is generated.
-        # mesh_size is the maximum possible distance betweeen two points of the
-        # same triangle in the mesh.
-        mesh.generate_rectangular_mesh(
+    if not os.path.exists(mesh_file_path):
+        plutho.Mesh.generate_rectangular_mesh(
+            mesh_file_path,
             width=0.005,
             height=0.001,
             mesh_size=0.00004,
             x_offset=0
         )
+    mesh = plutho.Mesh(mesh_file_path)
 
     return mesh
 
@@ -114,7 +109,7 @@ def simulate_piezo_impedance(base_directory, show_results):
         # This is a predefined material
         material_data=pic255,
         # Since this is None the material will be applied everywhere
-        physical_group_name=None
+        physical_group_name=""
     )
 
     # Setup boundary conditions
@@ -154,7 +149,7 @@ def simulate_piezo_impedance(base_directory, show_results):
     # Additionally the orientation of the electrode elements is needed to
     # calculate the charge. Since they all lie on the uppder electrode, the
     # (outer) normal vector only points in z direction.
-    electrode_normals = np.tile([0, 1], (len(electrode_elements), 1)) 
+    electrode_normals = np.tile([0, 1], (len(electrode_elements), 1))
 
     # Now the simulation can be done
     sim.simulate(
@@ -221,7 +216,7 @@ def simulate_thermo_piezo(base_directory):
     sim.add_material(
         "pic255",
         pic255,
-        None
+        ""
     )
 
     # Triangular excitation
@@ -293,7 +288,7 @@ def simulate_coupled_thermo_time(base_directory):
     coupled_sim.add_material(
         "pic255",
         pic255,
-        None
+        ""
     )
 
     # Excitation for piezoelectric simulation
@@ -343,7 +338,7 @@ def simulate_coupled_thermo_freq(base_directory):
     coupled_sim.add_material(
         "pic184",
         pic184,
-        None
+        ""
     )
 
     coupled_sim.set_excitation(
@@ -379,7 +374,7 @@ def simulate_thermo_time(base_directory):
     sim.add_material(
         "pic255",
         pic255,
-        None
+        ""
     )
 
     # As an example set a constant volume heat source
@@ -419,7 +414,7 @@ if __name__ == "__main__":
     if not os.path.isdir(CWD):
         os.makedirs(CWD)
 
-    # simulate_piezo_impedance(CWD, False)
-    # simulate_thermo_piezo(CWD)
-    # simulate_coupled_thermo_time(CWD)
+    simulate_piezo_impedance(CWD, False)
+    simulate_thermo_piezo(CWD)
+    simulate_coupled_thermo_time(CWD)
     simulate_coupled_thermo_freq(CWD)
