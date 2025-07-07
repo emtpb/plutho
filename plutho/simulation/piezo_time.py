@@ -9,7 +9,7 @@ import scipy.sparse.linalg as slin
 
 # Local libraries
 from .base import SimulationData, MeshData, \
-    gradient_local_shape_functions, \
+    gradient_local_shape_functions_2d, \
     local_to_global_coordinates, b_operator_global, integral_m, \
     integral_ku, integral_kuv, integral_kve, apply_dirichlet_bc, \
     line_quadrature, create_local_element_data, LocalElementData
@@ -73,7 +73,7 @@ def charge_integral_v(
     """
     def inner(s):
         r = local_to_global_coordinates(node_points, s, 0)[0]
-        dn = gradient_local_shape_functions()
+        dn = gradient_local_shape_functions_2d()
         global_dn = np.dot(jacobian_inverted_t, dn)
 
         return -np.dot(np.dot(permittivity_matrix, global_dn), v_e)*r
@@ -102,7 +102,7 @@ def calculate_charge(
     q = 0
 
     for element_index, element in enumerate(elements):
-        dn = gradient_local_shape_functions(2)
+        dn = gradient_local_shape_functions_2d()
         node_points = np.array([
             [nodes[element[0]][0],
              nodes[element[1]][0],

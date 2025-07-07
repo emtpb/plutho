@@ -10,8 +10,8 @@ import scipy.sparse.linalg as slin
 from scipy import sparse
 
 # Local libraries
-from .base import SimulationData, MeshData, \
-    local_shape_functions, gradient_local_shape_functions, \
+from .base import SimulationData, MeshData, local_shape_functions_1d, \
+    local_shape_functions_2d, gradient_local_shape_functions_2d, \
     local_to_global_coordinates, integral_m, LocalElementData, \
     quadratic_quadrature, line_quadrature, create_local_element_data, \
     apply_dirichlet_bc, get_avg_temp_field_per_element
@@ -31,7 +31,7 @@ def integral_heat_flux(
     Returns:
         npt.NDArray heat flux integral on each point."""
     def inner(s):
-        n = local_shape_functions(s)
+        n = local_shape_functions_1d(s)
         r = local_to_global_coordinates(node_points, s)[0]
 
         return n*heat_flux*r
@@ -54,7 +54,7 @@ def integral_ktheta(
         npt.NDArray: 3x3 Ktheta matrix for the given element.
     """
     def inner(s, t):
-        dn = gradient_local_shape_functions()
+        dn = gradient_local_shape_functions_2d()
         global_dn = np.dot(jacobian_inverted_t, dn)
         r = local_to_global_coordinates(node_points, s, t)[0]
 
@@ -77,7 +77,7 @@ def integral_theta_load(
         npt.NDArray: f vector value at the specific ndoe
     """
     def inner(s, t):
-        n = local_shape_functions(s, t)
+        n = local_shape_functions_2d(s, t)
         r = local_to_global_coordinates(node_points, s, t)[0]
         return n*mech_loss*r
 
@@ -154,7 +154,7 @@ class ThermoSimTime:
             dtype=np.float64)
 
         for element in self.mesh_data.elements:
-            dn = gradient_local_shape_functions()
+            dn = gradient_local_shape_functions_2d()
             # Get node points of element in format
             # [x1 x2 x3]
             # [y1 y2 y3] where (xi, yi) are the coordinates for Node i
@@ -211,7 +211,7 @@ class ThermoSimTime:
         f = np.zeros(shape=(number_of_nodes, number_of_time_steps))
         for time_step in range(number_of_time_steps):
             for element_index, element in enumerate(self.mesh_data.elements):
-                dn = gradient_local_shape_functions()
+                dn = gradient_local_shape_functions_2d()
                 node_points = np.array([
                     [nodes[element[0]][0],
                      nodes[element[1]][0],
@@ -252,7 +252,7 @@ class ThermoSimTime:
         f = np.zeros(number_of_nodes)
 
         for element_index, element in enumerate(self.mesh_data.elements):
-            dn = gradient_local_shape_functions()
+            dn = gradient_local_shape_functions_2d()
             node_points = np.array([
                 [nodes[element[0]][0],
                  nodes[element[1]][0],

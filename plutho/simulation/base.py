@@ -153,7 +153,7 @@ class MaterialData:
 # -------- Local functions and integrals --------
 
 
-def local_shape_functions(*dimensions: float):
+def local_shape_functions_1d(s):
     """Returns the local linear shape functions for the given coordinates for a
     line or a triangle.
     The dimension of the returned shape functions depends on the number of
@@ -169,21 +169,12 @@ def local_shape_functions(*dimensions: float):
         npt.NDArray: Shape functions depending on the given parameters for a
             line or a triangle
     """
-    dim = len(dimensions)
-    if dim == 1:
-        return np.array([1-dimensions[0], dimensions[0]])
-    elif dim == 2:
-        return np.array([
-            1-dimensions[0]-dimensions[1],
-            dimensions[0],
-            dimensions[1]
-        ])
-    else:
-        raise NotImplementedError(
-            "Function not implemented for dimensions of 3 and above"
-        )
+    return np.array([
+        1-s, s
+    ])
 
-def gradient_local_shape_functions(dim: int = 2):
+
+def gradient_local_shape_functions_1d():
     """Returns the gradient of the local shape functions. The dimension can be
     1 for a line or 2 for a triangle.
 
@@ -192,21 +183,58 @@ def gradient_local_shape_functions(dim: int = 2):
             where n is the number of shape functions. Since currently shape
             functions are always linear: dim=1 -> n=2 and dim=2 -> n=3
     """
-    if dim == 1:
-        print("dim=1")
-        return np.array([
-            [-1, 1],
-            [0, 0]
-        ])
-    elif dim == 2:
-        return np.array([
-            [-1, 1, 0],
-            [-1, 0, 1]
-        ])
-    else:
-        raise NotImplementedError(
-            "Function not implemented for dimensions of 3 and above"
-        )
+    return np.array([
+        [-1, 1],
+        [0, 0]
+    ])
+
+
+def local_shape_functions_2d(s, t, element_order=1):
+    """Returns the local linear shape functions for the given coordinates for a
+    line or a triangle.
+    The dimension of the returned shape functions depends on the number of
+    coordinates given.
+
+    Parameters:
+        dimensions: Each parameter corresponds to one coordinate. If only one
+            parameter is given it resembles 2 shape functions along a line. If
+            two coordinates are given it resembles 3 shape functions for a
+            triangle.
+
+    Returns:
+        npt.NDArray: Shape functions depending on the given parameters for a
+            line or a triangle
+    """
+    match element_order:
+        case 1:
+            return np.array([1-s-t, s, t])
+        case 2:
+            return np.array([])
+        case 3:
+            return np.array([])
+        case _:
+            raise ValueError(
+                "Shape functions not implemented for element order"
+                f"{element_order}"
+            )
+
+    return np.array([
+        1-s-t, s, t
+    ])
+
+def gradient_local_shape_functions_2d():
+    """Returns the gradient of the local shape functions. The dimension can be
+    1 for a line or 2 for a triangle.
+
+    Returns:
+        npt.NDArray: Gradient of each of the shape functions. Shape: (2,n),
+            where n is the number of shape functions. Since currently shape
+            functions are always linear: dim=1 -> n=2 and dim=2 -> n=3
+    """
+    return np.array([
+        [-1, 1, 0],
+        [-1, 0, 1]
+    ])
 
 
 def local_to_global_coordinates(
@@ -231,13 +259,19 @@ def local_to_global_coordinates(
             " dimensions"
         )
 
-    return np.dot(node_points, local_shape_functions(*dimensions))
+    if dim == 1:
+        return np.dot(node_points, local_shape_functions_1d(*dimensions))
+    elif dim == 2:
+        return np.dot(node_points, local_shape_functions_2d(*dimensions))
+    else:
+        raise ValueError("{dim}d local shape functions not defined.")
 
 
 def b_operator_global(
     node_points: npt.NDArray,
     jacobian_inverted_t: npt.NDArray,
-    *dimensions: float
+    s: float,
+    t: float
 ):
     """Calculates the B operator for the local coordinantes which is needed
     for voigt-notation.
@@ -254,14 +288,14 @@ def b_operator_global(
     Returns:
         B operator 4x6, for a u aligned like [u1_r, u1_z, u2_r, u2_z, ..].
     """
-    dim = len(dimensions)
+    dim = 2
 
     # Get local shape functions and r (because of theta component)
-    n = local_shape_functions(*dimensions)
-    r = local_to_global_coordinates(node_points, *dimensions)[0]
+    n = local_shape_functions_2d(s, t)
+    r = local_to_global_coordinates(node_points, s, t)[0]
 
     # Get gradients of local shape functions (s, t)
-    dn = gradient_local_shape_functions(dim)
+    dn = gradient_local_shape_functions_2d()
 
     # Convert to gradients of (r, z) using jacobi matrix
     global_dn = np.dot(jacobian_inverted_t, dn)
@@ -298,7 +332,7 @@ def integral_m(node_points: npt.NDArray):
         npt.NDArray: 3x3 M matrix for the given element.
     """
     def inner(s, t):
-        n = local_shape_functions(s, t)
+        n = local_shape_functions_2d(s, t)
 
         # Since the simulation is axisymmetric it is necessary
         # to multiply with the radius in the integral
@@ -367,7 +401,7 @@ def integral_kuv(
             s,
             t
         )
-        dn = gradient_local_shape_functions()
+        dn = gradient_local_shape_functions_2d()
         global_dn = np.dot(jacobian_inverted_t, dn)
         r = local_to_global_coordinates(node_points, s, t)[0]
 
@@ -395,7 +429,7 @@ def integral_kve(
         npt.NDArray: 3x3 KVe matrix for the given element.
     """
     def inner(s, t):
-        dn = gradient_local_shape_functions()
+        dn = gradient_local_shape_functions_2d()
         global_dn = np.dot(jacobian_inverted_t, dn)
         r = local_to_global_coordinates(node_points, s, t)[0]
 
@@ -417,7 +451,7 @@ def energy_integral_theta(
             [theta1, theta2, theta3].
     """
     def inner(s, t):
-        n = local_shape_functions(s, t)
+        n = local_shape_functions_2d(s, t)
         r = local_to_global_coordinates(node_points, s, t)[0]
 
         return np.dot(n.T, theta)*r
@@ -644,7 +678,7 @@ def create_local_element_data(
         List of LocalElementData objects.
     """
     local_element_data = []
-    dn = gradient_local_shape_functions(2)
+    dn = gradient_local_shape_functions_2d()
     for element in elements:
         # Get node points of element in format
         # [x1 x2 x3]

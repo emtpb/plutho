@@ -10,7 +10,7 @@ from scipy import sparse
 
 # Local libraries
 from .base import SimulationData, MeshData, \
-    gradient_local_shape_functions, create_local_element_data, \
+    gradient_local_shape_functions_2d, create_local_element_data, \
     local_to_global_coordinates, b_operator_global, integral_m, \
     integral_ku, integral_kuv, integral_kve, apply_dirichlet_bc, \
     quadratic_quadrature, LocalElementData, calculate_volumes, \
@@ -512,7 +512,7 @@ class ThermoPiezoSimTime:
         f_theta = np.zeros(number_of_nodes)
 
         for element_index, element in enumerate(self.mesh_data.elements):
-            dn = gradient_local_shape_functions()
+            dn = gradient_local_shape_functions_2d()
             node_points = np.array([
                 [nodes[element[0]][0],
                  nodes[element[1]][0],

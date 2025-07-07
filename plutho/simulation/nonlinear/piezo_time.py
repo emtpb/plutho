@@ -10,7 +10,7 @@ from scipy.sparse import linalg
 
 # Local libraries
 from .base import assemble, NonlinearType
-from ..base import SimulationData, MeshData, gradient_local_shape_functions, \
+from ..base import SimulationData, MeshData, gradient_local_shape_functions_2d, \
     LocalElementData
 from plutho.simulation.piezo_time import charge_integral_u, \
     charge_integral_v
@@ -328,7 +328,7 @@ class NonlinearPiezoSimTime:
         q = 0
 
         for element_index, element in enumerate(electrode_elements):
-            dn = gradient_local_shape_functions()
+            dn = gradient_local_shape_functions_2d()
             node_points = np.array([
                 [nodes[element[0]][0],
                  nodes[element[1]][0],

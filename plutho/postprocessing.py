@@ -7,7 +7,7 @@ import numpy.typing as npt
 
 # Local libraries
 from plutho.simulation.base import energy_integral_theta, \
-    gradient_local_shape_functions
+    gradient_local_shape_functions_2d
 
 
 def calculate_impedance(
@@ -84,7 +84,7 @@ def calculate_stored_thermal_energy(
 
         for time_index in range(theta.shape[1]):
             for element in elements:
-                dn = gradient_local_shape_functions()
+                dn = gradient_local_shape_functions_2d()
                 node_points = np.array([
                     [nodes[element[0]][0],
                      nodes[element[1]][0],
@@ -112,7 +112,7 @@ def calculate_stored_thermal_energy(
         stored_energy = 0
 
         for element in elements:
-            dn = gradient_local_shape_functions()
+            dn = gradient_local_shape_functions_2d()
             node_points = np.array([
                 [nodes[element[0]][0],
                  nodes[element[1]][0],
