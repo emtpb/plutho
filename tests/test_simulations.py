@@ -54,7 +54,7 @@ def test_thermo_time(tmp_path):
     # Create and load mesh; TODO maybe use smaller mesh size?
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
     plutho.Mesh.generate_rectangular_mesh(mesh_path)
-    mesh = plutho.Mesh(mesh_path)
+    mesh = plutho.Mesh(mesh_path, element_order=1)
 
     sim = plutho.SingleSimulation(
         tmp_path,
@@ -115,7 +115,7 @@ def test_piezo_time(tmp_path, test=True):
     # Create and load mesh; TODO maybe use smaller mesh size?
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
     plutho.Mesh.generate_rectangular_mesh(mesh_path)
-    mesh = plutho.Mesh(mesh_path)
+    mesh = plutho.Mesh(mesh_path, element_order=1)
 
     sim = plutho.SingleSimulation(
         tmp_path,
@@ -209,7 +209,7 @@ def test_piezo_freq(tmp_path, test=True):
     # Create and load mesh; TODO maybe use smaller mesh size?
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
     plutho.Mesh.generate_rectangular_mesh(mesh_path)
-    mesh = plutho.Mesh(mesh_path)
+    mesh = plutho.Mesh(mesh_path, element_order=1)
 
     sim = plutho.SingleSimulation(
         tmp_path,
@@ -296,7 +296,7 @@ def test_thermo_piezo_time(tmp_path, test=True):
     # Create and load mesh; TODO maybe use smaller mesh size?
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
     plutho.Mesh.generate_rectangular_mesh(mesh_path)
-    mesh = plutho.Mesh(mesh_path)
+    mesh = plutho.Mesh(mesh_path, element_order=1)
 
     sim = plutho.SingleSimulation(
         tmp_path,

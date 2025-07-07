@@ -6,6 +6,7 @@ from typing import Union, Tuple, Dict, List
 
 # Third party libraries
 import gmsh
+import numpy as np
 import numpy.typing as npt
 
 # Local libraries
@@ -26,6 +27,7 @@ class Mesh:
     def __init__(
         self,
         file_path: str,
+        element_order: int
     ):
         if not os.path.isfile(file_path):
             raise IOError(f"Mesh file {file_path} not found.")
@@ -46,9 +48,9 @@ class Mesh:
             self.file_version = version
 
         if version.startswith("2"):
-            self.parser = CustomParser(file_path)
+            self.parser = CustomParser(file_path, element_order)
         else:
-            self.parser = GmshParser(file_path)
+            self.parser = GmshParser(file_path, element_order)
 
     def get_mesh_nodes_and_elements(self) -> Tuple[npt.NDArray, npt.NDArray]:
         return self.parser.get_mesh_nodes_and_elements()

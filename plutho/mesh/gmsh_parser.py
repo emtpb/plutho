@@ -9,11 +9,28 @@ import gmsh
 import numpy as np
 import numpy.typing as npt
 
+
+# First index represents the element type:
+# 1: Line
+# 2: Triangle
+# Second index represents the element order
+element_to_nodes_map = np.array([
+    [-1, -1, -1, -1],
+    [-1, 2, 3, 4],
+    [-1, 3, 6, 10]
+])
+
+# Since its the same for lines and triangles, this map only has one row
+# and the index represents the element order
+element_to_boundary_nodes_map = np.array([-1, 2, 3, 4])
+
+
 class GmshParser:
     """Class to use the gmsh python interface to read the mesh files.
     """
+    element_order: int
 
-    def __init__(self, file_path):
+    def __init__(self, file_path, element_order):
         if not gmsh.is_initialized():
             gmsh.initialize()
 
@@ -21,6 +38,8 @@ class GmshParser:
             gmsh.open(file_path)
         else:
             raise IOError(f"Mesh file {file_path} not found.")
+
+        self.element_order = element_order
 
     @staticmethod
     def _get_nodes(node_tags, node_coords, _=None) -> npt.NDArray:
@@ -43,8 +62,8 @@ class GmshParser:
 
         return nodes
 
-    @staticmethod
     def _get_elements(
+        self,
         element_types,
         element_tags,
         element_node_tags
@@ -53,8 +72,7 @@ class GmshParser:
         getElements() api function.
 
         Parameters:
-            element_types: Element types from gmsh api. Similar to the element
-                dimension so 2 equals triangles.
+            element_types: Element types from gmsh api.
             element_tags: Tags of the element per element type.
             element_node_tags: Tags of the nodes per element tag.
 
@@ -62,17 +80,37 @@ class GmshParser:
             A list of lists where each inner list contains the node indices for
             the triangle at the outer list index.
         """
-        elements = np.zeros(shape=(len(element_tags[1]), 3), dtype=int)
-        for i, element_type in enumerate(element_types):
-            if element_type == 2:
-                # Only looking for 3-node triangle elements
-                current_element_tags = element_tags[i]
-                current_node_tags = element_node_tags[i]
-                for j, _ in enumerate(current_element_tags):
-                    # 1 is subtracted because the indices in gmsh start with 1.
-                    elements[j] = current_node_tags[3*j:3*(j+1)] - np.ones(3)
+        nodes_per_element = element_to_nodes_map[2, self.element_order]
+        elements = []
+        element_indices = []
+        # Entity elements of theset dimension containing the smaller elements
+        # Since every entity consists of multiple elements iterate over all
+        # entities and extract the elements
+        for i, _ in enumerate(element_types):
+            current_element_tags = element_tags[i]
+            current_node_tags = element_node_tags[i]
+            # For each element of which the entity consists
+            for j, _ in enumerate(current_element_tags):
+                # 1 is subtracted because the indices in gmsh start with 1.
+                elements.append(current_node_tags[
+                        nodes_per_element*j:nodes_per_element*(j+1)
+                    ] - np.ones(nodes_per_element)
+                )
+                element_indices.append(j)
 
-        return elements
+        if len(elements) == 0:
+            raise ValueError(
+                "Couldn't return elements because the list is empty."
+            )
+
+        elements_np = np.zeros(
+            shape=(len(elements), len(elements[0])),
+            dtype=int
+        )
+        for index, element in zip(element_indices, elements):
+            elements_np[index] = element
+
+        return elements_np
 
     def get_mesh_nodes_and_elements(self) -> Tuple[npt.NDArray, npt.NDArray]:
         """Creates the nodes and elements lists as used in the simulation.
@@ -80,7 +118,7 @@ class GmshParser:
         Returns:
             List of nodes and elements"""
         nodes = self._get_nodes(*gmsh.model.mesh.getNodes())
-        elements = self._get_elements(*gmsh.model.mesh.getElements())
+        elements = self._get_elements(*gmsh.model.mesh.getElements(dim=2))
 
         return nodes, elements
 
@@ -131,30 +169,31 @@ class GmshParser:
         Returns:
             Dictionary where keys are the pg names and the values are a list
             of triangles of this physical group."""
+        nodes_on_boundary = element_to_boundary_nodes_map[
+            self.element_order
+        ]
         pg_tags = self.get_nodes_by_physical_groups(needed_pg_names)
-        elements = self._get_elements(*gmsh.model.mesh.getElements())
+        elements = self._get_elements(*gmsh.model.mesh.getElements(dim=2))
         triangle_elements = {}
         for pg_name, nodes in pg_tags.items():
             current_triangle_elements = []
             for check_element in elements:
-                # If at least 2 nodes of the check_element are inside of the
-                # nodes list of the current physical group, then the element
-                # is also part of the physical group.
+                # If at least {nodes_on_boundary} nodes of the check_element
+                # are inside of the nodes list of the current physical group,
+                # then the element is also part of the physical group.
                 found_count = 0
 
-                if check_element[0] in nodes:
-                    found_count += 1
-                if check_element[1] in nodes:
-                    found_count += 1
-                if check_element[2] in nodes:
-                    found_count += 1
+                for ce in check_element:
+                    if ce in nodes:
+                        found_count += 1
 
-                if found_count > 1:
+                if found_count >= nodes_on_boundary:
                     current_triangle_elements.append(check_element)
 
             triangle_elements[pg_name] = np.array(
                 current_triangle_elements,
-                dtype=int)
+                dtype=int
+            )
 
         return triangle_elements
 
