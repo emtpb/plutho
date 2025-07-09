@@ -299,9 +299,10 @@ def test_thermo_piezo_time(tmp_path, test=True):
     last time step are compared with fixed results.
     """
     # Create and load mesh; TODO maybe use smaller mesh size?
+    element_order = 1
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
     plutho.Mesh.generate_rectangular_mesh(mesh_path)
-    mesh = plutho.Mesh(mesh_path, element_order=1)
+    mesh = plutho.Mesh(mesh_path, element_order)
 
     sim = plutho.SingleSimulation(
         tmp_path,
@@ -376,7 +377,7 @@ def test_thermo_piezo_time(tmp_path, test=True):
 
     # Calculate total loss energy
     volumes = plutho.simulation.base.calculate_volumes(
-        sim.solver.local_elements
+        sim.solver.node_points, element_order
     )
     power = np.zeros(NUMBER_OF_TIME_STEPS)
     for time_step in range(NUMBER_OF_TIME_STEPS):
@@ -394,6 +395,7 @@ def test_thermo_piezo_time(tmp_path, test=True):
         theta[:, -1],
         nodes,
         elements,
+        element_order,
         sim.material_manager.get_heat_capacity(0),
         sim.material_manager.get_density(0)
     )

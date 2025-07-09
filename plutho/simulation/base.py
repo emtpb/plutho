@@ -347,7 +347,7 @@ def integral_m(node_points: npt.NDArray, element_order: int):
         jacobian = np.dot(node_points, dn.T)
         jacobian_det = np.linalg.det(jacobian)
 
-        n = local_shape_functions_2d(s, t)
+        n = local_shape_functions_2d(s, t, element_order)
 
         # Since the simulation is axisymmetric it is necessary
         # to multiply with the radius in the integral
@@ -535,7 +535,6 @@ def quadratic_quadrature(func: Callable, element_order: int):
     Returns:
         Integral of the given function.
     """
-    #f = np.vectorize(func)
     weights = []
     points = []
 
@@ -582,17 +581,12 @@ def quadratic_quadrature(func: Callable, element_order: int):
                 f"{element_order} implemented"
             )
 
-    # TODO
-    # Instead of a double for loop make a fast calculation using numpy
-    # The numpy calculations should be simular to
+    # TODO Can this made faster using numpy?
     sum = 0
     for i in range(len(weights)):
-        for j in range(len(weights)):
-            sum += weights[i]*weights[j]*func(points[i][0], points[j][1])
-    return sum
+        sum += weights[i]*func(points[i][0], points[i][1])
 
-    # F = f(points[:, 0], points[:, 1])
-    # return np.dot(np.dot(F, weights).T, weights)
+    return sum
 
 
 def line_quadrature(func: Callable, element_order: int):
@@ -606,7 +600,6 @@ def line_quadrature(func: Callable, element_order: int):
 
     Returns:
         Integral of the given function along r-axis"""
-    # f = np.vectorize(func)
     weights = []
     points = []
 
@@ -630,9 +623,7 @@ def line_quadrature(func: Callable, element_order: int):
                 f"{element_order} implemented"
             )
 
-    # TODO Make use of numpy
-    # return np.dot(f(points).T, weights)
-
+    # TODO Make use of numpy?
     sum = 0
     for i in range(len(weights)):
         sum += weights[i]*func(points[i])

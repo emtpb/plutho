@@ -517,7 +517,7 @@ class ThermoPiezoSimTime:
         for element_index, element in enumerate(self.mesh_data.elements):
             node_points = np.zeros(shape=(2, points_per_element))
             for node_index in range(points_per_element):
-                node_points[element_index, :, node_index] = [
+                node_points[:, node_index] = [
                     nodes[element[node_index]][0],
                     nodes[element[node_index]][1]
                 ]
