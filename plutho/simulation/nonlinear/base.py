@@ -12,7 +12,7 @@ from scipy import sparse
 # Local libraries
 from ..base import MeshData, local_to_global_coordinates, b_operator_global, \
     integral_m, integral_ku, integral_kuv, integral_kve, \
-    create_local_element_data, quadratic_quadrature
+    create_node_points, quadratic_quadrature, gradient_local_shape_functions_2d
 from plutho.materials import MaterialManager
 
 
@@ -78,7 +78,8 @@ def assemble(
     # Maybe the 2x2 matrix slicing is not very fast
     nodes = mesh_data.nodes
     elements = mesh_data.elements
-    local_elements = create_local_element_data(nodes, elements)
+    element_order = mesh_data.element_order
+    node_points = create_node_points(nodes, elements, element_order)
 
     number_of_nodes = len(nodes)
     mu = sparse.lil_matrix(
@@ -103,11 +104,7 @@ def assemble(
     )
 
     for element_index, element in enumerate(elements):
-        # Get local element nodes and matrices
-        local_element = local_elements[element_index]
-        node_points = local_element.node_points
-        jacobian_inverted_t = local_element.jacobian_inverted_t
-        jacobian_det = local_element.jacobian_det
+        current_node_points = node_points[element_index]
 
         # TODO Check if its necessary to calculate all integrals
         # --> Dirichlet nodes could be leaved out?
@@ -116,42 +113,39 @@ def assemble(
         # Mutiply with 2*pi because theta is integrated from 0 to 2*pi
         mu_e = (
             material_manager.get_density(element_index)
-            * integral_m(node_points)
-            * jacobian_det * 2 * np.pi
+            * integral_m(current_node_points, element_order)
+            * 2 * np.pi
         )
         ku_e = (
             integral_ku(
-                node_points,
-                jacobian_inverted_t,
-                material_manager.get_elasticity_matrix(element_index)
-            )
-            * jacobian_det * 2 * np.pi
+                current_node_points,
+                material_manager.get_elasticity_matrix(element_index),
+                element_order
+            ) * 2 * np.pi
         )
         kuv_e = (
             integral_kuv(
-                node_points,
-                jacobian_inverted_t,
-                material_manager.get_piezo_matrix(element_index)
-            )
-            * jacobian_det * 2 * np.pi
+                current_node_points,
+                material_manager.get_piezo_matrix(element_index),
+                element_order
+            ) * 2 * np.pi
         )
         kve_e = (
             integral_kve(
-                node_points,
-                jacobian_inverted_t,
+                current_node_points,
                 material_manager.get_permittivity_matrix(
                     element_index
-                )
-            )
-            * jacobian_det * 2 * np.pi
+                ),
+                element_order
+            ) * 2 * np.pi
         )
         if nonlinear_type is NonlinearType.Custom:
             lu_e = (
                 integral_u_nonlinear(
-                    node_points,
-                    jacobian_inverted_t,
-                    nonlinear_matrix
-                ) * jacobian_det * 2 * np.pi
+                    current_node_points,
+                    nonlinear_matrix,
+                    element_order
+                ) * 2 * np.pi
             )
 
         # Now assemble all element matrices
@@ -227,8 +221,8 @@ def assemble(
 
 def integral_u_nonlinear(
     node_points: npt.NDArray,
-    jacobian_inverted_t: npt.NDArray,
-    nonlinear_elasticity_matrix: npt.NDArray
+    nonlinear_elasticity_matrix: npt.NDArray,
+    element_order: int
 ):
     """Calculates the Ku integral
 
@@ -244,13 +238,26 @@ def integral_u_nonlinear(
         npt.NDArray: 6x6 Ku matrix for the given element.
     """
     def inner(s, t):
+        dn = gradient_local_shape_functions_2d(s, t, element_order)
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_inverted_t = np.linalg.inv(jacobian).T
+        jacobian_det = np.linalg.det(jacobian)
+
         b_op = b_operator_global(
-            node_points, jacobian_inverted_t,
+            node_points,
+            jacobian_inverted_t,
             s,
             t,
+            element_order
         )
-        r = local_to_global_coordinates(node_points, s, t)[0]
+        r = local_to_global_coordinates(node_points, s, t, element_order)[0]
 
-        return 1/2*np.dot(np.dot(b_op.T, nonlinear_elasticity_matrix), b_op)*r
+        return np.dot(
+            np.dot(
+                b_op.T,
+                nonlinear_elasticity_matrix
+            ),
+            b_op
+        ) * 1/2 * r * jacobian_det
 
-    return quadratic_quadrature(inner)
+    return quadratic_quadrature(inner, element_order)

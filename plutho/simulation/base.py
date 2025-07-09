@@ -49,6 +49,7 @@ class MeshData:
     """Contains the mesh data is used in the simulation."""
     nodes: npt.NDArray
     elements: npt.NDArray
+    element_order: int
 
 
 class ExcitationType(Enum):
@@ -72,15 +73,6 @@ class ExcitationInfo:
             del content["frequency"]
         content["excitation_type"] = self.excitation_type.value
         return content
-
-
-@dataclass
-class LocalElementData():
-    """Conatins the data of a single element"""
-    node_points: npt.NDArray
-    jacobian: npt.NDArray
-    jacobian_inverted_t: npt.NDArray
-    jacobian_det: float
 
 
 @dataclass
@@ -153,125 +145,142 @@ class MaterialData:
 # -------- Local functions and integrals --------
 
 
-def local_shape_functions_1d(s):
-    """Returns the local linear shape functions for the given coordinates for a
-    line or a triangle.
-    The dimension of the returned shape functions depends on the number of
-    coordinates given.
-
-    Parameters:
-        dimensions: Each parameter corresponds to one coordinate. If only one
-            parameter is given it resembles 2 shape functions along a line. If
-            two coordinates are given it resembles 3 shape functions for a
-            triangle.
-
-    Returns:
-        npt.NDArray: Shape functions depending on the given parameters for a
-            line or a triangle
-    """
-    return np.array([
-        1-s, s
-    ])
-
-
-def gradient_local_shape_functions_1d():
-    """Returns the gradient of the local shape functions. The dimension can be
-    1 for a line or 2 for a triangle.
-
-    Returns:
-        npt.NDArray: Gradient of each of the shape functions. Shape: (2,n),
-            where n is the number of shape functions. Since currently shape
-            functions are always linear: dim=1 -> n=2 and dim=2 -> n=3
-    """
-    return np.array([
-        [-1, 1],
-        [0, 0]
-    ])
-
-
 def local_shape_functions_2d(s, t, element_order=1):
-    """Returns the local linear shape functions for the given coordinates for a
-    line or a triangle.
-    The dimension of the returned shape functions depends on the number of
-    coordinates given.
+    """Returns the local linear shape functions based on a reference triangle
+    with corner points [(0,0), (1,0), (1,1)] for the given coordinates.
 
     Parameters:
-        dimensions: Each parameter corresponds to one coordinate. If only one
-            parameter is given it resembles 2 shape functions along a line. If
-            two coordinates are given it resembles 3 shape functions for a
-            triangle.
+        s: Local s parameter.
+        t: Local t parameter.
+        element_order: Order of the shape functions (1=linear, 2=quadratic,
+            3=cubic).
 
     Returns:
         npt.NDArray: Shape functions depending on the given parameters for a
             line or a triangle
     """
+    L1 = 1-s-t
+    L2 = s
+    L3 = t
+
     match element_order:
         case 1:
-            return np.array([1-s-t, s, t])
+            return np.array([L1, L2, L3])
         case 2:
-            return np.array([])
+            return np.array(
+                [
+                    L1*(2*L1-1),
+                    L2*(2*L2-1),
+                    L3*(2*L3-1),
+                    4*L1*L2,
+                    4*L2*L3,
+                    4*L3*L1
+                ]
+            )
         case 3:
-            return np.array([])
+            return np.array(
+                [
+                    0.5*L1*(3*L1-1)*(3*L1-2),
+                    0.5*L2*(3*L2-1)*(3*L2-2),
+                    0.5*L3*(3*L3-1)*(3*L3-2),
+                    9/2*L1*L2*(3*L1-1),
+                    9/2*L2*L1*(3*L2-1),
+                    9/2*L2*L3*(3*L2-1),
+                    9/2*L3*L2*(3*L3-1),
+                    9/2*L3*L1*(3*L3-1),
+                    9/2*L1*L3*(3*L1-1),
+                    27*L1*L2*L3
+                ]
+            )
         case _:
             raise ValueError(
-                "Shape functions not implemented for element order"
+                "Shape functions not implemented for element order "
                 f"{element_order}"
             )
 
-    return np.array([
-        1-s-t, s, t
-    ])
 
-def gradient_local_shape_functions_2d():
-    """Returns the gradient of the local shape functions. The dimension can be
-    1 for a line or 2 for a triangle.
+def gradient_local_shape_functions_2d(s, t, element_order=1) -> npt.NDArray:
+    """Returns the gradient of the local shape functions.
+
+    Parameters:
+        s: Local s parameter.
+        t: Local t parameter.
+        element_order: Order of the shape functions (1=linear, 2=quadratic,
+            3=cubic).
 
     Returns:
         npt.NDArray: Gradient of each of the shape functions. Shape: (2,n),
             where n is the number of shape functions. Since currently shape
             functions are always linear: dim=1 -> n=2 and dim=2 -> n=3
     """
-    return np.array([
-        [-1, 1, 0],
-        [-1, 0, 1]
-    ])
+    match element_order:
+        case 1:
+            return np.array([
+                [-1, 1, 0],
+                [-1, 0, 1]
+            ])
+        case 2:
+            return np.array([
+                [ # d_s
+                    -3+4*t+4*s,
+                    4*s-1,
+                    0,
+                    4-8*s-4*t,
+                    4*t,
+                    -4*t
+                ],
+                [ # d_t
+                    -3+4*s+4*t,
+                    0,
+                    4*t-1,
+                    -4*s,
+                    4*s,
+                    4-4*s-8*t
+                ]
+            ])
+        case 3:
+            pass
+
+    raise ValueError(
+        "Gradient of shape functions not implemented for element "
+        f"order {element_order}"
+    )
 
 
 def local_to_global_coordinates(
-        node_points: npt.NDArray,
-        *dimensions: float
+    node_points: npt.NDArray,
+    s: float,
+    t: float,
+    element_order: int
 ) -> Any:
     """Transforms the local coordinates given by dimensions using the node
     points to the global coordinates r, z.
+
     Parameters:
         node_points: For a line: [[x1, x2], [y1, y2]] and for a triangle:
             [[x1, x2, x3], [y1, y2, y3]] of
-        dimensions: Local coordinates
+        s: Local s coordinate.
+        t: Local t coordinate.
+        element_order: Order of the shape functions.
 
     Returns:
         npt.NDArray: Global coordinates [r, z]
     """
-    dim = len(dimensions)
-
-    if node_points.shape[1] != dim + 1:
+    if node_points.shape[1] != int(1/2*(element_order+1)*(element_order+2)):
         raise ValueError(
             "The given node point array does not fit the given number of"
             " dimensions"
         )
 
-    if dim == 1:
-        return np.dot(node_points, local_shape_functions_1d(*dimensions))
-    elif dim == 2:
-        return np.dot(node_points, local_shape_functions_2d(*dimensions))
-    else:
-        raise ValueError("{dim}d local shape functions not defined.")
+    return np.dot(node_points, local_shape_functions_2d(s, t, element_order))
 
 
 def b_operator_global(
     node_points: npt.NDArray,
     jacobian_inverted_t: npt.NDArray,
     s: float,
-    t: float
+    t: float,
+    element_order: int
 ):
     """Calculates the B operator for the local coordinantes which is needed
     for voigt-notation.
@@ -280,29 +289,30 @@ def b_operator_global(
     Parameters:
         node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
             one triangle.
-        s: Local coordinate.
-        t: Local coordinate.
         jacobian_inverted_t: Jacobian matrix inverted and transposed, needed
             for calculation of global derivatives.
+        s: Local coordinate.
+        t: Local coordinate.
+        element_order: Order of the shape functions.
 
     Returns:
         B operator 4x6, for a u aligned like [u1_r, u1_z, u2_r, u2_z, ..].
     """
-    dim = 2
+    dim = int(1/2*(element_order+1)*(element_order+2))
 
     # Get local shape functions and r (because of theta component)
     n = local_shape_functions_2d(s, t)
-    r = local_to_global_coordinates(node_points, s, t)[0]
+    r = local_to_global_coordinates(node_points, s, t, element_order)[0]
 
     # Get gradients of local shape functions (s, t)
-    dn = gradient_local_shape_functions_2d()
+    dn = gradient_local_shape_functions_2d(s, t, element_order)
 
     # Convert to gradients of (r, z) using jacobi matrix
     global_dn = np.dot(jacobian_inverted_t, dn)
 
     # Initialize and fill array
-    b = np.zeros(shape=(4, 2*(dim+1)))
-    for d in range(dim+1):
+    b = np.zeros(shape=(4, 2*dim))
+    for d in range(dim):
         b[:, 2*d:2*d+2] = [
             [
                 global_dn[0][d], 0
@@ -321,126 +331,150 @@ def b_operator_global(
     return b
 
 
-def integral_m(node_points: npt.NDArray):
+def integral_m(node_points: npt.NDArray, element_order: int):
     """Calculates the M integral.
 
     Parameters:
         node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
             one triangle.
+        element_order: Order of the shape functions.
 
     Returns:
         npt.NDArray: 3x3 M matrix for the given element.
     """
     def inner(s, t):
+        dn = gradient_local_shape_functions_2d(s, t, element_order)
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_det = np.linalg.det(jacobian)
+
         n = local_shape_functions_2d(s, t)
 
         # Since the simulation is axisymmetric it is necessary
         # to multiply with the radius in the integral
         # (for the theta component (azimuth))
-        r = local_to_global_coordinates(node_points, s, t)[0]
+        r = local_to_global_coordinates(node_points, s, t, element_order)[0]
 
         # Get all combinations of shape function multiplied with each other
-        return np.outer(n, n)*r
+        return np.outer(n, n)*r*jacobian_det
 
-    return quadratic_quadrature(inner)
+    return quadratic_quadrature(inner, element_order)
 
 
 def integral_ku(
     node_points: npt.NDArray,
-    jacobian_inverted_t: npt.NDArray,
-    elasticity_matrix: npt.NDArray
+    elasticity_matrix: npt.NDArray,
+    element_order: int
 ):
     """Calculates the Ku integral
 
     Parameters:
         node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
             one triangle.
-        jacobian_inverted_t: Jacobian matrix inverted and transposed, needed
-            for calculation of global derivatives.
         elasticity_matrix: Elasticity matrix for the current element
             (c matrix).
+        element_order: Order of the shape functions.
 
     Returns:
         npt.NDArray: 6x6 Ku matrix for the given element.
     """
     def inner(s, t):
+        dn = gradient_local_shape_functions_2d(s, t, element_order)
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_inverted_t = np.linalg.inv(jacobian).T
+        jacobian_det = np.linalg.det(jacobian)
+
         b_op = b_operator_global(
             node_points,
             jacobian_inverted_t,
             s,
-            t
+            t,
+            element_order
         )
-        r = local_to_global_coordinates(node_points, s, t)[0]
+        r = local_to_global_coordinates(node_points, s, t, element_order)[0]
 
-        return np.dot(np.dot(b_op.T, elasticity_matrix), b_op)*r
+        return np.dot(np.dot(b_op.T, elasticity_matrix), b_op)*r*jacobian_det
 
-    return quadratic_quadrature(inner)
+    return quadratic_quadrature(inner, element_order)
 
 
 def integral_kuv(
     node_points: npt.NDArray,
-    jacobian_inverted_t: npt.NDArray,
-    piezo_matrix: npt.NDArray
+    piezo_matrix: npt.NDArray,
+    element_order: int
 ):
     """Calculates the KuV integral.
 
     Parameters:
         node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
             one triangle.
-        jacobian_inverted_t: Jacobian matrix inverted and transposed, needed
-            for calculation of global derivatives.
         piezo_matrix: Piezo matrix for the current element (e matrix).
+        element_order: Order of the shape functions.
 
     Returns:
         npt.NDArray: 6x3 KuV matrix for the given element.
     """
     def inner(s, t):
+        dn = gradient_local_shape_functions_2d(s, t, element_order)
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_inverted_t = np.linalg.inv(jacobian).T
+        jacobian_det = np.linalg.det(jacobian)
+
         b_op = b_operator_global(
             node_points,
             jacobian_inverted_t,
             s,
-            t
+            t,
+            element_order
         )
-        dn = gradient_local_shape_functions_2d()
         global_dn = np.dot(jacobian_inverted_t, dn)
-        r = local_to_global_coordinates(node_points, s, t)[0]
+        r = local_to_global_coordinates(node_points, s, t, element_order)[0]
 
-        return np.dot(np.dot(b_op.T, piezo_matrix.T), global_dn)*r
+        return np.dot(np.dot(b_op.T, piezo_matrix.T), global_dn)*r*jacobian_det
 
-    return quadratic_quadrature(inner)
+    return quadratic_quadrature(inner, element_order)
 
 
 def integral_kve(
     node_points: npt.NDArray,
-    jacobian_inverted_t: npt.NDArray,
-    permittivity_matrix: npt.NDArray
+    permittivity_matrix: npt.NDArray,
+    element_order: int
 ):
     """Calculates the KVe integral.
 
     Parameters:
         node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
             one triangle.
-        jacobian_inverted_t: Jacobian matrix inverted and transposed, needed
-            for calculation of global derivatives.
         permittivity_matrix: Permittivity matrix for the
             current element (epsilon matrix).
+        element_order: Order of the shape functions.
 
     Returns:
         npt.NDArray: 3x3 KVe matrix for the given element.
     """
     def inner(s, t):
-        dn = gradient_local_shape_functions_2d()
+        dn = gradient_local_shape_functions_2d(s, t, element_order)
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_inverted_t = np.linalg.inv(jacobian).T
+        jacobian_det = np.linalg.det(jacobian)
+
         global_dn = np.dot(jacobian_inverted_t, dn)
-        r = local_to_global_coordinates(node_points, s, t)[0]
+        r = local_to_global_coordinates(node_points, s, t, element_order)[0]
 
-        return np.dot(np.dot(global_dn.T, permittivity_matrix), global_dn)*r
+        return np.dot(
+            np.dot(
+                global_dn.T,
+                permittivity_matrix
+            ),
+            global_dn
+        )*r*jacobian_det
 
-    return quadratic_quadrature(inner)
+    return quadratic_quadrature(inner, element_order)
 
 
 def energy_integral_theta(
     node_points: npt.NDArray,
-    theta: npt.NDArray
+    theta: npt.NDArray,
+    element_order: int
 ):
     """Integrates the given element over the given theta field.
 
@@ -449,17 +483,22 @@ def energy_integral_theta(
             one triangle.
         theta: List of the temperature field values of the points
             [theta1, theta2, theta3].
+        element_order: Order of the shape functions.
     """
     def inner(s, t):
-        n = local_shape_functions_2d(s, t)
-        r = local_to_global_coordinates(node_points, s, t)[0]
+        dn = gradient_local_shape_functions_2d(s, t, element_order)
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_det = np.linalg.det(jacobian)
 
-        return np.dot(n.T, theta)*r
+        n = local_shape_functions_2d(s, t, element_order)
+        r = local_to_global_coordinates(node_points, s, t, element_order)[0]
 
-    return quadratic_quadrature(inner)
+        return np.dot(n.T, theta) * r * jacobian_det
+
+    return quadratic_quadrature(inner, element_order)
 
 
-def integral_volume(node_points: npt.NDArray):
+def integral_volume(node_points: npt.NDArray, element_order: int):
     """Calculates the volume of the triangle given by the node points.
     HINT: Must be multiplied with 2*np.pi and the jacobian determinant in order
     to give the correct volume of any rotationsymmetric triangle.
@@ -467,46 +506,138 @@ def integral_volume(node_points: npt.NDArray):
     Parameters:
         node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
             one triangle.
+        element_order: Order of the shape functions.
 
     Returns:
         Float. Volume of the triangle.
     """
     def inner(s, t):
-        r = local_to_global_coordinates(node_points, s, t)[0]
-        return r
+        dn = gradient_local_shape_functions_2d(s, t, element_order)
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_det = np.linalg.det(jacobian)
 
-    return quadratic_quadrature(inner)
+        r = local_to_global_coordinates(node_points, s, t, element_order)[0]
+
+        return r*jacobian_det
+
+    return quadratic_quadrature(inner, element_order)
 
 
-def quadratic_quadrature(func: Callable):
+def quadratic_quadrature(func: Callable, element_order: int):
     """Integrates the given function of 2 variables using gaussian
     quadrature along 2 variables for a reference triangle.
     This gives exact results for linear shape functions.
 
     Parameters:
         func: Function which will be integrated.
+        element_order: Order of the shape functions.
 
     Returns:
         Integral of the given function.
     """
-    weight_1 = 1/6
-    weight_2 = 2/3
-    return func(weight_1, weight_1)*weight_1 + \
-        func(weight_2, weight_1)*weight_1 + \
-        func(weight_1, weight_2)*weight_1
+    #f = np.vectorize(func)
+    weights = []
+    points = []
+
+    match element_order:
+        case 1 | 2:
+            w1 = 1/6
+            w2 = 2/3
+            weights = np.array([w1, w1, w1])
+            points = np.array([
+                [w1, w1],
+                [w2, w1],
+                [w1, w2]
+            ])
+        case 3 | 4 | 5:
+            w1 = 155-np.sqrt(15)
+            w2 = 155+np.sqrt(15)
+            w3 = 2400
+            weights = np.array([
+                w1/w3,
+                w1/w3,
+                w1/w3,
+                w2/w3,
+                w2/w3,
+                w2/w3,
+                9/80
+            ])
+            p1 = 6-np.sqrt(15)
+            p2 = 9+2*np.sqrt(15)
+            p3 = 6+np.sqrt(15)
+            p4 = 9-2*np.sqrt(15)
+            p5 = 21
+            points = np.array([
+                [p1/p5, p1/p5],
+                [p2/p5, p1/p5],
+                [p1/p5, p2/p5],
+                [p3/p5, p3/p5],
+                [p4/p5, p3/p5],
+                [p3/p5, p4/p5],
+                [1/3, 1/3]
+            ])
+        case _:
+            raise NotImplementedError(
+                "No quadratic quadrature for element order "
+                f"{element_order} implemented"
+            )
+
+    # TODO
+    # Instead of a double for loop make a fast calculation using numpy
+    # The numpy calculations should be simular to
+    sum = 0
+    for i in range(len(weights)):
+        for j in range(len(weights)):
+            sum += weights[i]*weights[j]*func(points[i][0], points[j][1])
+    return sum
+
+    # F = f(points[:, 0], points[:, 1])
+    # return np.dot(np.dot(F, weights).T, weights)
 
 
-def line_quadrature(func):
+def line_quadrature(func: Callable, element_order: int):
     """Integrates the given function of 2 variables along one variable
     for a reference triangle.
     This gives exact results for linear shape functions.
 
     Parameters:
-        func: Function which will be integrated along r-axis
+        func: Function which will be integrated along r-axis.
+        element_order: Order of the shape functions.
 
     Returns:
         Integral of the given function along r-axis"""
-    return 0.5*(func(-1/2/np.sqrt(3)+1/2) + func(1/2/np.sqrt(3)+1/2))
+    # f = np.vectorize(func)
+    weights = []
+    points = []
+
+    match element_order:
+        case 1 | 2:
+            weights = np.array([1/2, 1/2])
+            points = np.array([
+                (3-np.sqrt(3))/6,
+                (3+np.sqrt(3))/6
+            ])
+        case 3 | 4 | 5:
+            weights = np.array([5/18, 8/18, 5/18])
+            points = np.array([
+                (5-np.sqrt(15))/10,
+                1/2,
+                (5+np.sqrt(15))/5
+            ])
+        case _:
+            raise NotImplementedError(
+                "No linear quadrature for element order "
+                f"{element_order} implemented"
+            )
+
+    # TODO Make use of numpy
+    # return np.dot(f(points).T, weights)
+
+    sum = 0
+    for i in range(len(weights)):
+        sum += weights[i]*func(points[i])
+
+    return sum
 
 
 # -------- Boundary condition functions --------
@@ -663,10 +794,11 @@ def create_dirichlet_bc_nodes(
         [dirichlet_values_u, dirichlet_values_v]
 
 
-def create_local_element_data(
+def create_node_points(
     nodes: npt.NDArray,
-    elements: npt.NDArray
-) -> List[LocalElementData]:
+    elements: npt.NDArray,
+    element_order: int
+) -> npt.NDArray:
     """Create the local node data and the corresponding matrices
     for every element which are needed in many parts of the simulations.
 
@@ -677,49 +809,45 @@ def create_local_element_data(
     Returns:
         List of LocalElementData objects.
     """
-    local_element_data = []
-    dn = gradient_local_shape_functions_2d()
-    for element in elements:
+    points_per_element = int(1/2*(element_order+1)*(element_order+2))
+
+    node_points = np.zeros(
+        shape=(len(elements), 2, points_per_element)
+    )
+
+    for element_index, element in enumerate(elements):
         # Get node points of element in format
-        # [x1 x2 x3]
-        # [y1 y2 y3] where (xi, yi) are the coordinates for Node i
-        node_points = np.array([
-            [nodes[element[0]][0],
-             nodes[element[1]][0],
-             nodes[element[2]][0]],
-            [nodes[element[0]][1],
-             nodes[element[1]][1],
-             nodes[element[2]][1]]
-        ])
-        jacobian = np.dot(node_points, dn.T)
-        jacobian_inverted_t = np.linalg.inv(jacobian).T
-        jacobian_det = np.linalg.det(jacobian)
-        local_element_data.append(LocalElementData(
-            node_points,
-            jacobian,
-            jacobian_inverted_t,
-            jacobian_det
-        ))
+        # [x1 x2 x3 ... xn]
+        # [y1 y2 y3 ... yn] where (xi, yi) are the coordinates for Node i
+        for node_index in range(points_per_element):
+            node_points[element_index, :, node_index] = [
+                nodes[element[node_index]][0],
+                nodes[element[node_index]][1]
+            ]
 
-    return local_element_data
+    return node_points
 
 
-def calculate_volumes(local_element_data: List[LocalElementData]):
+def calculate_volumes(node_points: npt.NDArray, element_order):
     """Calculates the volume of each element. The element information
     is given by the local_element_data
 
     Parameters:
-        local_element_data: List of LocalElementData objects.
+        node_points: Node points of all elements for which the volume shall be
+            calculated.
 
     Returns:
         List of volumes of the elements.
     """
     volumes = []
 
-    for local_element in local_element_data:
-        node_points = local_element.node_points
-        jacobian_det = local_element.jacobian_det
-        volumes.append(integral_volume(node_points) * 2 * np.pi * jacobian_det)
+    number_of_elements = node_points.shape[0]
+
+    for element_index in range(number_of_elements):
+        volumes.append(
+            integral_volume(node_points[element_index], element_order)
+            * 2 * np.pi
+        )
 
     return volumes
 

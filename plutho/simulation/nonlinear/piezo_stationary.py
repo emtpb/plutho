@@ -3,7 +3,7 @@ for the case of a time-stationary simulation. (d_t=0)
 """
 
 # Python standard libraries
-from typing import List, Union, Tuple
+from typing import Union, Tuple
 
 # Third party libraries
 import numpy as np
@@ -14,7 +14,7 @@ from scipy.sparse import linalg
 
 # Local libraries
 from .base import assemble, NonlinearType
-from ..base import MeshData, LocalElementData
+from ..base import MeshData
 from plutho.materials import MaterialManager
 
 
@@ -37,9 +37,6 @@ class NonlinearPiezoSimStationary:
     # FEM matrices
     k: sparse.lil_array
     ln: sparse.lil_array
-
-    # Internal simulation data
-    local_elements: List[LocalElementData]
 
     # Resulting fields
     u: npt.NDArray
@@ -86,7 +83,7 @@ class NonlinearPiezoSimStationary:
 
         # Calculate u using phi as load vector
         self.u = linalg.spsolve(
-            k.tocsc(),
+            k,
             f
         )
 
@@ -244,10 +241,10 @@ class NonlinearPiezoSimStationary:
 
     @staticmethod
     def apply_dirichlet_bc(
-        k: sparse.sparray,
-        ln: sparse.sparray,
+        k: sparse.lil_array,
+        ln: sparse.lil_array,
         nodes: npt.NDArray
-    ) -> Tuple[sparse.sparray, sparse.sparray]:
+    ) -> Tuple[sparse.csc_array, sparse.csc_array]:
         """Sets dirichlet boundary condition for the given matrix.
 
         Parameters:
@@ -264,4 +261,4 @@ class NonlinearPiezoSimStationary:
 
             k[node, node] = 1
 
-        return k, ln
+        return k.tocsc(), ln.tocsc()

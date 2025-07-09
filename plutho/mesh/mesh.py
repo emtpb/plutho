@@ -23,6 +23,7 @@ class Mesh:
     mesh_file_path: str
     file_version: str
     parser: Union[GmshParser, CustomParser]
+    element_order: int
 
     def __init__(
         self,
@@ -33,6 +34,7 @@ class Mesh:
             raise IOError(f"Mesh file {file_path} not found.")
 
         self.mesh_file_path = file_path
+        self.element_order = element_order
 
         # Check gmsh version
         # If version2  -> custom gmsh parser

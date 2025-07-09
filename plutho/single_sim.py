@@ -86,7 +86,7 @@ class SingleSimulation:
         self.mesh = mesh
 
         nodes, elements = mesh.get_mesh_nodes_and_elements()
-        self.mesh_data = MeshData(nodes, elements)
+        self.mesh_data = MeshData(nodes, elements, mesh.element_order)
         self.material_manager = MaterialManager(len(elements))
         self.charge_calculated = False
         self.mech_loss_calculated = False

@@ -10,78 +10,97 @@ import scipy.sparse.linalg as slin
 from scipy import sparse
 
 # Local libraries
-from .base import SimulationData, MeshData, local_shape_functions_1d, \
+from .base import SimulationData, MeshData, \
     local_shape_functions_2d, gradient_local_shape_functions_2d, \
-    local_to_global_coordinates, integral_m, LocalElementData, \
-    quadratic_quadrature, line_quadrature, create_local_element_data, \
+    local_to_global_coordinates, integral_m, \
+    quadratic_quadrature, line_quadrature, create_node_points, \
     apply_dirichlet_bc, get_avg_temp_field_per_element
 from ..materials import MaterialManager
 
 
 def integral_heat_flux(
     node_points: npt.NDArray,
-    heat_flux: npt.NDArray
+    heat_flux: npt.NDArray,
+    element_order: int
 ):
     """Integrates the heat flux using the shape functions.
 
     Parameters:
-        node_points: List of node points [[x1, x2, ..], [y1, y2, ..]]
-        heat_flux: Heat flux at the points
+        node_points: List of node points [[x1, x2, ..], [y1, y2, ..]].
+        heat_flux: Heat flux at the points.
+        element_order: Order of the shape functions.
 
     Returns:
-        npt.NDArray heat flux integral on each point."""
+        npt.NDArray heat flux integral on each point.
+    """
     def inner(s):
-        n = local_shape_functions_1d(s)
-        r = local_to_global_coordinates(node_points, s)[0]
+        dn = gradient_local_shape_functions_2d(s, 0, element_order)
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_det = np.linalg.det(jacobian)
+
+        n = local_shape_functions_2d(s, 0, element_order)
+        r = local_to_global_coordinates(node_points, s, 0, element_order)[0]
 
         return n*heat_flux*r
 
-    return line_quadrature(inner)
+    return line_quadrature(inner, element_order)
 
 
 def integral_ktheta(
     node_points: npt.NDArray,
-    jacobian_inverted_t: npt.NDArray
+    element_order: int
 ):
     """Calculates the Ktheta integral.
 
     Parameters:
-        node_points: List of node points [[x1, x2, ..], [y1, y2, ..]]
-        jacobian_inverted_t: Jacobian matrix inverted and transposed, needed
-            for calculation of global derivatives
+        node_points: List of node points [[x1, x2, ..], [y1, y2, ..]].
+        element_order: Order of the shape functions.
 
     Returns:
         npt.NDArray: 3x3 Ktheta matrix for the given element.
     """
     def inner(s, t):
-        dn = gradient_local_shape_functions_2d()
+        dn = gradient_local_shape_functions_2d(s, t, element_order)
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_inverted_t = np.linalg.inv(jacobian).T
+        jacobian_det = np.linalg.det(jacobian)
+
         global_dn = np.dot(jacobian_inverted_t, dn)
-        r = local_to_global_coordinates(node_points, s, t)[0]
+        r = local_to_global_coordinates(node_points, s, t, element_order)[0]
 
-        return np.dot(global_dn.T, global_dn)*r
+        return np.dot(global_dn.T, global_dn)*r*jacobian_det
 
-    return quadratic_quadrature(inner)
+    return quadratic_quadrature(inner, element_order)
 
 
 def integral_theta_load(
-        node_points: npt.NDArray,
-        mech_loss: float):
+    node_points: npt.NDArray,
+    mech_loss: float,
+    element_order: int
+):
     """Returns the load value for the temperature field (f) for the specific
     element.
 
     Parameters:
         node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
             one triangle.
-        point_loss: Loss power on each node (heat source)
+        point_loss: Loss power on each node (heat source).
+        element_order: Order of the shape functions.
+
     Returns:
         npt.NDArray: f vector value at the specific ndoe
     """
     def inner(s, t):
-        n = local_shape_functions_2d(s, t)
-        r = local_to_global_coordinates(node_points, s, t)[0]
-        return n*mech_loss*r
+        dn = gradient_local_shape_functions_2d(s, t, element_order)
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_det = np.linalg.det(jacobian)
 
-    return quadratic_quadrature(inner)
+        n = local_shape_functions_2d(s, t)
+        r = local_to_global_coordinates(node_points, s, t, element_order)[0]
+
+        return n*mech_loss*r*jacobian_det
+
+    return quadratic_quadrature(inner, element_order)
 
 
 class ThermoSimTime:
@@ -112,7 +131,7 @@ class ThermoSimTime:
     convective_outer_temp: float
 
     # Internal simulation data
-    local_elements: List[LocalElementData]
+    node_points: npt.NDArray
 
     # Dirichlet data
     dirichlet_nodes: npt.NDArray
@@ -143,7 +162,8 @@ class ThermoSimTime:
         # Maybe the 2x2 matrix slicing is not very fast
         nodes = self.mesh_data.nodes
         elements = self.mesh_data.elements
-        self.local_elements = create_local_element_data(nodes, elements)
+        element_order = self.mesh_data.element_order
+        self.node_points = create_node_points(nodes, elements, element_order)
 
         number_of_nodes = len(nodes)
         c = sparse.lil_matrix(
@@ -153,35 +173,22 @@ class ThermoSimTime:
             (number_of_nodes, number_of_nodes),
             dtype=np.float64)
 
-        for element in self.mesh_data.elements:
-            dn = gradient_local_shape_functions_2d()
-            # Get node points of element in format
-            # [x1 x2 x3]
-            # [y1 y2 y3] where (xi, yi) are the coordinates for Node i
-            node_points = np.array([
-                [nodes[element[0]][0],
-                 nodes[element[1]][0],
-                 nodes[element[2]][0]],
-                [nodes[element[0]][1],
-                 nodes[element[1]][1],
-                 nodes[element[2]][1]]
-            ])
-            jacobian = np.dot(node_points, dn.T)
-            jacobian_inverted_t = np.linalg.inv(jacobian).T
-            jacobian_det = np.linalg.det(jacobian)
+        for element_index, element in enumerate(self.mesh_data.elements):
+            node_points = self.node_points[element_index]
 
             ctheta_e = (
-                integral_m(node_points)
+                integral_m(node_points, element_order)
                 * self.material_manager.get_density(element)
                 * self.material_manager.get_heat_capacity(element)
-                * jacobian_det * 2 * np.pi
+                * 2 * np.pi
             )
             ktheta_e = (
                 integral_ktheta(
                     node_points,
-                    jacobian_inverted_t)
+                    element_order
+                )
                 * self.material_manager.get_thermal_conductivity(element)
-                * jacobian_det * 2 * np.pi
+                * 2 * np.pi
             )
 
             # Now assemble all element matrices
@@ -192,47 +199,6 @@ class ThermoSimTime:
 
         self.c = c.tolil()
         self.k = k.tolil()
-
-    def set_volume_heat_source(
-        self,
-        mech_loss_density,
-        number_of_time_steps
-    ):
-        """Sets the excitation for the heat conduction simulation.
-        The mech_losses are set for every time step.
-
-        Parameters:
-            mech_losses: The mechanical losses for each element for every
-                time step.
-            number_of_time_steps: Total number of time steps.
-        """
-        nodes = self.mesh_data.nodes
-        number_of_nodes = len(nodes)
-        f = np.zeros(shape=(number_of_nodes, number_of_time_steps))
-        for time_step in range(number_of_time_steps):
-            for element_index, element in enumerate(self.mesh_data.elements):
-                dn = gradient_local_shape_functions_2d()
-                node_points = np.array([
-                    [nodes[element[0]][0],
-                     nodes[element[1]][0],
-                     nodes[element[2]][0]],
-                    [nodes[element[0]][1],
-                     nodes[element[1]][1],
-                     nodes[element[2]][1]]
-                ])
-                jacobian = np.dot(node_points, dn.T)
-                jacobian_det = np.linalg.det(jacobian)
-
-                # TODO Maybe the outer time step loop can be removed
-                f_theta_e = integral_theta_load(
-                    node_points,
-                    mech_loss_density[element_index, time_step]
-                ) * 2 * np.pi * jacobian_det
-
-                for local_p, global_p in enumerate(element):
-                    f[global_p, time_step] += f_theta_e[local_p]
-
-        self.f += f
 
     def set_constant_volume_heat_source(
         self,
@@ -248,25 +214,24 @@ class ThermoSimTime:
             number_of_time_steps: Total number of time steps
         """
         nodes = self.mesh_data.nodes
+        element_order = self.mesh_data.element_order
         number_of_nodes = len(nodes)
-        f = np.zeros(number_of_nodes)
+        points_per_element = int(1/2*(element_order+1)*(element_order+2))
 
+        f = np.zeros(number_of_nodes)
         for element_index, element in enumerate(self.mesh_data.elements):
-            dn = gradient_local_shape_functions_2d()
-            node_points = np.array([
-                [nodes[element[0]][0],
-                 nodes[element[1]][0],
-                 nodes[element[2]][0]],
-                [nodes[element[0]][1],
-                 nodes[element[1]][1],
-                 nodes[element[2]][1]]
-            ])
-            jacobian = np.dot(node_points, dn.T)
-            jacobian_det = np.linalg.det(jacobian)
+            node_points = np.zeros(shape=(2, points_per_element))
+            for node_index in range(points_per_element):
+                node_points[:, node_index] = [
+                    nodes[element[node_index]][0],
+                    nodes[element[node_index]][1]
+                ]
 
             f_theta_e = integral_theta_load(
                 node_points,
-                mech_loss_density[element_index])*2*np.pi*jacobian_det
+                mech_loss_density[element_index],
+                element_order
+            ) * 2 * np.pi
 
             for local_p, global_p in enumerate(element):
                 f[global_p] += f_theta_e[local_p]
@@ -280,7 +245,8 @@ class ThermoSimTime:
         boundary_elements: npt.NDArray,
         theta: npt.NDArray,
         alpha: float,
-        outer_temperature: float
+        outer_temperature: float,
+        element_order: int
     ) -> npt.NDArray:
         """Calculates the load vector for the convection boundary condition.
         The condition is calculated using the temeprature at the given
@@ -296,27 +262,46 @@ class ThermoSimTime:
             alpha: Heat transfer coefficient.
             outer_temperature: Temperature outside of the model.
         """
-        f = np.zeros(len(nodes))
+        points_per_element = int(1/2*(element_order+1)*(element_order+2))
 
-        for _, element in enumerate(boundary_elements):
-            node_points = np.array([
-                [nodes[element[0]][0],
-                 nodes[element[1]][0]],
-                [nodes[element[0]][1],
-                 nodes[element[1]][1]]
-            ])
+        f = np.zeros(len(nodes))
+        for element_index, element in enumerate(boundary_elements):
+            node_points = np.zeros(shape=(2, points_per_element))
+            for node_index in range(points_per_element):
+                node_points[element_index, :, node_index] = [
+                    nodes[element[node_index]][0],
+                    nodes[element[node_index]][1]
+                ]
+            # TODO Only works for element_order > 1
             jacobian_det = np.sqrt(
                 np.square(nodes[element[1]][0]-nodes[element[0]][0])
                 + np.square(nodes[element[1]][1]-nodes[element[0]][1])
             )
-            theta_e = np.array([
-                theta[element[0]],
-                theta[element[1]]
-            ])
 
-            heat_flux = alpha*(theta_e-np.ones(2)*outer_temperature)
+            # Temperature at boundary
+            boundary_nodes = []
+            match element_order:
+                case 1:
+                    boundary_nodes = np.array([0, 1])
+                case 2:
+                    boundary_nodes = np.array([0, 3, 1])
+                case 3:
+                    boundary_nodes = np.array([0, 3, 4, 1])
+                case _:
+                    raise NotImplementedError(
+                        "Convection boundary condition"
+                        " not implemented for element order > 3"
+                    )
+
+            theta_e = np.zeros(boundary_nodes.shape[0])
+            for index, bnode in enumerate(boundary_nodes):
+                theta_e[index] = element[bnode]
+
+            heat_flux = alpha*(
+                theta_e - np.ones(boundary_nodes.shape[0])*outer_temperature
+            )
             f_e = (
-                integral_heat_flux(node_points, heat_flux)
+                integral_heat_flux(node_points, heat_flux, element_order)
                 * 2 * np.pi * jacobian_det
             )
 

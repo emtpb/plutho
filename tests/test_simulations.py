@@ -52,9 +52,10 @@ def test_thermo_time(tmp_path):
     the simulation and compares it with the input energy.
     """
     # Create and load mesh; TODO maybe use smaller mesh size?
+    element_order = 1
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
     plutho.Mesh.generate_rectangular_mesh(mesh_path)
-    mesh = plutho.Mesh(mesh_path, element_order=1)
+    mesh = plutho.Mesh(mesh_path, element_order)
 
     sim = plutho.SingleSimulation(
         tmp_path,
@@ -93,12 +94,16 @@ def test_thermo_time(tmp_path):
         sim.solver.theta[:, -1],
         nodes,
         elements,
+        element_order,
         sim.material_manager.get_heat_capacity(0),
         sim.material_manager.get_density(0)
     )
 
     volume = np.sum(
-        plutho.simulation.base.calculate_volumes(sim.solver.local_elements)
+        plutho.simulation.base.calculate_volumes(
+            sim.solver.node_points,
+            element_order
+        )
     )
 
     input_energy = INPUT_POWER_DENSITY*volume

@@ -1,7 +1,7 @@
 """Module for the simulation of nonlinear piezoelectric systems"""
 
 # Third party libraries
-from typing import List
+from typing import Tuple
 import numpy as np
 import numpy.typing as npt
 import scipy
@@ -10,10 +10,8 @@ from scipy.sparse import linalg
 
 # Local libraries
 from .base import assemble, NonlinearType
-from ..base import SimulationData, MeshData, gradient_local_shape_functions_2d, \
-    LocalElementData
-from plutho.simulation.piezo_time import charge_integral_u, \
-    charge_integral_v
+from ..base import SimulationData, MeshData
+from plutho.simulation.piezo_time import calculate_charge
 from plutho.materials import MaterialManager
 
 
@@ -42,7 +40,6 @@ class NonlinearPiezoSimTime:
             mechanical field.
         u: Mechanical field vector u(element, t).
         q: Charge q(t).
-        local_elements: List of element data for the local triangles.
 
     Parameters:
         mesh_data: MeshData object containing the mesh.
@@ -64,9 +61,6 @@ class NonlinearPiezoSimTime:
     # Resulting fields
     u: npt.NDArray
     q: npt.NDArray
-
-    # Internal simulation data
-    local_elements: List[LocalElementData]
 
     # FEM matrices
     m: sparse.lil_array
@@ -264,13 +258,13 @@ class NonlinearPiezoSimTime:
             # Calculate charge
             if (electrode_elements is not None
                     and electrode_elements.shape[0] > 0):
-                q[time_index] = NonlinearPiezoSimTime.calculate_charge(
-                    u[:2*number_of_nodes, time_index+1],
-                    u[2*number_of_nodes:, time_index+1],
+                q[time_index] = calculate_charge(
+                    u[:, time_index+1],
                     self.material_manager,
                     electrode_elements,
                     electrode_normals,
-                    self.mesh_data.nodes
+                    self.mesh_data.nodes,
+                    self.mesh_data.element_order
                 )
 
         self.u = u
@@ -304,93 +298,18 @@ class NonlinearPiezoSimTime:
         return f
 
     @staticmethod
-    def calculate_charge(
-        u: npt.NDArray,
-        phi: npt.NDArray,
-        material_manager: MaterialManager,
-        electrode_elements: npt.NDArray,
-        element_normals: npt.NDArray,
-        nodes: npt.NDArray
-    ) -> float:
-        """Calculates the charge using u and phi on the given electrode
-        elements.
-
-        Parameters:
-            u: Mechanical displacement field.
-            phi: Electrical potential field.
-            material_manager: Contains the material data.
-            electrode_elements: Indices of the element on which the charge
-                is calculated.
-            nodes: All nodes from the mesh.
-
-        Returns:
-            The charge on the given elements summed up."""
-        q = 0
-
-        for element_index, element in enumerate(electrode_elements):
-            dn = gradient_local_shape_functions_2d()
-            node_points = np.array([
-                [nodes[element[0]][0],
-                 nodes[element[1]][0],
-                 nodes[element[2]][0]],
-                [nodes[element[0]][1],
-                 nodes[element[1]][1],
-                 nodes[element[2]][1]]
-            ])
-
-            jacobian = np.dot(node_points, dn.T)
-            jacobian_inverted_t = np.linalg.inv(jacobian).T
-            jacobian_det = np.sqrt(
-                np.square(nodes[element[1]][0]-nodes[element[0]][0])
-                + np.square(nodes[element[1]][1]-nodes[element[0]][1])
-            )
-
-            u_e = np.array([
-                u[2*element[0]],
-                u[2*element[0]+1],
-                u[2*element[1]],
-                u[2*element[1]+1],
-                u[2*element[2]],
-                u[2*element[2]+1]
-            ])
-            phi_e = np.array([
-                phi[element[0]],
-                phi[element[1]],
-                phi[element[2]]
-            ])
-
-            q_u = charge_integral_u(
-                node_points,
-                u_e,
-                material_manager.get_piezo_matrix(element_index),
-                jacobian_inverted_t
-            ) * 2 * np.pi * jacobian_det
-            q_v = charge_integral_v(
-                node_points,
-                phi_e,
-                material_manager.get_permittivity_matrix(element_index),
-                jacobian_inverted_t
-            ) * 2 * np.pi * jacobian_det
-
-            # Now take the component normal to the line (outer direction)
-            q_u_normal = np.dot(q_u, element_normals[element_index])
-            q_v_normal = np.dot(q_v, element_normals[element_index])
-
-            q += q_u_normal - q_v_normal
-
-        if np.isnan(q):
-            print("Calculated charge is nan")
-
-        return q
-
-    @staticmethod
     def apply_dirichlet_bc(
         m: sparse.lil_array,
         c: sparse.lil_array,
         k: sparse.lil_array,
         ln: sparse.lil_array,
         nodes: npt.NDArray
-    ):
+    ) -> Tuple[
+        sparse.csc_array,
+        sparse.csc_array,
+        sparse.csc_array,
+        sparse.csc_array
+    ]:
         # TODO Parameters are not really ndarrays
         # Set rows of matrices to 0 and diagonal of K to 1 (at node points)
 
