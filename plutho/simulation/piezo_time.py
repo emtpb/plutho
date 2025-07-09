@@ -139,6 +139,7 @@ def calculate_charge(
         else:
             u_e = np.zeros(2*points_per_element)
             ve_e = np.zeros(points_per_element)
+
         for i in range(points_per_element):
             u_e[2*i] = u[2*element[i]]
             u_e[2*i+1] = u[2*element[i]+1]

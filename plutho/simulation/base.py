@@ -298,7 +298,7 @@ def b_operator_global(
     Returns:
         B operator 4x6, for a u aligned like [u1_r, u1_z, u2_r, u2_z, ..].
     """
-    dim = int(1/2*(element_order+1)*(element_order+2))
+    nodes_per_element = int(1/2*(element_order+1)*(element_order+2))
 
     # Get local shape functions and r (because of theta component)
     n = local_shape_functions_2d(s, t)
@@ -311,8 +311,8 @@ def b_operator_global(
     global_dn = np.dot(jacobian_inverted_t, dn)
 
     # Initialize and fill array
-    b = np.zeros(shape=(4, 2*dim))
-    for d in range(dim):
+    b = np.zeros(shape=(4, 2*nodes_per_element))
+    for d in range(nodes_per_element):
         b[:, 2*d:2*d+2] = [
             [
                 global_dn[0][d], 0
@@ -493,7 +493,7 @@ def energy_integral_theta(
         n = local_shape_functions_2d(s, t, element_order)
         r = local_to_global_coordinates(node_points, s, t, element_order)[0]
 
-        return np.dot(n.T, theta) * r * jacobian_det
+        return np.dot(n.T, theta)*r*jacobian_det
 
     return quadratic_quadrature(inner, element_order)
 
@@ -846,7 +846,7 @@ def calculate_volumes(node_points: npt.NDArray, element_order):
     for element_index in range(number_of_elements):
         volumes.append(
             integral_volume(node_points[element_index], element_order)
-            * 2 * np.pi
+            *2*np.pi
         )
 
     return volumes

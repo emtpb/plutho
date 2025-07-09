@@ -69,7 +69,13 @@ def loss_integral_scs(
         s_e_t_minus_2 = np.dot(b_opt, u_e_t_minus_2)
         dt_s = (3*s_e-4*s_e_t_minus_1+s_e_t_minus_2)/(2*delta_t)
 
-        return np.dot(dt_s.T, np.dot(elasticity_matrix.T, dt_s))*r*jacobian_det
+        return np.dot(
+            dt_s.T,
+            np.dot(
+                elasticity_matrix.T,
+                dt_s
+            )
+        ) * r * jacobian_det
 
     return quadratic_quadrature(inner, element_order)
 

@@ -34,10 +34,6 @@ def integral_heat_flux(
         npt.NDArray heat flux integral on each point.
     """
     def inner(s):
-        dn = gradient_local_shape_functions_2d(s, 0, element_order)
-        jacobian = np.dot(node_points, dn.T)
-        jacobian_det = np.linalg.det(jacobian)
-
         n = local_shape_functions_2d(s, 0, element_order)
         r = local_to_global_coordinates(node_points, s, 0, element_order)[0]
 
@@ -411,7 +407,8 @@ class ThermoSimTime:
                     self.convective_b_e,
                     theta[:, time_index],
                     self.convective_alpha,
-                    self.convective_outer_temp
+                    self.convective_outer_temp,
+                    self.mesh_data.element_order
                 )
 
             # Perform Newmark method
