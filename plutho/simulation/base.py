@@ -216,8 +216,8 @@ def gradient_local_shape_functions_2d(s, t, element_order=1) -> npt.NDArray:
     match element_order:
         case 1:
             return np.array([
-                [-1, 1, 0],
-                [-1, 0, 1]
+                [-1, 1, 0],  # d_s
+                [-1, 0, 1]   # d_t
             ])
         case 2:
             return np.array([
@@ -239,7 +239,32 @@ def gradient_local_shape_functions_2d(s, t, element_order=1) -> npt.NDArray:
                 ]
             ])
         case 3:
-            pass
+            return np.array([
+                [  # d_s
+                    -13.5*s**2-27*s*t+18*s-13.5*t**2+18*t-5.5,
+                    13.5*s**2-9*s+1,
+                    0,
+                    40.5*s**2+54*s*t-45*s+13.5*t**2-22.5*t+9,
+                    -40.5*s**2-27*s*t+36*s+4.5*t-4.5,
+                    t*(27*s-4.5),
+                    t*(13.5*t-4.5),
+                    t*(4.5-13.5*t),
+                    t*(27*s+27*t-22.5),
+                    27*t*(-2*s-t+1)
+                ],
+                [  # d_t
+                    -13.5*s**2-27*s*t+18*s-13.5*t**2+18*t-5.5,
+                    0,
+                    13.5*t**2-9*t+1,
+                    s*(27*s+27*t-22.5),
+                    s*(4.5-13.5*s),
+                    s*(13.5*s-4.5),
+                    s*(27*t-4.5),
+                    -27*s*t+4.5*s-40.5*t**2+36*t-4.5,
+                    13.5*s**2+54*s*t-22.5*s+40.5*t**2-45*t+9,
+                    27*s*(-s-2*t+1)
+                ]
+            ])
 
     raise ValueError(
         "Gradient of shape functions not implemented for element "
