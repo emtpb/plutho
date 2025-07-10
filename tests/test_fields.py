@@ -52,7 +52,7 @@ def test_thermo_time(tmp_path):
     the simulation and compares it with the input energy.
     """
     # Create and load mesh; TODO maybe use smaller mesh size?
-    element_order = 2
+    element_order = 1
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
     plutho.Mesh.generate_rectangular_mesh(
         mesh_path,
@@ -315,7 +315,10 @@ def test_thermo_piezo_time(tmp_path, test=True):
     # Create and load mesh; TODO maybe use smaller mesh size?
     element_order = 1
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
-    plutho.Mesh.generate_rectangular_mesh(mesh_path)
+    plutho.Mesh.generate_rectangular_mesh(
+        mesh_path,
+        element_order=element_order
+    )
     mesh = plutho.Mesh(mesh_path, element_order)
 
     sim = plutho.SingleSimulation(

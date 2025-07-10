@@ -120,6 +120,10 @@ class ThermoSimTime:
     theta: npt.NDArray
     f: npt.NDArray
 
+    # FEM Matrices
+    k: sparse.lil_array
+    c: sparse.lil_array
+
     # Convective bc
     enable_convection_bc: bool
     convective_b_e: List[int]
@@ -439,7 +443,7 @@ class ThermoSimTime:
         self,
         initial_theta_field: npt.NDArray,
         initial_time_step: int
-    ):
+    ) -> int:
         """Runs the simulation using the assembled c and k matrices as well
         as the set excitation.
         Calculates the temperature field and saves it in theta.
@@ -492,12 +496,13 @@ class ThermoSimTime:
             # Add a convection boundary condition if it set
             if self.enable_convection_bc:
                 f += self._calculate_convection_bc(
-                    self.mesh_data.nodes,
-                    self.convective_b_e,
-                    self.theta[:, time_index],
-                    self.convective_alpha,
-                    self.convective_outer_temp
-                )
+                self.mesh_data.nodes,
+                self.convective_b_e,
+                self.theta[:, time_index],
+                self.convective_alpha,
+                self.convective_outer_temp,
+                self.mesh_data.element_order
+            )
 
             # Perform Newmark method
             # Predictor step
