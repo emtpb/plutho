@@ -51,4 +51,5 @@ plutho = { workspace = true }
 [dependency-groups]
 dev = [
     "plutho",
+    "pytest>=8.4.1",
 ]

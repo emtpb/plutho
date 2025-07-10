@@ -443,13 +443,6 @@ def test_thermo_piezo_time(tmp_path, test=True):
         uut_u = sim.solver.u[:, -1]
         uut_mech_loss = sim.solver.mech_loss[:, -1]
 
-        print("Test q:", test_q)
-        print("UUT q:", uut_q)
-        print("Test u:", test_u)
-        print("UUT u:", uut_u)
-        print("Test mech loss", test_mech_loss)
-        print("UUT mech loss", uut_mech_loss)
-
         # Compare arrays
         assert compare_numpy_array(uut_q, test_q), "Charge is not equal"
         assert compare_numpy_array(uut_u, test_u), \
