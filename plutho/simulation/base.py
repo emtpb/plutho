@@ -145,7 +145,7 @@ class MaterialData:
 # -------- Local functions and integrals --------
 
 
-def local_shape_functions_2d(s, t, element_order=1):
+def local_shape_functions_2d(s, t, element_order):
     """Returns the local linear shape functions based on a reference triangle
     with corner points [(0,0), (1,0), (1,1)] for the given coordinates.
 
@@ -199,7 +199,7 @@ def local_shape_functions_2d(s, t, element_order=1):
             )
 
 
-def gradient_local_shape_functions_2d(s, t, element_order=1) -> npt.NDArray:
+def gradient_local_shape_functions_2d(s, t, element_order) -> npt.NDArray:
     """Returns the gradient of the local shape functions.
 
     Parameters:
@@ -326,7 +326,7 @@ def b_operator_global(
     nodes_per_element = int(1/2*(element_order+1)*(element_order+2))
 
     # Get local shape functions and r (because of theta component)
-    n = local_shape_functions_2d(s, t)
+    n = local_shape_functions_2d(s, t, element_order)
     r = local_to_global_coordinates(node_points, s, t, element_order)[0]
 
     # Get gradients of local shape functions (s, t)

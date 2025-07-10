@@ -106,7 +106,8 @@ class Mesh:
         width: float = 0.005,
         height: float = 0.001,
         mesh_size: float = 0.00015,
-        x_offset: float = 0
+        x_offset: float = 0,
+        element_order: int = 1
     ):
         """Creates a gmsh rectangular mesh given the width, height, the mesh
         size and the x_offset.
@@ -125,6 +126,7 @@ class Mesh:
             gmsh.initialize()
 
         gmsh.clear()
+        gmsh.option.setNumber("Mesh.ElementOrder", element_order)
 
         corner_points = [
             [x_offset, 0],

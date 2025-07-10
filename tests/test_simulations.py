@@ -52,9 +52,12 @@ def test_thermo_time(tmp_path):
     the simulation and compares it with the input energy.
     """
     # Create and load mesh; TODO maybe use smaller mesh size?
-    element_order = 1
+    element_order = 2
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
-    plutho.Mesh.generate_rectangular_mesh(mesh_path)
+    plutho.Mesh.generate_rectangular_mesh(
+        mesh_path,
+        element_order=element_order
+    )
     mesh = plutho.Mesh(mesh_path, element_order)
 
     sim = plutho.SingleSimulation(
@@ -68,6 +71,9 @@ def test_thermo_time(tmp_path):
     delta_t = 0.001
     nodes, elements = mesh.get_mesh_nodes_and_elements()
     number_of_elements = len(elements)
+
+    print(f"Nodes {nodes}")
+    print(f"Elements {elements}")
 
     sim.setup_thermo_time_domain(
         delta_t,
@@ -118,9 +124,13 @@ def test_piezo_time(tmp_path, test=True):
     """Test function for the piezo time domain simulation.
     Tests the simulation for a triangular excitation."""
     # Create and load mesh; TODO maybe use smaller mesh size?
+    element_order = 1
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
-    plutho.Mesh.generate_rectangular_mesh(mesh_path)
-    mesh = plutho.Mesh(mesh_path, element_order=1)
+    plutho.Mesh.generate_rectangular_mesh(
+        mesh_path,
+        element_order=element_order
+    )
+    mesh = plutho.Mesh(mesh_path, element_order)
 
     sim = plutho.SingleSimulation(
         tmp_path,
@@ -212,9 +222,13 @@ def test_piezo_freq(tmp_path, test=True):
     displacement field and charge for a sinusoidal signal.
     """
     # Create and load mesh; TODO maybe use smaller mesh size?
+    element_order = 1
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
-    plutho.Mesh.generate_rectangular_mesh(mesh_path)
-    mesh = plutho.Mesh(mesh_path, element_order=1)
+    plutho.Mesh.generate_rectangular_mesh(
+        mesh_path,
+        element_order=element_order
+    )
+    mesh = plutho.Mesh(mesh_path, element_order)
 
     sim = plutho.SingleSimulation(
         tmp_path,

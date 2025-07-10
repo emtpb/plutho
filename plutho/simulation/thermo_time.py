@@ -91,7 +91,7 @@ def integral_theta_load(
         jacobian = np.dot(node_points, dn.T)
         jacobian_det = np.linalg.det(jacobian)
 
-        n = local_shape_functions_2d(s, t)
+        n = local_shape_functions_2d(s, t, element_order)
         r = local_to_global_coordinates(node_points, s, t, element_order)[0]
 
         return n*mech_loss*r*jacobian_det
@@ -174,8 +174,8 @@ class ThermoSimTime:
 
             ctheta_e = (
                 integral_m(node_points, element_order)
-                * self.material_manager.get_density(element)
-                * self.material_manager.get_heat_capacity(element)
+                * self.material_manager.get_density(element_index)
+                * self.material_manager.get_heat_capacity(element_index)
                 * 2 * np.pi
             )
             ktheta_e = (
@@ -183,7 +183,7 @@ class ThermoSimTime:
                     node_points,
                     element_order
                 )
-                * self.material_manager.get_thermal_conductivity(element)
+                * self.material_manager.get_thermal_conductivity(element_index)
                 * 2 * np.pi
             )
 
@@ -207,7 +207,7 @@ class ThermoSimTime:
         Parameters:
             mech_loss_density: The mechanical losses for each element. They
                 will be applied for every time step.
-            number_of_time_steps: Total number of time steps
+            number_of_time_steps: Total number of time steps.
         """
         nodes = self.mesh_data.nodes
         element_order = self.mesh_data.element_order
@@ -529,4 +529,5 @@ class ThermoSimTime:
             if self.material_manager.update_temperature(
                     temp_field_per_element):
                 return time_index+1
+
         return number_of_time_steps
