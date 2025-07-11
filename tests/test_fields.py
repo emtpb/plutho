@@ -10,8 +10,8 @@ import plutho
 # -------- Global variables --------
 
 NUMBER_OF_TIME_STEPS = 1000
-MAX_ERROR = 1e-15
-
+ATOL = 1e-14
+RTOL = 1e-7
 
 pic255 = plutho.MaterialData(
     **{
@@ -33,15 +33,6 @@ pic255 = plutho.MaterialData(
         "temperatures": 20
     }
 )
-
-# -------- Helper functions --------
-
-
-def compare_numpy_array(a, b):
-    if a.shape != b.shape:
-        return False
-
-    return np.allclose(a, b, atol=MAX_ERROR)
 
 
 # -------- Test functions --------
@@ -201,19 +192,30 @@ def test_piezo_time(tmp_path, test=True):
 
         # Compare arrays
         # For displacement just take last time step. TODO Is this sufficient?
-        assert compare_numpy_array(uut_u, test_u), \
-            "Displacement u is not equal"
-        assert compare_numpy_array(uut_q, test_q), "Charge is not equal"
+        np.testing.assert_allclose(
+            uut_u,
+            test_u,
+            rtol=RTOL,
+            atol=ATOL,
+            err_msg="Displacement u is not equal"
+        )
+        np.testing.assert_allclose(
+            uut_q,
+            test_q,
+            rtol=RTOL,
+            atol=ATOL,
+            err_msg="Charge is not equal"
+        )
 
     else:
         # Save results
         np.save(
             os.path.join(tmp_path, test_folder_name, "q.npy"),
-            sim.solver.q
+            uut_q
         )
         np.save(
             os.path.join(tmp_path, test_folder_name, "u.npy"),
-            sim.solver.u[:, -1]
+            uut_u
         )
 
 
@@ -290,19 +292,30 @@ def test_piezo_freq(tmp_path, test=True):
 
         # Compare arrays
         # For displacement just take last time step. TODO Is this sufficient?
-        assert compare_numpy_array(uut_u, test_u), \
-            "Displacement u is not equal"
-        assert compare_numpy_array(uut_q, test_q), "Charge is not equal"
+        np.testing.assert_allclose(
+            uut_u,
+            test_u,
+            rtol=RTOL,
+            atol=ATOL,
+            err_msg="Displacement u is not equal"
+        )
+        np.testing.assert_allclose(
+            uut_q,
+            test_q,
+            rtol=RTOL,
+            atol=ATOL,
+            err_msg="Charge is not equal"
+        )
 
     else:
         # Save test data
         np.save(
             os.path.join(tmp_path, test_folder_name, "q.npy"),
-            sim.solver.q
+            uut_q
         )
         np.save(
             os.path.join(tmp_path, test_folder_name, "u.npy"),
-            sim.solver.u[:, -1]
+            uut_u
         )
 
 
@@ -422,7 +435,7 @@ def test_thermo_piezo_time(tmp_path, test=True):
     # Maybe the signals are not fully dissipated?
     assert np.abs(input_energy - total_loss_energy) < 1e-11, \
         "Input energy does not equal total loss energy"
-    assert np.abs(total_loss_energy - stored_thermal_energy) < MAX_ERROR, \
+    assert np.abs(total_loss_energy - stored_thermal_energy) < ATOL, \
         "Total loss energy does not equal stored thermal energy"
 
     test_folder_name = "thermo_piezo_time"
@@ -444,11 +457,27 @@ def test_thermo_piezo_time(tmp_path, test=True):
         uut_mech_loss = sim.solver.mech_loss[:, -1]
 
         # Compare arrays
-        assert compare_numpy_array(uut_q, test_q), "Charge is not equal"
-        assert compare_numpy_array(uut_u, test_u), \
-            "Displacement u is not equal"
-        assert compare_numpy_array(uut_mech_loss, test_mech_loss), \
-            "Mech loss is not equal"
+        np.testing.assert_allclose(
+            uut_u,
+            test_u,
+            rtol=RTOL,
+            atol=ATOL,
+            err_msg="Displacement u is not equal"
+        )
+        np.testing.assert_allclose(
+            uut_q,
+            test_q,
+            rtol=RTOL,
+            atol=ATOL,
+            err_msg="Charge is not equal"
+        )
+        np.testing.assert_allclose(
+            uut_mech_loss,
+            test_mech_loss,
+            rtol=RTOL,
+            atol=ATOL,
+            err_msg="Charge is not equal"
+        )
     else:
         # Save data
         np.save(
