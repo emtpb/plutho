@@ -9,11 +9,28 @@ import gmsh
 import numpy as np
 import numpy.typing as npt
 
+
+# First index represents the element type:
+# 1: Line
+# 2: Triangle
+# Second index represents the element order
+element_to_nodes_map = np.array([
+    [-1, -1, -1, -1],
+    [-1, 2, 3, 4],
+    [-1, 3, 6, 10]
+])
+
+# Since its the same for lines and triangles, this map only has one row
+# and the index represents the element order
+element_to_boundary_nodes_map = np.array([-1, 2, 3, 4])
+
+
 class GmshParser:
     """Class to use the gmsh python interface to read the mesh files.
     """
+    element_order: int
 
-    def __init__(self, file_path):
+    def __init__(self, file_path, element_order):
         if not gmsh.is_initialized():
             gmsh.initialize()
 
@@ -21,6 +38,8 @@ class GmshParser:
             gmsh.open(file_path)
         else:
             raise IOError(f"Mesh file {file_path} not found.")
+
+        self.element_order = element_order
 
     @staticmethod
     def _get_nodes(node_tags, node_coords, _=None) -> npt.NDArray:
@@ -43,36 +62,85 @@ class GmshParser:
 
         return nodes
 
-    @staticmethod
     def _get_elements(
+        self,
         element_types,
         element_tags,
         element_node_tags
-    ) -> npt.NDArray:
-        """Returns a list of elements used in the simulation from the gmsh
-        getElements() api function.
+    ) -> Dict[int, npt.NDArray]:
+        """
+        For each given element type a list of elements is returned.
 
         Parameters:
-            element_types: Element types from gmsh api. Similar to the element
-                dimension so 2 equals triangles.
-            element_tags: Tags of the element per element type.
-            element_node_tags: Tags of the nodes per element tag.
+            element_types: List of element types for which the elements lists
+                are extracted.
+            element_tags: Tags of the elements per element type.
+            element_node_tags: Tags of the nodes of the elements per element
+                type.
 
         Returns:
-            A list of lists where each inner list contains the node indices for
-            the triangle at the outer list index.
+            A list of elements for each given element type:
+            List of elements [e1, e2, e3, ...] where each element consists of
+            its node tags: e1: [n1, n2, ...].
         """
-        elements = np.zeros(shape=(len(element_tags[1]), 3), dtype=int)
-        for i, element_type in enumerate(element_types):
-            if element_type == 2:
-                # Only looking for 3-node triangle elements
-                current_element_tags = element_tags[i]
-                current_node_tags = element_node_tags[i]
-                for j, _ in enumerate(current_element_tags):
-                    # 1 is subtracted because the indices in gmsh start with 1.
-                    elements[j] = current_node_tags[3*j:3*(j+1)] - np.ones(3)
+        elements_per_type = {}
 
-        return elements
+        # Types of the given elements: 2D -> Triangle or 1D -> Line
+        # Iterate over all given types
+        for i, element_type in enumerate(element_types):
+            elements = []
+            element_indices = []
+
+            # For each type get the order to calculate the number of nodes
+            # it consists of
+            _, dim, order, _, _, _ = \
+                gmsh.model.mesh.getElementProperties(
+                    element_type
+                )
+
+            match dim:
+                case 0:
+                    nodes_per_element = 1
+                case 1:
+                    # Line element
+                    nodes_per_element = order+1
+                case 2:
+                    # Triangle element
+                    nodes_per_element = int(1/2*(order+1)*(order+2))
+                case _:
+                    raise ValueError("Only supporting 2D meshes")
+
+            # The element tags and element_node_tags lists are nested lists
+            # which contain the element tags and node tags of the elements of
+            # the current type at the respective index
+            current_element_tags = element_tags[i]
+            current_node_tags = element_node_tags[i]
+
+            # Now iterate over every element of the current type and extract
+            # the node indices
+            for j, _ in enumerate(current_element_tags):
+                # 1 is subtracted because the indices in gmsh start with 1.
+                elements.append(current_node_tags[
+                        nodes_per_element*j:nodes_per_element*(j+1)
+                    ] - np.ones(nodes_per_element)
+                )
+                element_indices.append(j)
+
+            if len(elements) == 0:
+                raise ValueError(
+                    "Couldn't return elements because the list is empty."
+                )
+
+            elements_np = np.zeros(
+                shape=(len(current_element_tags), nodes_per_element),
+                dtype=int
+            )
+            for index, element in zip(element_indices, elements):
+                elements_np[index] = element
+
+            elements_per_type[element_type] = elements_np
+
+        return elements_per_type
 
     def get_mesh_nodes_and_elements(self) -> Tuple[npt.NDArray, npt.NDArray]:
         """Creates the nodes and elements lists as used in the simulation.
@@ -80,7 +148,20 @@ class GmshParser:
         Returns:
             List of nodes and elements"""
         nodes = self._get_nodes(*gmsh.model.mesh.getNodes())
-        elements = self._get_elements(*gmsh.model.mesh.getElements())
+
+        el_types, el_tags, el_node_tags = gmsh.model.mesh.getElements(dim=2)
+        elements_per_type = self._get_elements(
+            el_types, el_tags, el_node_tags
+        )
+
+        if len(elements_per_type) != 1:
+            raise ValueError(
+                "The given mesh as more (or less) than one element type for "
+                "dim=2"
+            )
+
+        # There should be only one element type for dim=2
+        elements = elements_per_type[el_types[0]]
 
         return nodes, elements
 
@@ -122,41 +203,42 @@ class GmshParser:
         self,
         needed_pg_names: List[str]
     ) -> Dict[str, npt.NDArray]:
-        """Returns the elements inside the given physical groups.
+        """Get all triangle elements for the given physical group.
 
         Parameters:
             needed_pg_names: List of names of physical groups for which the
-                triangles are returned.
+                triangle elements shall be returned.
 
         Returns:
-            Dictionary where keys are the pg names and the values are a list
-            of triangles of this physical group."""
-        pg_tags = self.get_nodes_by_physical_groups(needed_pg_names)
-        elements = self._get_elements(*gmsh.model.mesh.getElements())
-        triangle_elements = {}
-        for pg_name, nodes in pg_tags.items():
-            current_triangle_elements = []
-            for check_element in elements:
-                # If at least 2 nodes of the check_element are inside of the
-                # nodes list of the current physical group, then the element
-                # is also part of the physical group.
-                found_count = 0
+            dictionary where the key is the physical group name and the value
+            is a list of elements for this pg.
+        """
+        _, elements = self.get_mesh_nodes_and_elements()
+        pg_nodes = self.get_nodes_by_physical_groups(needed_pg_names)
+        element_order = self.element_order
+        nodes_per_line = element_order+1
+        pg_elements = {}
 
-                if check_element[0] in nodes:
-                    found_count += 1
-                if check_element[1] in nodes:
-                    found_count += 1
-                if check_element[2] in nodes:
-                    found_count += 1
+        for pg_name in needed_pg_names:
+            nodes = pg_nodes[pg_name]
 
-                if found_count > 1:
-                    current_triangle_elements.append(check_element)
+            # For every possible element, check if it contains 'enought' nodes
+            # from the physical group -> Then add it to the elements list
+            # TODO Rework this: Check if its also possible to return
+            # element lists containing line elements.
+            current_elements = []
+            for element in elements:
+                count = 0
+                for node_index in element:
+                    if node_index in nodes:
+                        count += 1
 
-            triangle_elements[pg_name] = np.array(
-                current_triangle_elements,
-                dtype=int)
+                if count >= nodes_per_line:
+                    current_elements.append(element)
 
-        return triangle_elements
+            pg_elements[pg_name] = np.array(current_elements)
+
+        return pg_elements
 
     def create_element_post_processing_view(
         self,

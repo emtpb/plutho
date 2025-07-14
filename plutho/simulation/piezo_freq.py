@@ -10,8 +10,8 @@ import scipy.sparse.linalg as slin
 # Local libraries
 from .base import MeshData, local_to_global_coordinates, b_operator_global, \
     integral_m, integral_ku, integral_kuv, integral_kve, apply_dirichlet_bc, \
-    create_local_element_data, LocalElementData, quadratic_quadrature, \
-    calculate_volumes
+    create_node_points, quadratic_quadrature, \
+    calculate_volumes, gradient_local_shape_functions_2d
 from .piezo_time import calculate_charge
 from ..materials import MaterialManager
 
@@ -19,8 +19,8 @@ from ..materials import MaterialManager
 def loss_integral_scs(
     node_points: npt.NDArray,
     u_e: npt.NDArray,
-    jacobian_inverted_t: npt.NDArray,
-    elasticity_matrix: npt.NDArray
+    elasticity_matrix: npt.NDArray,
+    element_order: int
 ):
     """Calculate sthe integral of dS/dt*c*dS/dt over one triangle in the
     frequency domain for the given frequency.
@@ -31,25 +31,37 @@ def loss_integral_scs(
         u_e: Displacement at this element [u1_r, u1_z, u_2r, u_2z, u_3r, u_3z].
         angular_frequency: Angular frequency at which the loss shall be
             calculated.
-        jacobian_inverted_t: Jacobian matrix inverted and transposed, needed
-            for calculation of global derivates.
-        elasticity_matrix: Elasticity matrix for the current element (c matrix)
+        elasticity_matrix: Elasticity matrix for the current element
+            (c matrix).
+        element_order: Order of the shape functions.
     """
     def inner(s, t):
-        r = local_to_global_coordinates(node_points, s, t)[0]
+        dn = gradient_local_shape_functions_2d(s, t, element_order)
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_inverted_t = np.linalg.inv(jacobian).T
+        jacobian_det = np.linalg.det(jacobian)
+
         b_opt = b_operator_global(
             node_points,
             jacobian_inverted_t,
             s,
-            t
+            t,
+            element_order
         )
+        r = local_to_global_coordinates(node_points, s, t, element_order)[0]
 
         s_e = np.dot(b_opt, u_e)
 
         # return np.dot(dt_s.T, np.dot(elasticity_matrix.T, dt_s))*r
-        return np.dot(np.conjugate(s_e).T, np.dot(elasticity_matrix.T, s_e))*r
+        return np.dot(
+            np.conjugate(s_e).T,
+            np.dot(
+                elasticity_matrix.T,
+                s_e
+            )
+        ) * r * jacobian_det
 
-    return quadratic_quadrature(inner)
+    return quadratic_quadrature(inner, element_order)
 
 
 class PiezoSimFreq:
@@ -99,7 +111,7 @@ class PiezoSimFreq:
     mech_loss: npt.NDArray
 
     # Internal simulation data
-    local_elements: List[LocalElementData]
+    node_points: npt.NDArray
 
     def __init__(
         self,
@@ -120,7 +132,8 @@ class PiezoSimFreq:
         # Maybe the 2x2 matrix slicing is not very fast
         nodes = self.mesh_data.nodes
         elements = self.mesh_data.elements
-        self.local_elements = create_local_element_data(nodes, elements)
+        element_order = self.mesh_data.element_order
+        self.node_points = create_node_points(nodes, elements, element_order)
 
         number_of_nodes = len(nodes)
         mu = sparse.lil_matrix(
@@ -141,11 +154,7 @@ class PiezoSimFreq:
         )
 
         for element_index, element in enumerate(self.mesh_data.elements):
-            # Get local element nodes and matrices
-            local_element = self.local_elements[element_index]
-            node_points = local_element.node_points
-            jacobian_inverted_t = local_element.jacobian_inverted_t
-            jacobian_det = local_element.jacobian_det
+            node_points = self.node_points[element_index]
 
             # TODO Check if its necessary to calculate all integrals
             # --> Dirichlet nodes could be leaved out?
@@ -154,34 +163,34 @@ class PiezoSimFreq:
             # Mutiply with 2*pi because theta is integrated from 0 to 2*pi
             mu_e = (
                 self.material_manager.get_density(element_index)
-                * integral_m(node_points)
-                * jacobian_det * 2 * np.pi
+                * integral_m(node_points, element_order)
+                * 2 * np.pi
             )
             ku_e = (
                 integral_ku(
                     node_points,
-                    jacobian_inverted_t,
-                    self.material_manager.get_elasticity_matrix(element_index)
+                    self.material_manager.get_elasticity_matrix(element_index),
+                    element_order
                 )
-                * jacobian_det * 2 * np.pi
+                * 2 * np.pi
             )
             kuv_e = (
                 integral_kuv(
                     node_points,
-                    jacobian_inverted_t,
-                    self.material_manager.get_piezo_matrix(element_index)
+                    self.material_manager.get_piezo_matrix(element_index),
+                    element_order
                 )
-                * jacobian_det * 2 * np.pi
+                * 2 * np.pi
             )
             kve_e = (
                 integral_kve(
                     node_points,
-                    jacobian_inverted_t,
                     self.material_manager.get_permittivity_matrix(
                         element_index
-                    )
+                    ),
+                    element_order
                 )
-                * jacobian_det * 2 * np.pi
+                * 2 * np.pi
             )
 
             # Now assemble all element matrices
@@ -259,6 +268,9 @@ class PiezoSimFreq:
         frequencies = self.frequencies
         number_of_nodes = len(self.mesh_data.nodes)
         number_of_elements = len(self.mesh_data.elements)
+        element_order = self.mesh_data.element_order
+        points_per_element = int(1/2*(element_order+1)*(element_order+2))
+
         u = np.zeros(
             (3*number_of_nodes, len(frequencies)),
             dtype=np.complex128
@@ -276,7 +288,10 @@ class PiezoSimFreq:
             self.dirichlet_nodes
         )
 
-        volumes = calculate_volumes(self.local_elements)
+        volumes = calculate_volumes(
+            self.node_points,
+            self.mesh_data.element_order
+        )
 
         print(
             f"Starting frequency simulation. There are {len(frequencies)} "
@@ -305,37 +320,32 @@ class PiezoSimFreq:
                     self.material_manager,
                     electrode_elements,
                     electrode_normals,
-                    self.mesh_data.nodes
+                    self.mesh_data.nodes,
+                    self.mesh_data.element_order,
+                    True
                 )
 
             # Calculate mech_loss for every element
             for element_index, element in enumerate(self.mesh_data.elements):
-                # Get local element data
-                local_element = self.local_elements[element_index]
-                node_points = local_element.node_points
-                jacobian_inverted_t = local_element.jacobian_inverted_t
-                jacobian_det = local_element.jacobian_det
+                node_points = self.node_points[element_index]
 
                 # Get field values
-                u_e = np.array([
-                    u[2*element[0], frequency_index],
-                    u[2*element[0]+1, frequency_index],
-                    u[2*element[1], frequency_index],
-                    u[2*element[1]+1, frequency_index],
-                    u[2*element[2], frequency_index],
-                    u[2*element[2]+1, frequency_index]])
+                u_e = np.zeros(2*points_per_element, dtype=np.complex128)
+                for i in range(points_per_element):
+                    u_e[2*i] = u[2*element[i], frequency_index]
+                    u_e[2*i+1] = u[2*element[i]+1, frequency_index]
 
                 if calculate_mech_loss:
                     mech_loss[element_index, frequency_index] = (
                         loss_integral_scs(
                             node_points,
                             u_e,
-                            jacobian_inverted_t,
                             self.material_manager.get_elasticity_matrix(
                                 element_index
-                            )
+                            ),
+                            element_order
                         )
-                        * 2 * np.pi * jacobian_det
+                        * 2 * np.pi
                         * self.material_manager.get_alpha_k(element_index)
                         * 1/volumes[element_index]
                         # TODO Actually this must be multiplied with -1

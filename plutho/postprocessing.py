@@ -7,7 +7,7 @@ import numpy.typing as npt
 
 # Local libraries
 from plutho.simulation.base import energy_integral_theta, \
-    gradient_local_shape_functions
+    gradient_local_shape_functions_2d
 
 
 def calculate_impedance(
@@ -59,6 +59,7 @@ def calculate_stored_thermal_energy(
     theta: npt.NDArray,
     nodes: npt.NDArray,
     elements: npt.NDArray,
+    element_order: int,
     heat_capacity: float,
     density: float
 ) -> Union[float, npt.NDArray]:
@@ -77,33 +78,33 @@ def calculate_stored_thermal_energy(
     Returns:
         The stored energy either as float or list of floats.
     """
+    points_per_element = int(1/2*(element_order+1)*(element_order+2))
 
     if len(theta.shape) == 2:
         # Need to calculate for every time step
         stored_energies = np.zeros(theta.shape[1])
 
         for time_index in range(theta.shape[1]):
-            for element in elements:
-                dn = gradient_local_shape_functions()
-                node_points = np.array([
-                    [nodes[element[0]][0],
-                     nodes[element[1]][0],
-                     nodes[element[2]][0]],
-                    [nodes[element[0]][1],
-                     nodes[element[1]][1],
-                     nodes[element[2]][1]]
-                ])
-                jacobian = np.dot(node_points, dn.T)
-                jacobian_det = np.linalg.det(jacobian)
-                theta_e = np.array([
-                    theta[element[0], time_index],
-                    theta[element[1], time_index],
-                    theta[element[2], time_index]
-                ])
+            for element_index, element in enumerate(elements):
+                node_points = np.zeros(shape=(2, points_per_element))
+                for node_index in range(points_per_element):
+                    node_points[:, node_index] = [
+                        nodes[element[node_index]][0],
+                        nodes[element[node_index]][1]
+                    ]
+
+                theta_e = np.zeros(points_per_element)
+                for node_index in range(points_per_element):
+                    theta_e[node_index] = theta[
+                        element[node_index],
+                        time_index
+                    ]
+
                 stored_energies[time_index] += energy_integral_theta(
                     node_points,
-                    theta_e
-                ) * 2 * np.pi * jacobian_det * heat_capacity * density
+                    theta_e,
+                    element_order
+                ) * 2 * np.pi * heat_capacity * density
 
         return stored_energies
 
@@ -111,28 +112,27 @@ def calculate_stored_thermal_energy(
         # Only one time step
         stored_energy = 0
 
-        for element in elements:
-            dn = gradient_local_shape_functions()
-            node_points = np.array([
-                [nodes[element[0]][0],
-                 nodes[element[1]][0],
-                 nodes[element[2]][0]],
-                [nodes[element[0]][1],
-                 nodes[element[1]][1],
-                 nodes[element[2]][1]]
-            ])
-            jacobian = np.dot(node_points, dn.T)
-            jacobian_det = np.linalg.det(jacobian)
-            theta_e = np.array([
-                theta[element[0]],
-                theta[element[1]],
-                theta[element[2]]
-            ])
+        for element_index, element in enumerate(elements):
+            node_points = np.zeros(shape=(2, points_per_element))
+            for node_index in range(points_per_element):
+                node_points[:, node_index] = [
+                    nodes[element[node_index]][0],
+                    nodes[element[node_index]][1]
+                ]
+
+            theta_e = np.zeros(points_per_element)
+            for node_index in range(points_per_element):
+                theta_e[node_index] = theta[element[node_index]]
+
             stored_energy += energy_integral_theta(
                 node_points,
-                theta_e
-            ) * 2 * np.pi * jacobian_det * heat_capacity * density
+                theta_e,
+                element_order
+            ) * 2 * np.pi * heat_capacity * density
 
         return stored_energy
 
-    return -1
+    raise ValueError(
+        "Cannot calculate total stored energy for given "
+        f"{len(theta.shape)}-dimensional theta"
+    )

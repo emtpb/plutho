@@ -9,10 +9,10 @@ import scipy.sparse.linalg as slin
 
 # Local libraries
 from .base import SimulationData, MeshData, \
-    gradient_local_shape_functions, \
+    gradient_local_shape_functions_2d, \
     local_to_global_coordinates, b_operator_global, integral_m, \
     integral_ku, integral_kuv, integral_kve, apply_dirichlet_bc, \
-    line_quadrature, create_local_element_data, LocalElementData
+    line_quadrature, create_node_points
 from ..materials import MaterialManager
 
 
@@ -20,7 +20,7 @@ def charge_integral_u(
     node_points: npt.NDArray,
     u_e: npt.NDArray,
     piezo_matrix: npt.NDArray,
-    jacobian_inverted_t: npt.NDArray
+    element_order: int
 ):
     """Calculates the integral of eBu of the given element.
 
@@ -30,31 +30,35 @@ def charge_integral_u(
         u_e: List of u values at the nodes of the triangle
             [u1_r, u1_z, u2_r, u2_z].
         piezo_matrix: Piezo matrix for the current element (e matrix).
-        jacobian_inverted_t: Jacobian matrix inverted and transposed, needed
-            for calculation of global derivatives.
+        element_order: Order of the shape functions.
 
     Returns:
         Float: Integral of eBu of the current triangle.
     """
     def inner(s):
-        r = local_to_global_coordinates(node_points, s, 0)[0]
+        dn = gradient_local_shape_functions_2d(s, 0, element_order)
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_inverted_t = np.linalg.inv(jacobian).T
+
         b_opt_global = b_operator_global(
             node_points,
             jacobian_inverted_t,
             s,
-            0
+            0,
+            element_order
         )
+        r = local_to_global_coordinates(node_points, s, 0, element_order)[0]
 
         return -np.dot(np.dot(piezo_matrix, b_opt_global), u_e)*r
 
-    return line_quadrature(inner)
+    return line_quadrature(inner, element_order)
 
 
 def charge_integral_v(
     node_points: npt.NDArray,
     v_e: npt.NDArray,
     permittivity_matrix: npt.NDArray,
-    jacobian_inverted_t: npt.NDArray
+    element_order: int
 ):
     """Calculates the integral of epsilonBVe of the given element.
 
@@ -65,20 +69,22 @@ def charge_integral_v(
             [v1, v2].
         permittivity_matrix: Permittivity matrix for the current
             element (e matrix).
-        jacobian_inverted_t: Jacobian matrix inverted and transposed, needed
-            for calculation of global derivatives.
+        element_order: Order of the shape functions.
 
     Returns:
         Float: Integral of epsilonBVe of the current triangle.
     """
     def inner(s):
-        r = local_to_global_coordinates(node_points, s, 0)[0]
-        dn = gradient_local_shape_functions()
+        dn = gradient_local_shape_functions_2d(s, 0, element_order)
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_inverted_t = np.linalg.inv(jacobian).T
+
         global_dn = np.dot(jacobian_inverted_t, dn)
+        r = local_to_global_coordinates(node_points, s, 0, element_order)[0]
 
         return -np.dot(np.dot(permittivity_matrix, global_dn), v_e)*r
 
-    return line_quadrature(inner)
+    return line_quadrature(inner, element_order)
 
 
 def calculate_charge(
@@ -86,7 +92,9 @@ def calculate_charge(
     material_manager: MaterialManager,
     elements: npt.NDArray,
     element_normals: npt.NDArray,
-    nodes
+    nodes: npt.NDArray,
+    element_order: int,
+    is_complex: bool = False
 ) -> float:
     """Calculates the charge of the given elements.
 
@@ -97,28 +105,23 @@ def calculate_charge(
         element_normals: List of element normal vectors (index corresponding to
             the elements list).
         nodes: All nodes used in the simulation.
+        element_order: Order of the shape functions.
     """
+    points_per_element = int(1/2*(element_order+1)*(element_order+2))
     number_of_nodes = len(nodes)
     q = 0
 
     for element_index, element in enumerate(elements):
-        dn = gradient_local_shape_functions(2)
-        node_points = np.array([
-            [nodes[element[0]][0],
-             nodes[element[1]][0],
-             nodes[element[2]][0]],
-            [nodes[element[0]][1],
-             nodes[element[1]][1],
-             nodes[element[2]][1]],
-        ])
-        # This calculation of the jacobian does only work for triangle elements
-        # and not for line elements, since for line elements the resulting
-        # jacobian is non invertible.
-        jacobian = np.dot(node_points, dn.T)
-        jacobian_inverted_t = np.linalg.inv(jacobian).T
+        node_points = np.zeros(shape=(2, points_per_element))
+        for node_index in range(points_per_element):
+            node_points[:, node_index] = [
+                nodes[element[node_index]][0],
+                nodes[element[node_index]][1]
+            ]
 
         # The integration is always done along the first two points of the
         # triangle.
+        # TODO Not true for element_order > 1
         jacobian_det = np.sqrt(
             np.square(nodes[element[1]][0]-nodes[element[0]][0])
             + np.square(nodes[element[1]][1]-nodes[element[0]][1])
@@ -129,31 +132,30 @@ def calculate_charge(
         # This is due to the charge calculation needing the derivatives of the
         # shape function (dN_i/dr and dN_i/dz) which are (+/-) 1 along the
         # whole triangle for all 3 points.
-        u_e = np.array([
-            u[2*element[0]],
-            u[2*element[0]+1],
-            u[2*element[1]],
-            u[2*element[1]+1],
-            u[2*element[2]],
-            u[2*element[2]+1]
-        ])
-        ve_e = np.array([
-            u[element[0]+2*number_of_nodes],
-            u[element[1]+2*number_of_nodes],
-            u[element[2]+2*number_of_nodes]
-        ])
+        # TODO Is this true?
+        if is_complex:
+            u_e = np.zeros(2*points_per_element, dtype=np.complex128)
+            ve_e = np.zeros(points_per_element, dtype=np.complex128)
+        else:
+            u_e = np.zeros(2*points_per_element)
+            ve_e = np.zeros(points_per_element)
+
+        for i in range(points_per_element):
+            u_e[2*i] = u[2*element[i]]
+            u_e[2*i+1] = u[2*element[i]+1]
+            ve_e[i] = u[element[i]+2*number_of_nodes]
 
         q_u = charge_integral_u(
             node_points,
             u_e,
             material_manager.get_piezo_matrix(element_index),
-            jacobian_inverted_t
+            element_order
         ) * 2 * np.pi * jacobian_det
         q_v = charge_integral_v(
             node_points,
             ve_e,
             material_manager.get_permittivity_matrix(element_index),
-            jacobian_inverted_t
+            element_order
         ) * 2 * np.pi * jacobian_det
 
         # Now take the component normal to the line (outer direction)
@@ -211,7 +213,7 @@ class PiezoSimTime:
     q: npt.NDArray
 
     # Internal simulation data
-    local_elements: List[LocalElementData]
+    node_points: npt.NDArray
 
     def __init__(
         self,
@@ -232,7 +234,8 @@ class PiezoSimTime:
         # Maybe the 2x2 matrix slicing is not very fast
         nodes = self.mesh_data.nodes
         elements = self.mesh_data.elements
-        self.local_elements = create_local_element_data(nodes, elements)
+        element_order = self.mesh_data.element_order
+        self.node_points = create_node_points(nodes, elements, element_order)
 
         number_of_nodes = len(nodes)
         mu = sparse.lil_matrix(
@@ -253,11 +256,7 @@ class PiezoSimTime:
         )
 
         for element_index, element in enumerate(self.mesh_data.elements):
-            # Get local element nodes and matrices
-            local_element = self.local_elements[element_index]
-            node_points = local_element.node_points
-            jacobian_inverted_t = local_element.jacobian_inverted_t
-            jacobian_det = local_element.jacobian_det
+            node_points = self.node_points[element_index]
 
             # TODO Check if its necessary to calculate all integrals
             # --> Dirichlet nodes could be leaved out?
@@ -266,34 +265,34 @@ class PiezoSimTime:
             # Mutiply with 2*pi because theta is integrated from 0 to 2*pi
             mu_e = (
                 self.material_manager.get_density(element_index)
-                * integral_m(node_points)
-                * jacobian_det * 2 * np.pi
+                * integral_m(node_points, element_order)
+                * 2 * np.pi
             )
             ku_e = (
                 integral_ku(
                     node_points,
-                    jacobian_inverted_t,
-                    self.material_manager.get_elasticity_matrix(element_index)
+                    self.material_manager.get_elasticity_matrix(element_index),
+                    element_order
                 )
-                * jacobian_det * 2 * np.pi
+                * 2 * np.pi
             )
             kuv_e = (
                 integral_kuv(
                     node_points,
-                    jacobian_inverted_t,
-                    self.material_manager.get_piezo_matrix(element_index)
+                    self.material_manager.get_piezo_matrix(element_index),
+                    element_order
                 )
-                * jacobian_det * 2 * np.pi
+                * 2 * np.pi
             )
             kve_e = (
                 integral_kve(
                     node_points,
-                    jacobian_inverted_t,
                     self.material_manager.get_permittivity_matrix(
                         element_index
-                    )
+                    ),
+                    element_order
                 )
-                * jacobian_det * 2 * np.pi
+                * 2 * np.pi
             )
 
             # Now assemble all element matrices
@@ -443,7 +442,8 @@ class PiezoSimTime:
                     self.material_manager,
                     electrode_elements,
                     electrode_normals,
-                    self.mesh_data.nodes
+                    self.mesh_data.nodes,
+                    self.mesh_data.element_order
                 )
 
             if (time_index + 1) % 100 == 0:

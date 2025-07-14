@@ -10,11 +10,11 @@ from scipy import sparse
 
 # Local libraries
 from .base import SimulationData, MeshData, \
-    gradient_local_shape_functions, create_local_element_data, \
+    create_node_points, \
     local_to_global_coordinates, b_operator_global, integral_m, \
     integral_ku, integral_kuv, integral_kve, apply_dirichlet_bc, \
-    quadratic_quadrature, LocalElementData, calculate_volumes, \
-    get_avg_temp_field_per_element
+    quadratic_quadrature, calculate_volumes, \
+    gradient_local_shape_functions_2d, get_avg_temp_field_per_element
 from .piezo_time import calculate_charge
 from .thermo_time import integral_ktheta, integral_theta_load
 from ..materials import MaterialManager
@@ -26,8 +26,8 @@ def loss_integral_scs(
     u_e_t_minus_1: npt.NDArray,
     u_e_t_minus_2: npt.NDArray,
     delta_t: float,
-    jacobian_inverted_t: npt.NDArray,
-    elasticity_matrix: npt.NDArray
+    elasticity_matrix: npt.NDArray,
+    element_order: int
 ):
     """Calculates the integral of dS/dt*c*dS/dt over one triangle. Since foward
     difference quotient of second oder is used the last 2 values of e_u are
@@ -47,14 +47,21 @@ def loss_integral_scs(
             for calculation of global derivatives.
         elasticity_matrix: Elasticity matrix for the current element
             (c matrix).
+        element_order: Order of the shape functions.
     """
     def inner(s, t):
-        r = local_to_global_coordinates(node_points, s, t)[0]
+        dn = gradient_local_shape_functions_2d(s, t, element_order)
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_inverted_t = np.linalg.inv(jacobian).T
+        jacobian_det = np.linalg.det(jacobian)
+
+        r = local_to_global_coordinates(node_points, s, t, element_order)[0]
         b_opt = b_operator_global(
             node_points,
             jacobian_inverted_t,
             s,
-            t
+            t,
+            element_order
         )
 
         s_e = np.dot(b_opt, u_e_t)
@@ -62,9 +69,15 @@ def loss_integral_scs(
         s_e_t_minus_2 = np.dot(b_opt, u_e_t_minus_2)
         dt_s = (3*s_e-4*s_e_t_minus_1+s_e_t_minus_2)/(2*delta_t)
 
-        return np.dot(dt_s.T, np.dot(elasticity_matrix.T, dt_s))*r
+        return np.dot(
+            dt_s.T,
+            np.dot(
+                elasticity_matrix.T,
+                dt_s
+            )
+        ) * r * jacobian_det
 
-    return quadratic_quadrature(inner)
+    return quadratic_quadrature(inner, element_order)
 
 
 class ThermoPiezoSimTime:
@@ -108,9 +121,9 @@ class ThermoPiezoSimTime:
     dirichlet_values: npt.NDArray
 
     # FEM matrices
-    m: npt.NDArray
-    c: npt.NDArray
-    k: npt.NDArray
+    m: sparse.lil_array
+    c: sparse.lil_array
+    k: sparse.lil_array
 
     # Resulting fields
     u: npt.NDArray
@@ -118,7 +131,7 @@ class ThermoPiezoSimTime:
     mech_loss: npt.NDArray
 
     # Internal simulation data
-    local_elements: List[LocalElementData]
+    node_points: npt.NDArray
 
     def __init__(
         self,
@@ -139,7 +152,8 @@ class ThermoPiezoSimTime:
         # Maybe the 2x2 matrix slicing is not very fast
         nodes = self.mesh_data.nodes
         elements = self.mesh_data.elements
-        self.local_elements = create_local_element_data(nodes, elements)
+        element_order = self.mesh_data.element_order
+        self.node_points = create_node_points(nodes, elements, element_order)
 
         number_of_nodes = len(nodes)
         mu = sparse.lil_matrix(
@@ -162,11 +176,7 @@ class ThermoPiezoSimTime:
             dtype=np.float64)
 
         for element_index, element in enumerate(self.mesh_data.elements):
-            # Get local element nodes and matrices
-            local_element = self.local_elements[element_index]
-            node_points = local_element.node_points
-            jacobian_inverted_t = local_element.jacobian_inverted_t
-            jacobian_det = local_element.jacobian_det
+            node_points = self.node_points[element_index]
 
             # TODO Check if its necessary to calculate all integrals
             # --> Dirichlet nodes could be leaved out?
@@ -175,45 +185,45 @@ class ThermoPiezoSimTime:
             # Mutiply with 2*pi because theta is integrated from 0 to 2*pi
             mu_e = (
                 self.material_manager.get_density(element_index)
-                * integral_m(node_points)
-                * jacobian_det * 2 * np.pi
+                * integral_m(node_points, element_order)
+                * 2 * np.pi
             )
             ku_e = (
                 integral_ku(
                     node_points,
-                    jacobian_inverted_t,
-                    self.material_manager.get_elasticity_matrix(element_index))
-                * jacobian_det * 2 * np.pi
+                    self.material_manager.get_elasticity_matrix(element_index),
+                    element_order
+                )
+                * 2 * np.pi
             )
             kuv_e = (
                 integral_kuv(
                     node_points,
-                    jacobian_inverted_t,
-                    self.material_manager.get_piezo_matrix(element_index))
-                * jacobian_det * 2 * np.pi
+                    self.material_manager.get_piezo_matrix(element_index),
+                    element_order
+                )
+                * 2 * np.pi
             )
             kve_e = (
                 integral_kve(
                     node_points,
-                    jacobian_inverted_t,
                     self.material_manager.get_permittivity_matrix(
                         element_index
-                    )
+                    ),
+                    element_order
                 )
-                * jacobian_det * 2 * np.pi
+                * 2 * np.pi
             )
             ctheta_e = (
-                integral_m(node_points)
+                integral_m(node_points, element_order)
                 * self.material_manager.get_density(element_index)
                 * self.material_manager.get_heat_capacity(element_index)
-                * jacobian_det * 2 * np.pi
+                * 2 * np.pi
             )
             ktheta_e = (
-                integral_ktheta(
-                    node_points,
-                    jacobian_inverted_t)
+                integral_ktheta(node_points, element_order)
                 * self.material_manager.get_thermal_conductivity(element_index)
-                * jacobian_det * 2 * np.pi
+                * 2 * np.pi
             )
 
             # Now assemble all element matrices
@@ -303,6 +313,8 @@ class ThermoPiezoSimTime:
         delta_t = self.simulation_data.delta_t
         elements = self.mesh_data.elements
         nodes = self.mesh_data.nodes
+        element_order = self.mesh_data.element_order
+        points_per_element = int(1/2*(element_order+1)*(element_order+2))
         number_of_elements = len(elements)
         number_of_nodes = len(nodes)
 
@@ -336,7 +348,10 @@ class ThermoPiezoSimTime:
             dtype=np.float64
         )
 
-        volumes = calculate_volumes(self.local_elements)
+        volumes = calculate_volumes(
+            self.node_points,
+            self.mesh_data.element_order
+        )
 
         if theta_start is not None:
             if len(theta_start) != number_of_nodes:
@@ -410,39 +425,25 @@ class ThermoPiezoSimTime:
                     self.material_manager,
                     electrode_elements,
                     electrode_normals,
-                    nodes
+                    nodes,
+                    element_order
                 )
 
             # Calculate power_loss
             for element_index, element in enumerate(elements):
-                # Get local element data
-                local_element = self.local_elements[element_index]
-                node_points = local_element.node_points
-                jacobian_inverted_t = local_element.jacobian_inverted_t
-                jacobian_det = local_element.jacobian_det
+                node_points = self.node_points[element_index]
 
-                # Get field values at current element at time index
-                u_e = np.array([
-                    u[2*element[0], time_index+1],
-                    u[2*element[0]+1, time_index+1],
-                    u[2*element[1], time_index+1],
-                    u[2*element[1]+1, time_index+1],
-                    u[2*element[2], time_index+1],
-                    u[2*element[2]+1, time_index+1]])
-                u_e_t_minus_1 = np.array([
-                    u[2*element[0], time_index],
-                    u[2*element[0]+1, time_index],
-                    u[2*element[1], time_index],
-                    u[2*element[1]+1, time_index],
-                    u[2*element[2], time_index],
-                    u[2*element[2]+1, time_index]])
-                u_e_t_minus_2 = np.array([
-                    u[2*element[0], time_index-1],
-                    u[2*element[0]+1, time_index-1],
-                    u[2*element[1], time_index-1],
-                    u[2*element[1]+1, time_index-1],
-                    u[2*element[2], time_index-1],
-                    u[2*element[2]+1, time_index-1]])
+                # Get field values at current element at specific time index
+                u_e = np.zeros(2*points_per_element)
+                u_e_t_minus_1 = np.zeros(2*points_per_element)
+                u_e_t_minus_2 = np.zeros(2*points_per_element)
+                for i in range(points_per_element):
+                    u_e[2*i] = u[2*element[i], time_index+1]
+                    u_e[2*i+1] = u[2*element[i]+1, time_index+1]
+                    u_e_t_minus_1[2*i] = u[2*element[i], time_index]
+                    u_e_t_minus_1[2*i+1] = u[2*element[i]+1, time_index]
+                    u_e_t_minus_2[2*i] = u[2*element[i], time_index-1]
+                    u_e_t_minus_2[2*i+1] = u[2*element[i]+1, time_index-1]
 
                 # The mech loss of the element is divided by the volume
                 # because it must be a power density.
@@ -454,12 +455,12 @@ class ThermoPiezoSimTime:
                             u_e_t_minus_1,
                             u_e_t_minus_2,
                             delta_t,
-                            jacobian_inverted_t,
                             self.material_manager.get_elasticity_matrix(
                                 element_index
-                            )
+                            ),
+                            element_order
                         )
-                        * 2 * np.pi * jacobian_det
+                        * 2 * np.pi
                         * self.material_manager.get_alpha_k(element_index)
                         * 1/volumes[element_index]
                     )
@@ -496,6 +497,8 @@ class ThermoPiezoSimTime:
         # For the temperature field the load vector represents the temperature
         # sources given by the mechanical losses.
         nodes = self.mesh_data.nodes
+        element_order = self.mesh_data.element_order
+        points_per_element = int(1/2*(element_order+1)*(element_order+2))
         number_of_nodes = len(nodes)
 
         # Can be initialized to 0 because external load and volume charge
@@ -512,21 +515,18 @@ class ThermoPiezoSimTime:
         f_theta = np.zeros(number_of_nodes)
 
         for element_index, element in enumerate(self.mesh_data.elements):
-            dn = gradient_local_shape_functions()
-            node_points = np.array([
-                [nodes[element[0]][0],
-                 nodes[element[1]][0],
-                 nodes[element[2]][0]],
-                [nodes[element[0]][1],
-                 nodes[element[1]][1],
-                 nodes[element[2]][1]]
-            ])
-            jacobian = np.dot(node_points, dn.T)
-            jacobian_det = np.linalg.det(jacobian)
+            node_points = np.zeros(shape=(2, points_per_element))
+            for node_index in range(points_per_element):
+                node_points[:, node_index] = [
+                    nodes[element[node_index]][0],
+                    nodes[element[node_index]][1]
+                ]
 
             f_theta_e = integral_theta_load(
                 node_points,
-                mech_loss_density[element_index])*2*np.pi*jacobian_det
+                mech_loss_density[element_index],
+                element_order
+            ) * 2 * np.pi
 
             for local_p, global_p in enumerate(element):
                 f_theta[global_p] += f_theta_e[local_p]

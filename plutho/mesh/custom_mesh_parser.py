@@ -10,6 +10,10 @@ from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
 
+# Local libraries
+from .gmsh_parser import element_to_nodes_map, \
+    element_to_boundary_nodes_map
+
 
 class TokenType(Enum):
     SectionStart = "SectionStart",
@@ -140,9 +144,13 @@ class CustomParser:
     nodes: npt.NDArray
     elements: List[Element]
 
-    def __init__(self, file_path: str):
+    element_order: int
+
+    def __init__(self, file_path: str, element_order: int):
         if not os.path.isfile(file_path):
             raise IOError(f"Mesh file {file_path} not found.")
+
+        self.element_order = element_order
 
         # Load text
         mesh_text = ""
@@ -167,9 +175,10 @@ class CustomParser:
             if element.type == 2:
                 triangle_elements.append(element)
 
+        nodes_per_element = element_to_nodes_map[2, self.element_order]
         number_of_triangle_elements = len(triangle_elements)
         elements = np.zeros(
-            shape=(number_of_triangle_elements, 3),
+            shape=(number_of_triangle_elements, nodes_per_element),
             dtype=np.int64
         )
 
@@ -235,11 +244,13 @@ class CustomParser:
         elements_pg = self.get_elements_by_physical_group(physical_group_name)
         _, elements = self.get_mesh_nodes_and_elements()
 
+        nodes_per_element = element_to_nodes_map[2, self.element_order]
+
         # Find triangle elements, which share the same nodes
         triangle_elements = []
         for element_pg in elements_pg:
             for element in elements:
-                if len(element) != 3:
+                if len(element) != nodes_per_element:
                     continue
 
                 found = True
@@ -391,10 +402,12 @@ class CustomParser:
                 tags.append(int(token.value))
 
             # Parse nodes
-            # element_type = 1 -> Line -> 2 Points
-            # element_type = 2 -> Triangle -> 3 Points
+            number_of_nodes = element_to_nodes_map[
+                element_type,
+                self.element_order
+            ]
             nodes = []
-            for _ in range(element_type+1):
+            for _ in range(number_of_nodes):
                 token = self._next_token()
                 expect_token(token, TokenType.TokenInt)
                 # Subtract 1 because in gmsh the indices start at 1

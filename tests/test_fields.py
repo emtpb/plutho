@@ -10,8 +10,8 @@ import plutho
 # -------- Global variables --------
 
 NUMBER_OF_TIME_STEPS = 1000
-MAX_ERROR = 1e-15
-
+ATOL = 1e-15
+RTOL = 1e-7
 
 pic255 = plutho.MaterialData(
     **{
@@ -34,15 +34,6 @@ pic255 = plutho.MaterialData(
     }
 )
 
-# -------- Helper functions --------
-
-
-def compare_numpy_array(a, b):
-    if a.shape != b.shape:
-        return False
-
-    return np.allclose(a, b, atol=MAX_ERROR)
-
 
 # -------- Test functions --------
 
@@ -52,9 +43,13 @@ def test_thermo_time(tmp_path):
     the simulation and compares it with the input energy.
     """
     # Create and load mesh; TODO maybe use smaller mesh size?
+    element_order = 1
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
-    plutho.Mesh.generate_rectangular_mesh(mesh_path)
-    mesh = plutho.Mesh(mesh_path)
+    plutho.Mesh.generate_rectangular_mesh(
+        mesh_path,
+        element_order=element_order
+    )
+    mesh = plutho.Mesh(mesh_path, element_order)
 
     sim = plutho.SingleSimulation(
         tmp_path,
@@ -67,6 +62,9 @@ def test_thermo_time(tmp_path):
     delta_t = 0.001
     nodes, elements = mesh.get_mesh_nodes_and_elements()
     number_of_elements = len(elements)
+
+    print(f"Nodes {nodes}")
+    print(f"Elements {elements}")
 
     sim.setup_thermo_time_domain(
         delta_t,
@@ -93,12 +91,16 @@ def test_thermo_time(tmp_path):
         sim.solver.theta[:, -1],
         nodes,
         elements,
+        element_order,
         sim.material_manager.get_heat_capacity(0),
         sim.material_manager.get_density(0)
     )
 
     volume = np.sum(
-        plutho.simulation.base.calculate_volumes(sim.solver.local_elements)
+        plutho.simulation.base.calculate_volumes(
+            sim.solver.node_points,
+            element_order
+        )
     )
 
     input_energy = INPUT_POWER_DENSITY*volume
@@ -113,9 +115,13 @@ def test_piezo_time(tmp_path, test=True):
     """Test function for the piezo time domain simulation.
     Tests the simulation for a triangular excitation."""
     # Create and load mesh; TODO maybe use smaller mesh size?
+    element_order = 1
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
-    plutho.Mesh.generate_rectangular_mesh(mesh_path)
-    mesh = plutho.Mesh(mesh_path)
+    plutho.Mesh.generate_rectangular_mesh(
+        mesh_path,
+        element_order=element_order
+    )
+    mesh = plutho.Mesh(mesh_path, element_order)
 
     sim = plutho.SingleSimulation(
         tmp_path,
@@ -186,19 +192,30 @@ def test_piezo_time(tmp_path, test=True):
 
         # Compare arrays
         # For displacement just take last time step. TODO Is this sufficient?
-        assert compare_numpy_array(uut_u, test_u), \
-            "Displacement u is not equal"
-        assert compare_numpy_array(uut_q, test_q), "Charge is not equal"
+        np.testing.assert_allclose(
+            uut_u,
+            test_u,
+            rtol=RTOL,
+            atol=ATOL,
+            err_msg="Displacement u is not equal"
+        )
+        np.testing.assert_allclose(
+            uut_q,
+            test_q,
+            rtol=RTOL,
+            atol=ATOL,
+            err_msg="Charge is not equal"
+        )
 
     else:
         # Save results
         np.save(
             os.path.join(tmp_path, test_folder_name, "q.npy"),
-            sim.solver.q
+            uut_q
         )
         np.save(
             os.path.join(tmp_path, test_folder_name, "u.npy"),
-            sim.solver.u[:, -1]
+            uut_u
         )
 
 
@@ -207,9 +224,13 @@ def test_piezo_freq(tmp_path, test=True):
     displacement field and charge for a sinusoidal signal.
     """
     # Create and load mesh; TODO maybe use smaller mesh size?
+    element_order = 1
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
-    plutho.Mesh.generate_rectangular_mesh(mesh_path)
-    mesh = plutho.Mesh(mesh_path)
+    plutho.Mesh.generate_rectangular_mesh(
+        mesh_path,
+        element_order=element_order
+    )
+    mesh = plutho.Mesh(mesh_path, element_order)
 
     sim = plutho.SingleSimulation(
         tmp_path,
@@ -271,19 +292,30 @@ def test_piezo_freq(tmp_path, test=True):
 
         # Compare arrays
         # For displacement just take last time step. TODO Is this sufficient?
-        assert compare_numpy_array(uut_u, test_u), \
-            "Displacement u is not equal"
-        assert compare_numpy_array(uut_q, test_q), "Charge is not equal"
+        np.testing.assert_allclose(
+            uut_u,
+            test_u,
+            rtol=RTOL,
+            atol=ATOL,
+            err_msg="Displacement u is not equal"
+        )
+        np.testing.assert_allclose(
+            uut_q,
+            test_q,
+            rtol=RTOL,
+            atol=ATOL,
+            err_msg="Charge is not equal"
+        )
 
     else:
         # Save test data
         np.save(
             os.path.join(tmp_path, test_folder_name, "q.npy"),
-            sim.solver.q
+            uut_q
         )
         np.save(
             os.path.join(tmp_path, test_folder_name, "u.npy"),
-            sim.solver.u[:, -1]
+            uut_u
         )
 
 
@@ -294,9 +326,13 @@ def test_thermo_piezo_time(tmp_path, test=True):
     last time step are compared with fixed results.
     """
     # Create and load mesh; TODO maybe use smaller mesh size?
+    element_order = 1
     mesh_path = os.path.join(tmp_path, "default_mesh.msh")
-    plutho.Mesh.generate_rectangular_mesh(mesh_path)
-    mesh = plutho.Mesh(mesh_path)
+    plutho.Mesh.generate_rectangular_mesh(
+        mesh_path,
+        element_order=element_order
+    )
+    mesh = plutho.Mesh(mesh_path, element_order)
 
     sim = plutho.SingleSimulation(
         tmp_path,
@@ -371,7 +407,7 @@ def test_thermo_piezo_time(tmp_path, test=True):
 
     # Calculate total loss energy
     volumes = plutho.simulation.base.calculate_volumes(
-        sim.solver.local_elements
+        sim.solver.node_points, element_order
     )
     power = np.zeros(NUMBER_OF_TIME_STEPS)
     for time_step in range(NUMBER_OF_TIME_STEPS):
@@ -389,6 +425,7 @@ def test_thermo_piezo_time(tmp_path, test=True):
         theta[:, -1],
         nodes,
         elements,
+        element_order,
         sim.material_manager.get_heat_capacity(0),
         sim.material_manager.get_density(0)
     )
@@ -398,7 +435,7 @@ def test_thermo_piezo_time(tmp_path, test=True):
     # Maybe the signals are not fully dissipated?
     assert np.abs(input_energy - total_loss_energy) < 1e-11, \
         "Input energy does not equal total loss energy"
-    assert np.abs(total_loss_energy - stored_thermal_energy) < MAX_ERROR, \
+    assert np.abs(total_loss_energy - stored_thermal_energy) < ATOL, \
         "Total loss energy does not equal stored thermal energy"
 
     test_folder_name = "thermo_piezo_time"
@@ -419,19 +456,28 @@ def test_thermo_piezo_time(tmp_path, test=True):
         uut_u = sim.solver.u[:, -1]
         uut_mech_loss = sim.solver.mech_loss[:, -1]
 
-        print("Test q:", test_q)
-        print("UUT q:", uut_q)
-        print("Test u:", test_u)
-        print("UUT u:", uut_u)
-        print("Test mech loss", test_mech_loss)
-        print("UUT mech loss", uut_mech_loss)
-
         # Compare arrays
-        assert compare_numpy_array(uut_q, test_q), "Charge is not equal"
-        assert compare_numpy_array(uut_u, test_u), \
-            "Displacement u is not equal"
-        assert compare_numpy_array(uut_mech_loss, test_mech_loss), \
-            "Mech loss is not equal"
+        np.testing.assert_allclose(
+            uut_u,
+            test_u,
+            rtol=RTOL,
+            atol=ATOL,
+            err_msg="Displacement u is not equal"
+        )
+        np.testing.assert_allclose(
+            uut_q,
+            test_q,
+            rtol=RTOL,
+            atol=ATOL,
+            err_msg="Charge is not equal"
+        )
+        np.testing.assert_allclose(
+            uut_mech_loss,
+            test_mech_loss,
+            rtol=RTOL,
+            atol=ATOL,
+            err_msg="Charge is not equal"
+        )
     else:
         # Save data
         np.save(

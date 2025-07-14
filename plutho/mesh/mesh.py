@@ -6,6 +6,7 @@ from typing import Union, Tuple, Dict, List
 
 # Third party libraries
 import gmsh
+import numpy as np
 import numpy.typing as npt
 
 # Local libraries
@@ -22,15 +23,18 @@ class Mesh:
     mesh_file_path: str
     file_version: str
     parser: Union[GmshParser, CustomParser]
+    element_order: int
 
     def __init__(
         self,
         file_path: str,
+        element_order: int
     ):
         if not os.path.isfile(file_path):
             raise IOError(f"Mesh file {file_path} not found.")
 
         self.mesh_file_path = file_path
+        self.element_order = element_order
 
         # Check gmsh version
         # If version2  -> custom gmsh parser
@@ -46,9 +50,9 @@ class Mesh:
             self.file_version = version
 
         if version.startswith("2"):
-            self.parser = CustomParser(file_path)
+            self.parser = CustomParser(file_path, element_order)
         else:
-            self.parser = GmshParser(file_path)
+            self.parser = GmshParser(file_path, element_order)
 
     def get_mesh_nodes_and_elements(self) -> Tuple[npt.NDArray, npt.NDArray]:
         return self.parser.get_mesh_nodes_and_elements()
@@ -102,7 +106,8 @@ class Mesh:
         width: float = 0.005,
         height: float = 0.001,
         mesh_size: float = 0.00015,
-        x_offset: float = 0
+        x_offset: float = 0,
+        element_order: int = 1
     ):
         """Creates a gmsh rectangular mesh given the width, height, the mesh
         size and the x_offset.
@@ -121,6 +126,7 @@ class Mesh:
             gmsh.initialize()
 
         gmsh.clear()
+        gmsh.option.setNumber("Mesh.ElementOrder", element_order)
 
         corner_points = [
             [x_offset, 0],
