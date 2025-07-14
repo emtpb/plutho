@@ -19,7 +19,7 @@ dependencies = [
     "numpy",
     "matplotlib",
     "scipy>=1.12.0",
-    "gmsh",
+    "gmsh==4.13.1",
     "python-dotenv",
     "pyyaml",
     "flake8>=7.2.0",
