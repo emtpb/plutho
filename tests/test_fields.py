@@ -10,8 +10,8 @@ import plutho
 # -------- Global variables --------
 
 NUMBER_OF_TIME_STEPS = 1000
-ATOL = 1e-12
-RTOL = 1e-6
+ATOL = 1e-15
+RTOL = 1e-7
 
 pic255 = plutho.MaterialData(
     **{
