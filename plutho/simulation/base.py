@@ -221,7 +221,7 @@ def gradient_local_shape_functions_2d(s, t, element_order) -> npt.NDArray:
             ])
         case 2:
             return np.array([
-                [ # d_s
+                [  # d_s
                     -3+4*t+4*s,
                     4*s-1,
                     0,
@@ -229,7 +229,7 @@ def gradient_local_shape_functions_2d(s, t, element_order) -> npt.NDArray:
                     4*t,
                     -4*t
                 ],
-                [ # d_t
+                [  # d_t
                     -3+4*s+4*t,
                     0,
                     4*t-1,
@@ -815,15 +815,15 @@ def create_node_points(
     elements: npt.NDArray,
     element_order: int
 ) -> npt.NDArray:
-    """Create the local node data and the corresponding matrices
-    for every element which are needed in many parts of the simulations.
+    """Create the local node data for every given element.
 
     Parameters:
-        nodes: Nodes of the mesh
-        elements: Elements of the mesh
+        nodes: Nodes of the mesh.
+        elements: Elements of the mesh.
+        element_order: Order of the elements.
 
     Returns:
-        List of LocalElementData objects.
+        List of nodes.
     """
     points_per_element = int(1/2*(element_order+1)*(element_order+2))
 

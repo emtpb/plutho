@@ -41,7 +41,7 @@ class PiezoNonlinear:
     mesh: Mesh
     material_manager: MaterialManager
     solver: Union[None, NonlinearPiezoSimTime, NonlinearPiezoSimStationary]
-    nonlinear_material_matrix: npt.NDArray
+    nonlinear_material_matrix: Union[None, npt.NDArray]
     boundary_conditions: List[Dict]
 
     def __init__(
@@ -59,11 +59,13 @@ class PiezoNonlinear:
         self.boundary_conditions = []
         self.dirichlet_nodes = []
         self.dirichlet_values = []
-        self.nonlinear_material_matrix = np.zeros((4, 4))
         self.solver = None
+        self.nonlinear_material_matrix = None
+
         self.mesh = mesh
         nodes, elements = mesh.get_mesh_nodes_and_elements()
-        self.mesh_data = MeshData(nodes, elements)
+        self.mesh_data = MeshData(nodes, elements, mesh.element_order)
+
         self.material_manager = MaterialManager(len(elements))
         self.charge_calculated = False
 
@@ -279,7 +281,7 @@ class PiezoNonlinear:
         # Assemble
         self.solver.assemble(
             self.nonlinear_type,
-            nonlinear_matrix=self.nonlinear_material_matrix
+            **self.nonlinear_params
         )
 
         # Run simulation

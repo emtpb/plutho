@@ -2,7 +2,7 @@
 
 # Python standard libraries
 from enum import Enum
-from typing import Tuple
+from typing import Tuple, Callable
 
 # Third party libraries
 import numpy as np
@@ -10,7 +10,7 @@ import numpy.typing as npt
 from scipy import sparse
 
 # Local libraries
-from ..base import MeshData, local_to_global_coordinates, b_operator_global, \
+from ..base import MeshData, local_shape_functions_2d, local_to_global_coordinates, b_operator_global, \
     integral_m, integral_ku, integral_kuv, integral_kve, \
     create_node_points, quadratic_quadrature, gradient_local_shape_functions_2d
 from plutho.materials import MaterialManager
@@ -59,16 +59,19 @@ def assemble(
     elif nonlinear_type is NonlinearType.Custom:
         if "nonlinear_matrix" not in kwargs:
             raise ValueError(
-                "Missing 'nonlinear_matrix' parameter for nonlinaer type:"
+                "Missing 'nonlinear_matrix' parameter for nonlinear type:"
                 " Rayleigh"
             )
+        # Reduce to axisymmetric matrix
         nm = kwargs["nonlinear_matrix"]
-        nonlinear_matrix = np.array([
-            [nm[0, 0], nm[0, 2], 0, nm[0, 1]],
-            [nm[0, 2], nm[2, 2], 0, nm[0, 2]],
-            [0, 0, nm[3, 3], 0],
-            [nm[0, 1], nm[0, 2], 0, nm[0, 0]]
-        ])
+        voigt_map = [0, 1, 3, 2]
+        nm_reduced = np.zeros(shape=(4, 4, 4))
+        for i_new, i_old in enumerate(voigt_map):
+            for j_new, j_old in enumerate(voigt_map):
+                for k_new, k_old in enumerate(voigt_map):
+                    nm_reduced[i_new, j_new, k_new] = nm[i_old, j_old, k_old]
+
+        nonlinear_matrix = nm_reduced
     else:
         raise NotImplementedError(
             f"Nonlinearity type {NonlinearType.value} is not implemented"
@@ -224,7 +227,7 @@ def integral_u_nonlinear(
     nonlinear_elasticity_matrix: npt.NDArray,
     element_order: int
 ):
-    """Calculates the Ku integral
+    """Calculates the nonlinear stiffness integral
 
     Parameters:
         node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
@@ -235,13 +238,78 @@ def integral_u_nonlinear(
             (c matrix).
 
     Returns:
-        npt.NDArray: 6x6 Ku matrix for the given element.
+        npt.NDArray: 6x6 matrix for the given element.
     """
     def inner(s, t):
         dn = gradient_local_shape_functions_2d(s, t, element_order)
         jacobian = np.dot(node_points, dn.T)
         jacobian_inverted_t = np.linalg.inv(jacobian).T
         jacobian_det = np.linalg.det(jacobian)
+
+        def t_i(s, t):
+            b_op = b_operator_global(
+                node_points,
+                jacobian_inverted_t,
+                s,
+                t,
+                element_order
+            )
+
+            return np.einsum(
+                "ijk,jl,kl->il",
+                nonlinear_elasticity_matrix,
+                b_op,
+                b_op
+            )
+
+        t_derived = b_opt_global_t_numerical(
+            node_points,
+            t_i,
+            s,
+            t,
+            jacobian_inverted_t,
+            element_order
+        )
+
+        r = local_to_global_coordinates(node_points, s, t, element_order)[0]
+
+        N = np.diag(
+            local_shape_functions_2d(s, t, element_order)
+        )
+
+        return np.outer(
+            t_derived,
+            N
+        ) * 1/2 * r * jacobian_det
+
+    return quadratic_quadrature(inner, element_order)
+
+
+def integral_u_nonlinear_analytic(
+    node_points: npt.NDArray,
+    nonlinear_elasticity_matrix: npt.NDArray,
+    element_order: int
+):
+    """Calculates the nonlinear stiffness integral
+
+    Parameters:
+        node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
+            one triangle.
+        jacobian_inverted_t: Jacobian matrix inverted and transposed, needed
+            for calculation of global derivatives.
+        elasticity_matrix: Elasticity matrix for the current element
+            (c matrix).
+
+    Returns:
+        npt.NDArray: 6x6 matrix for the given element.
+    """
+    def inner(s, t):
+        dn = gradient_local_shape_functions_2d(s, t, element_order)
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_inverted_t = np.linalg.inv(jacobian).T
+        jacobian_det = np.linalg.det(jacobian)
+
+        r = local_to_global_coordinates(node_points, s, t, element_order)[0]
 
         b_op = b_operator_global(
             node_points,
@@ -250,14 +318,216 @@ def integral_u_nonlinear(
             t,
             element_order
         )
-        r = local_to_global_coordinates(node_points, s, t, element_order)[0]
 
-        return np.dot(
-            np.dot(
-                b_op.T,
-                nonlinear_elasticity_matrix
-            ),
+        bb_op = double_b_operator_global(
+            node_points,
+            jacobian_inverted_t,
+            s,
+            t,
+            element_order
+        )
+
+        left = np.einsum(
+            "ijk,jl,kl->il",
+            nonlinear_elasticity_matrix,
+            bb_op,
             b_op
+        )
+
+        right = np.einsum(
+            "ijk,jl,kl->il",
+            nonlinear_elasticity_matrix,
+            b_op,
+            bb_op
+        )
+
+        return np.outer(
+            left+right,
+            local_shape_functions_2d(s, t, element_order)
         ) * 1/2 * r * jacobian_det
 
     return quadratic_quadrature(inner, element_order)
+
+
+def b_opt_global_t_numerical(
+    node_points,
+    func: Callable,
+    s,
+    t,
+    jacobian_inverted_t,
+    element_order
+):
+    # Idea:
+    # f contains the function values at the nodes
+    # first calculate f at the given positions s and t
+    # then derive f at that point after s and t
+    # then calculate the derivatives after r and z
+
+    # f should have shape 4 x nodes_per_element
+
+    # TODO Check if this value is suitable
+    h = 1/20
+
+    nodes_per_element = int(1/2*(element_order+1)*(element_order+2))
+
+    # Points at which the function is evaluated
+    p1 = [s+h,t]
+    p2 = [s-h,t]
+    p3 = [s,t+h]
+    p4 = [s,t-h]
+
+    r = local_to_global_coordinates(node_points, s, t, element_order)[0]
+
+    # Local derivatives
+    f = func(s, t)
+    ds_f = 1/(2*h)*(func(*p1)-func(*p2))
+    dt_f = 1/(2*h)*(func(*p3)-func(*p4))
+
+    dr_f = np.zeros(shape=ds_f.shape)
+    dz_f = np.zeros(shape=dt_f.shape)
+    b_num = np.zeros(shape=(2*nodes_per_element, 2*nodes_per_element))
+
+    for i in range(ds_f.shape[0]):
+        for j in range(ds_f.shape[1]):
+            # TODO Not all derivatives are needed
+            # Derivatives with respect to local coordinates s and t
+            local_der = np.array([ds_f[i][j], dt_f[i][j]])
+
+            # Derivatives with respect to global coordinates r and z
+            global_der = np.dot(jacobian_inverted_t, local_der)
+            dr_f[i, j] = global_der[0]
+            dz_f[i, j] = global_der[1]
+
+    for node_index in range(nodes_per_element):
+        current_f = f[:, 2*node_index:2*(node_index+1)]
+        dr = dr_f[:, 2*node_index:2*(node_index+1)]
+        dz = dz_f[:, 2*node_index:2*(node_index+1)]
+
+        # Get global derivatives
+        b_num[2*node_index:2*(node_index+1), 2*node_index:2*(node_index+1)] = \
+            [
+                [
+                    dr[0][0]+dz[2][1]+current_f[3][0]/r,
+                    dr[0][1]+dz[2][1]+current_f[3][1]
+                ],
+                [
+                    dz[1][0]+dr[2][0],
+                    dz[1][1]+dr[2][1]
+                ]
+            ]
+
+    return b_num
+
+
+def second_gradient_local_shape_functions_2d(
+    s,
+    t,
+    element_order
+) -> npt.NDArray:
+    # Since the second gradient has to be done for s and t as well, 3 indices
+    # are needed [i,j,k]. The first two represent if its derived after s [i=0]
+    # or t [i=1] and the last index [k] represents the node index of the
+    # element.
+    nodes_per_element = int(1/2*(element_order+1)*(element_order+2))
+    match element_order:
+        case 1:
+            return np.zeros(shape=(2, 2, nodes_per_element))
+        case 2:
+            return np.array([
+                [  # (outer) d_s
+                    [4, 4, 0, -8, 0, 0],  # (inner) d_s
+                    [4, 0, 0, -4, 4, -4]  # (inner) d_t
+                ],
+                [  # (outer) d_t
+                    [4, 0, 0, -4, 4, -4],  # (inner) d_s
+                    [4, 0, 4, 0, 0, -8]  # (inner) d_t
+                ],
+            ])
+        case 3:
+            raise NotImplementedError("Not yet implemented for order 3")
+
+    raise ValueError(
+        "Second gradient of shape functions not implemented for element "
+        f"order {element_order}"
+    )
+
+def double_b_operator_global(
+    node_points: npt.NDArray,
+    jacobian_inverted_t: npt.NDArray,
+    s: float,
+    t: float,
+    element_order: int
+):
+    nodes_per_element = int(1/2*(element_order+1)*(element_order+2))
+
+    dn = gradient_local_shape_functions_2d(s, t, element_order)
+    global_dn = np.dot(jacobian_inverted_t, dn)
+    ddn = second_gradient_local_shape_functions_2d(s, t, element_order)
+
+    # Calculate derivatives with respect to global coordinates
+    global_ddn = np.zeros(shape=ddn.shape)
+
+    for node_index in range(nodes_per_element):
+        # Get hessian with shape
+        # [ds*ds, ds*dt]
+        # [dt*ds, dt*dt]
+        # Local hessian since the derivatives are with respect to s and t
+        local_hessian = np.array([
+            [global_ddn[0][0][node_index], global_ddn[0][1][node_index]],
+            [global_ddn[1][0][node_index], global_ddn[1][1][node_index]]
+        ])
+
+        # Global hessian since the derivatives are with respect to r and z
+        # TODO Verify
+        global_hessian = np.dot(
+            np.dot(
+                jacobian_inverted_t,
+                local_hessian
+            ),
+            jacobian_inverted_t.T
+        )
+
+        # TODO Make using slices
+        global_ddn[0][0][node_index] = global_hessian[0][0]
+        global_ddn[0][1][node_index] = global_hessian[0][1]
+        global_ddn[1][0][node_index] = global_hessian[1][0]
+        global_ddn[1][1][node_index] = global_hessian[1][1]
+
+    r = local_to_global_coordinates(node_points, s, t, element_order)[0]
+
+    bb = np.zeros(shape=(2*nodes_per_element, 2*nodes_per_element))
+    for i in range(nodes_per_element):
+        for j in range(nodes_per_element):
+            if i == j:
+                # Diagonal elements have second order derivatives
+                bb[2*i:2*(i+1), 2*j:2*(j+1)] = [
+                    [
+                        global_ddn[0][0][i] + global_ddn[1][1][i]+1/(r**2),
+                        global_ddn[1][0][i]
+                    ],
+                    [
+                        global_ddn[0][1][i],
+                        global_ddn[0][0][i] + global_ddn[1][1][i]
+                    ]
+                ]
+            else:
+                # Offdiagional elements have 2 first order derivatives
+                bb[2*i:2*(i+1), 2*j:2*(j+1)] = [
+                    [
+                        (
+                            global_dn[0][i]*global_dn[0][j]
+                            + global_dn[1][i]*global_dn[1][j]
+                            + 1/(r**2)
+                        ),
+                        global_dn[1][i]*global_dn[1][j]
+                    ],
+                    [
+                        global_dn[0][i]*global_dn[1][j],
+                        (
+                            global_dn[0][i]*global_dn[0][j]
+                            + global_dn[1][i]*global_dn[1][j]
+                        )
+                    ]
+                ]
+
+    return bb
