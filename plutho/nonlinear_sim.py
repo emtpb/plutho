@@ -41,7 +41,6 @@ class PiezoNonlinear:
     mesh: Mesh
     material_manager: MaterialManager
     solver: Union[None, NonlinearPiezoSimTime, NonlinearPiezoSimStationary]
-    nonlinear_material_matrix: Union[None, npt.NDArray]
     boundary_conditions: List[Dict]
 
     def __init__(
@@ -362,8 +361,14 @@ class PiezoNonlinear:
         material_settings = {}
         for material in self.material_manager.materials:
             material_settings[material.material_name] = material.to_dict()
-        material_settings["nonlinear_piezo_matrix"] = \
-            self.nonlinear_material_matrix.tolist()
+        material_settings["nonlinear_type"] = self.nonlinear_type.value
+
+        match self.nonlinear_type:
+            case NonlinearType.Rayleigh:
+                material_settings["zeta"] = self.nonlinear_params["zeta"]
+            case NonlinearType.Custom:
+                material_settings["nonlinear_matrix"] = \
+                    self.nonlinear_params["nonlinear_matrix"].tolist()
 
         # Simulation data
         if isinstance(self.solver, NonlinearPiezoSimTime):

@@ -120,9 +120,9 @@ def create_sinusoidal_excitation(
 
 
 def simulate(CWD):
-    sim_name = "nonlinear_time_quadratic"
-    mesh_file = os.path.join(CWD, "ring_mesh.msh")
-    element_order = 2
+    sim_name = "nonlinear_time_quadratic_1v"
+    mesh_file = os.path.join(CWD, "ring_mesh_third_order.msh")
+    element_order = 3
 
     # Load/create ring mesh
     if not os.path.exists(mesh_file):
@@ -138,8 +138,8 @@ def simulate(CWD):
 
     # Create simulation
     sim = plutho.PiezoNonlinear(
-        sim_name,
         CWD,
+        sim_name,
         mesh
     )
 
@@ -151,12 +151,16 @@ def simulate(CWD):
     )
     sim.set_nonlinearity_type(
         plutho.NonlinearType.Custom,
-        nonlinear_matrix=c_nonlin_6x6x6
+        nonlinear_matrix=c_nonlin_6x6x6/1e3
     )
+    #sim.set_nonlinearity_type(
+    #    plutho.NonlinearType.Rayleigh,
+    #        zeta=1e3
+    #)
 
     # Simulation parameters
     DELTA_T = 1e-8
-    NUMBER_OF_TIME_STEPS = 1000
+    NUMBER_OF_TIME_STEPS = 10000
 
     # Set boundary conditions
     excitation = create_sinusoidal_excitation(
@@ -192,8 +196,12 @@ def simulate(CWD):
     # Run simulation
     sim.simulate(
         electrode_elements=electrode_elements,
-        electrode_normals=electrode_normals
+        electrode_normals=electrode_normals,
+        tolerance=1e-10
     )
+
+    sim.save_simulation_settings()
+    sim.save_simulation_results()
 
 
 if __name__ == "__main__":

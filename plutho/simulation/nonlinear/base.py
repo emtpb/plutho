@@ -350,13 +350,27 @@ def integral_u_nonlinear_analytic(
 
 
 def b_opt_global_t_numerical(
-    node_points,
+    node_points: npt.NDArray,
     func: Callable,
-    s,
-    t,
-    jacobian_inverted_t,
-    element_order
+    s: float,
+    t: float,
+    jacobian_inverted_t: npt.NDArray,
+    element_order: int
 ):
+    """Calculates the transposed B operator on the given func numerically (by
+    using a central finite difference scheme).
+    The result is evaluated at the given local coordinates s and t.
+    The derivatives are done with respect to the global coordinates r and z.
+
+    Parameters:
+        node_points: Node points of the triangle.
+        func: Function on which the B_T operator is applied.
+        s: Local coordinate at which the B_T operator is evaluated.
+        t: Local coordinate at which the B_T operator is evaluated.
+        jacobian_inverted_T: Inverted and transposed jacobian of the current
+            triangle, needed for calculating global derivatives.
+        element_order: Element order of the triangle.
+    """
     # Idea:
     # f contains the function values at the nodes
     # first calculate f at the given positions s and t
@@ -366,7 +380,7 @@ def b_opt_global_t_numerical(
     # f should have shape 4 x nodes_per_element
 
     # TODO Check if this value is suitable
-    h = 1/20
+    h = 1/100
 
     nodes_per_element = int(1/2*(element_order+1)*(element_order+2))
 
@@ -385,13 +399,13 @@ def b_opt_global_t_numerical(
 
     dr_f = np.zeros(shape=ds_f.shape)
     dz_f = np.zeros(shape=dt_f.shape)
-    b_num = np.zeros(shape=(2*nodes_per_element, 2*nodes_per_element))
 
+    b_num = np.zeros(shape=(2*nodes_per_element, 2*nodes_per_element))
     for i in range(ds_f.shape[0]):
         for j in range(ds_f.shape[1]):
             # TODO Not all derivatives are needed
             # Derivatives with respect to local coordinates s and t
-            local_der = np.array([ds_f[i][j], dt_f[i][j]])
+            local_der = np.array([ds_f[i, j], dt_f[i, j]])
 
             # Derivatives with respect to global coordinates r and z
             global_der = np.dot(jacobian_inverted_t, local_der)
@@ -399,20 +413,20 @@ def b_opt_global_t_numerical(
             dz_f[i, j] = global_der[1]
 
     for node_index in range(nodes_per_element):
-        current_f = f[:, 2*node_index:2*(node_index+1)]
-        dr = dr_f[:, 2*node_index:2*(node_index+1)]
-        dz = dz_f[:, 2*node_index:2*(node_index+1)]
+        current_f = f[:, 2*node_index:2*node_index+2]
+        dr = dr_f[:, 2*node_index:2*node_index+2]
+        dz = dz_f[:, 2*node_index:2*node_index+2]
 
         # Get global derivatives
-        b_num[2*node_index:2*(node_index+1), 2*node_index:2*(node_index+1)] = \
+        b_num[2*node_index:2*node_index+2, 2*node_index:2*node_index+2] = \
             [
                 [
-                    dr[0][0]+dz[2][1]+current_f[3][0]/r,
-                    dr[0][1]+dz[2][1]+current_f[3][1]
+                    dr[0, 0]+dz[2, 1]+current_f[3, 0]/r,
+                    dr[0, 1]+dz[2, 1]+current_f[3, 1]/r
                 ],
                 [
-                    dz[1][0]+dr[2][0],
-                    dz[1][1]+dr[2][1]
+                    dz[1, 0]+dr[2, 0],
+                    dz[1, 1]+dr[2, 1]
                 ]
             ]
 
