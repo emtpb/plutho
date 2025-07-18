@@ -353,7 +353,7 @@ class PiezoNonlinear:
         general_settings = {
             "name": self.sim_name,
             "mesh_file": self.mesh.mesh_file_path,
-            "mesh_order": self.mesh_data.mesh_order,
+            "element_order": self.mesh_data.element_order,
             "simulation_type": simulation_type
         }
         settings["general"] = general_settings
@@ -444,12 +444,12 @@ class PiezoNonlinear:
 
         # Read general simulation settings
         mesh_file = settings["general"]["mesh_file"]
-        mesh_order = int(settings["general"]["mesh_order"])
+        element_order = int(settings["general"]["element_order"])
         simulation_type = settings["general"]["simulation_type"]
         simulation = PiezoNonlinear(
             simulation_folder,
             "",
-            Mesh(mesh_file, mesh_order)
+            Mesh(mesh_file, element_order)
         )
         # Workaround since simulation_folder and simulation_name are
         # combined in the constructor, see empty string above for the
