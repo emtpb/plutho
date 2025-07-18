@@ -353,6 +353,7 @@ class PiezoNonlinear:
         general_settings = {
             "name": self.sim_name,
             "mesh_file": self.mesh.mesh_file_path,
+            "mesh_order": self.mesh_data.mesh_order,
             "simulation_type": simulation_type
         }
         settings["general"] = general_settings
@@ -361,14 +362,17 @@ class PiezoNonlinear:
         material_settings = {}
         for material in self.material_manager.materials:
             material_settings[material.material_name] = material.to_dict()
-        material_settings["nonlinear_type"] = self.nonlinear_type.value
+        nonlinear_materials = {}
+        nonlinear_materials["nonlinear_type"] = self.nonlinear_type.value
 
         match self.nonlinear_type:
             case NonlinearType.Rayleigh:
-                material_settings["zeta"] = self.nonlinear_params["zeta"]
+                nonlinear_materials["zeta"] = self.nonlinear_params["zeta"]
             case NonlinearType.Custom:
-                material_settings["nonlinear_matrix"] = \
+                nonlinear_materials["nonlinear_matrix"] = \
                     self.nonlinear_params["nonlinear_matrix"].tolist()
+
+        material_settings["nonlinear"] = nonlinear_materials
 
         # Simulation data
         if isinstance(self.solver, NonlinearPiezoSimTime):
@@ -440,16 +444,18 @@ class PiezoNonlinear:
 
         # Read general simulation settings
         mesh_file = settings["general"]["mesh_file"]
+        mesh_order = int(settings["general"]["mesh_order"])
         simulation_type = settings["general"]["simulation_type"]
         simulation = PiezoNonlinear(
             simulation_folder,
             "",
-            Mesh(mesh_file)
+            Mesh(mesh_file, mesh_order)
         )
         # Workaround since simulation_folder and simulation_name are
         # combined in the constructor, see empty string above for the
         # constructor
         simulation.sim_name = simulation_name
+
 
         if simulation_type == "NonlinearStationary":
             simulation.setup_stationary_simulation()
@@ -474,20 +480,44 @@ class PiezoNonlinear:
         # Read materials
         with open(necessary_files[1], "r", encoding="UTF-8") as fd:
             material_settings = json.load(fd)
+
+            # Load nonlinearities
+            nonlinear_material = material_settings["nonlinear"]
+            nonlinear_type = NonlinearType(
+                nonlinear_material["nonlinear_type"]
+            )
+
+            match nonlinear_type:
+                case NonlinearType.Rayleigh:
+                    nonlinear_params = {
+                        "zeta": float(nonlinear_material["zeta"])
+                    }
+                case NonlinearType.Custom:
+                    nonlinear_params = {
+                        "nonlinear_matrix": np.array(
+                            nonlinear_material["nonlinear_matrix"]
+                        )
+                    }
+
+            # Load other materials
             for material_name in material_settings.keys():
-                if material_name == "nonlinear_piezo_matrix":
-                    simulation.nonlinear_material_matrix = np.array(
-                        material_settings[material_name]
-                    )
-                else:
-                    simulation.add_material(
-                        material_name,
-                        MaterialData(
-                            **material_settings[material_name]["material_data"]
-                        ),
-                        material_settings[material_name]["physical_group_name"]
-                    )
+                if material_name == "nonlinear":
+                    continue
+
+                simulation.add_material(
+                    material_name,
+                    MaterialData(
+                        **material_settings[material_name]["material_data"]
+                    ),
+                    material_settings[material_name]["physical_group_name"]
+                )
+
             simulation.material_manager.initialize_materials()
+
+            simulation.set_nonlinearity_type(
+                nonlinear_type,
+                **nonlinear_params
+            )
 
         # Read boundary conditions
         with open(necessary_files[2], "r", encoding="UTF-8") as fd:
