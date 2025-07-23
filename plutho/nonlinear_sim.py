@@ -188,7 +188,15 @@ class PiezoNonlinear:
             )
         )
 
-    def set_nonlinearity_type(self, ntype: NonlinearType, **kwargs):
+    def set_nonlinearity_order(self, nl_order: int):
+        if nl_order < 1 or nl_order > 2:
+            raise NotImplementedError(
+                "Nonlinearity order only implemented for 2 or 3"
+            )
+
+        self.nonlinear_order = nl_order
+
+    def set_nonlinearity_type(self, nl_type: NonlinearType, **kwargs):
         """Sets the type of nonlinearity for the simulation.
 
         Parameters:
@@ -202,12 +210,12 @@ class PiezoNonlinear:
                         material matrix.
         """
         # TODO (almost) Duplicate code with nonlinear/piezo_time.py
-        if ntype is NonlinearType.Rayleigh:
+        if nl_type is NonlinearType.Rayleigh:
             if "zeta" not in kwargs:
                 raise ValueError(
                     "Missing 'zeta' parameter for nonlinear type: Rayleigh"
                 )
-        elif ntype is NonlinearType.Custom:
+        elif nl_type is NonlinearType.Custom:
             if "nonlinear_matrix" not in kwargs:
                 raise ValueError(
                     "Nonlinearity matrix is missing as parameter for curstom "
@@ -218,7 +226,7 @@ class PiezoNonlinear:
                 f"Nonlinearity type {NonlinearType.value} is not implemented"
             )
 
-        self.nonlinear_type = ntype
+        self.nonlinear_type = nl_type
         self.nonlinear_params = kwargs
 
 
@@ -279,6 +287,7 @@ class PiezoNonlinear:
 
         # Assemble
         self.solver.assemble(
+            self.nonlinear_order,
             self.nonlinear_type,
             **self.nonlinear_params
         )
