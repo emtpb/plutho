@@ -278,10 +278,18 @@ class PiezoNonlinear:
         self.solver.dirichlet_values = np.array(self.dirichlet_values)
 
         # Assemble
-        self.solver.assemble(
-            self.nonlinear_type,
-            **self.nonlinear_params
-        )
+        if "skip_assemble" in kwargs:
+            if not kwargs["skip_assemble"]:
+                self.solver.assemble(
+                self.nonlinear_type,
+                **self.nonlinear_params
+            )
+            del kwargs["skip_assemble"]
+        else:
+            self.solver.assemble(
+                self.nonlinear_type,
+                **self.nonlinear_params
+            )
 
         # Run simulation
         if isinstance(self.solver, NonlinearPiezoSimTime):

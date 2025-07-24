@@ -1,7 +1,7 @@
 """Module for the simulation of nonlinear piezoelectric systems"""
 
 # Third party libraries
-from typing import Tuple
+from typing import Tuple, Union
 import numpy as np
 import numpy.typing as npt
 import scipy
@@ -99,7 +99,8 @@ class NonlinearPiezoSimTime:
         tolerance: float = 1e-11,
         max_iter: int = 300,
         electrode_elements: npt.NDArray = np.array([]),
-        electrode_normals: npt.NDArray = np.array([])
+        electrode_normals: npt.NDArray = np.array([]),
+        u0: Union[npt.NDArray, None] = None
     ):
         number_of_time_steps = self.simulation_data.number_of_time_steps
         delta_t = self.simulation_data.delta_t
@@ -148,6 +149,9 @@ class NonlinearPiezoSimTime:
             self.dirichlet_nodes
         )
 
+        if u0 is not None:
+            u[:, 0] = u0
+
         print("Starting nonlinear time domain simulation")
         for time_index in range(number_of_time_steps-1):
             # Calculate load vector
@@ -186,7 +190,7 @@ class NonlinearPiezoSimTime:
 
             # Placeholder for result of newton
             next_u = np.zeros(3*number_of_nodes)
-            converged = False
+            self.converged = False
 
             if best_norm > tolerance:
                 # Start newton iterations
@@ -219,7 +223,7 @@ class NonlinearPiezoSimTime:
                         )
                         # print(u_i_next)
                         next_u = u_i_next.copy()
-                        converged = True
+                        self.converged = True
                         break
                     elif norm < best_norm:
                         best_norm = norm
@@ -230,7 +234,7 @@ class NonlinearPiezoSimTime:
 
                     # Update for next iteration
                     u_i = u_i_next.copy()
-                if not converged:
+                if not self.converged:
                     print(
                         "Newton did not converge.. Choosing best value: "
                         f"{best_norm}"
