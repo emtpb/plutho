@@ -22,10 +22,11 @@ class NonlinearType(Enum):
 
 
 def assemble(
-        mesh_data: MeshData,
-        material_manager: MaterialManager,
-        nonlinear_type: NonlinearType,
-        **kwargs
+    mesh_data: MeshData,
+    material_manager: MaterialManager,
+    nonlinear_order: int,
+    nonlinear_type: NonlinearType,
+    **kwargs
 ) -> Tuple[
     sparse.lil_array,
     sparse.lil_array,
@@ -62,8 +63,22 @@ def assemble(
                 "Missing 'nonlinear_matrix' parameter for nonlinear type:"
                 " Rayleigh"
             )
-        # Reduce to axisymmetric matrix
         nm = kwargs["nonlinear_matrix"]
+
+        # Check for matrix shape
+        if len(nm.shape) != nonlinear_order+2:
+            raise ValueError(
+                f"Given nonlinearity matrix shape {nm.shape} does not fit to"
+                f" the given nonlinearity order {nonlinear_order}"
+            )
+
+        if nonlinear_order == 3:
+            raise NotImplementedError(
+                "Nonlinearity order 3 not implemented yet"
+            )
+
+        # Reduce to axisymmetric matrix
+        # TODO Update this for order 3 or make it n dimensional
         voigt_map = [0, 1, 3, 2]
         nm_reduced = np.zeros(shape=(4, 4, 4))
         for i_new, i_old in enumerate(voigt_map):

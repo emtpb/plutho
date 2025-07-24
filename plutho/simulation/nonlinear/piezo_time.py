@@ -81,14 +81,21 @@ class NonlinearPiezoSimTime:
         self.dirichlet_nodes = np.array([])
         self.dirichlet_values = np.array([])
 
-    def assemble(self, nonlinear_type: NonlinearType, **kwargs):
+    def assemble(
+        self,
+        nonlinear_order: int,
+        nonlinear_type: NonlinearType,
+        **kwargs
+    ):
         """Redirect to general nonlinear assembly function"""
         m, c, k, ln = assemble(
             self.mesh_data,
             self.material_manager,
+            nonlinear_order,
             nonlinear_type,
             **kwargs
         )
+        self.nonlinear_order = nonlinear_order
         self.m = m
         self.c = c
         self.k = k
