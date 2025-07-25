@@ -1,6 +1,5 @@
-"""Module for the simulation of nonlinear piezoeletric systems
-for the case of a time-stationary simulation. (d_t=0)
-"""
+"""Module for the simulation of nonlinaer piezoelectric systems using the
+harmonic balancing method."""
 
 # Python standard libraries
 from typing import Union, Tuple
@@ -17,14 +16,8 @@ from .base import assemble, NonlinearType
 from ..base import MeshData
 from plutho.materials import MaterialManager
 
-
-class NonlinearPiezoSimStationary:
-    """Implements a nonlinear time stationary simulation. The nonlinearity
-    is embed in the hooke law: T_i=C_ij*S_j+1/2*L_ijk*S_j*S_k.
-    In order to solve this system a Newton-Raphson algorithm is implemented.
-    For comparison a simulation can also be done using the scipy least squares
-    function. Additionaly a the corresponding linear system (L=0) can be solved
-    too.
+class NonlinearPiezoSimHb:
+    """Implementes a nonlinear FEM harmonic balancing simulation.
     """
     # Simulation parameters
     mesh_data: MeshData
@@ -36,7 +29,9 @@ class NonlinearPiezoSimStationary:
 
     # FEM matrices
     k: sparse.lil_array
-    ln: sparse.lil_array
+    c: sparse.lil_array
+    m: sparse.lil_array
+    l: sparse.lil_array
 
     # Resulting fields
     u: npt.NDArray
@@ -55,10 +50,18 @@ class NonlinearPiezoSimStationary:
         self,
         nonlinear_order: int,
         nonlinear_type: NonlinearType,
+        harmonic_order: int,
         **kwargs
     ):
-        """Redirect to general nonlinear assembly function"""
-        _, _, k, ln = assemble(
+        """Redirect to general nonlinear assembly function
+
+        Parameters:
+            nonlinear_order: Order of the nonlinearity.
+            nonlinear_type: Type of the nonlinear material.
+            **kwargs: Parameters for the nonlinear material.
+        """
+        # Get the default FEM matrices
+        m, c, k, l = assemble(
             self.mesh_data,
             self.material_manager,
             nonlinear_order,
@@ -66,18 +69,22 @@ class NonlinearPiezoSimStationary:
             **kwargs
         )
         self.nonlinear_order = nonlinear_order
+        self.harmonic_order = harmonic_order
+
+        self.m = m
+        self.c = c
         self.k = k
-        self.ln = ln
+        self.l = l
 
     def solve_linear(self):
         """Solves the linear problem Ku=f (ln is not used).
         """
         # Get FEM matrices
         k = self.k.copy()
-        ln = self.ln.copy()  # Not used
+        ln = self.l.copy()  # Not used
 
         # Apply boundary conditions
-        k, ln = NonlinearPiezoSimStationary.apply_dirichlet_bc(
+        k, ln = NonlinearPiezoSimHb.apply_dirichlet_bc(
             k,
             ln,
             self.dirichlet_nodes
@@ -96,8 +103,9 @@ class NonlinearPiezoSimStationary:
 
     def solve_newton(
         self,
-        tolerance: float = 1e-11,
-        max_iter: int = 1000,
+        angular_frequency: float,
+        tolerance: float = 1e-10,
+        max_iter: int = 100,
         u_start: Union[npt.NDArray, None] = None,
         alpha: float = 1,
         load_factor: float = 1
@@ -119,18 +127,50 @@ class NonlinearPiezoSimStationary:
                 than than the full excitation. Could improve conversion of the
                 algorithm. Choose a value between 0 and 1.
         """
+        number_of_nodes = len(self.mesh_data.nodes)
+
         # Get FEM matrices
         k = self.k.copy()
-        ln = self.ln.copy()
+        c = self.c.copy()
+        m = self.m.copy()
+        l = self.l.copy()
+
+        # Create the harmonic balancing matrices from the FEM matrices
+        harmonic_order = self.harmonic_order
+        nabla_hb_k = np.zeros(shape=(2*harmonic_order, 2*harmonic_order))
+        nabla_hb = np.zeros(shape=(2*harmonic_order, 2*harmonic_order))
+        for _k in range(harmonic_order):
+            nabla_hb_k[2*_k:2*_k+2, 2*_k:2*_k+2] = np.array([
+                [0, _k],
+                [-_k, 0]
+            ])
+            nabla_hb[2*_k:2*_k+2, 2*_k:2*_k+2] = np.array([
+                [1, 0],
+                [0, 1]
+            ])
+
+        print(k.shape)
+
+        m = sparse.kron(m, np.square(nabla_hb_k), format='lil')
+        c = sparse.kron(c, nabla_hb_k, format='lil')
+        k = sparse.kron(k, nabla_hb, format='lil')
+
+        print("Number of nodes:", number_of_nodes)
+        print("M:", m.shape)
+        print("C", c.shape)
+        print("K:", k.shape)
 
         # Apply boundary conditions
-        k, ln = NonlinearPiezoSimStationary.apply_dirichlet_bc(
+        m, c, k = NonlinearPiezoSimHb.apply_dirichlet_bc(
+            m,
+            c,
             k,
-            ln,
             self.dirichlet_nodes
         )
 
+
         f = self.get_load_vector(
+            harmonic_order,
             self.dirichlet_nodes,
             self.dirichlet_values
         )
@@ -147,13 +187,22 @@ class NonlinearPiezoSimStationary:
             current_u = u_start
 
         # Residual of the Newton algorithm
-        def residual(u):
-            return k@u+ln@np.power(u, self.nonlinear_order)-load_factor*f
+        def residual(u, omega):
+            l_hb = np.zeros(shape=(2*3*number_of_nodes, 2*3*number_of_nodes))
+            l_hb[self.dirichlet_nodes] = 0
+            for i in range(3*number_of_nodes):
+                a = u[2*i]
+                b = u[2*i+1]
+                l_hb[2*i:2*i+2] = l[i]*np.array([
+                    3/4*(a**3+a*b**2),
+                    3/4*(a**2*b+b**3)
+                ])
+            return omega**2*m@u+omega*c@u+k@u+l_hb-load_factor*f
 
         # Add a best found field parameter which can be returned when the
         # maximum number of iterations were done
         best = current_u.copy()
-        best_norm = np.linalg.norm(residual(best))
+        best_norm = np.linalg.norm(residual(best, angular_frequency))
 
         # Check if the initial value already suffices the tolerance condition
         if best_norm < tolerance:
@@ -161,24 +210,24 @@ class NonlinearPiezoSimStationary:
 
         for iteration_count in range(max_iter):
             # Calculate tangential stiffness matrix
-            k_tangent = NonlinearPiezoSimStationary. \
+            k_tangent = NonlinearPiezoSimHb. \
                 calculate_tangent_matrix_hadamard(
                     current_u,
                     k,
-                    ln
+                    l
                 )
 
             # Solve for displacement increment
             delta_u = linalg.spsolve(
                 k_tangent,
-                residual(current_u)
+                residual(current_u, angular_frequency)
             )
 
             # Update step
             next_u = current_u - alpha * delta_u
 
             # Check for convergence
-            norm = scipy.linalg.norm(residual(next_u))
+            norm = scipy.linalg.norm(residual(next_u, angular_frequency))
             if norm < tolerance:
                 print(
                     f"Solve Newton found solution after {iteration_count} "
@@ -201,8 +250,9 @@ class NonlinearPiezoSimStationary:
 
     def get_load_vector(
         self,
+        harmonic_order: float,
         nodes: npt.NDArray,
-        values: npt.NDArray
+        values: npt.NDArray,
     ) -> npt.NDArray:
         """Calculates the load vector (right hand side) vector for the
         simulation.
@@ -218,7 +268,7 @@ class NonlinearPiezoSimStationary:
 
         # Can be initialized to 0 because external load and volume
         # charge density is 0.
-        f = np.zeros(3*number_of_nodes, dtype=np.float64)
+        f = np.zeros(3*number_of_nodes*2*harmonic_order, dtype=np.float64)
 
         for node, value in zip(nodes, values):
             f[node] = value
@@ -248,24 +298,27 @@ class NonlinearPiezoSimStationary:
 
     @staticmethod
     def apply_dirichlet_bc(
+        m: sparse.lil_array,
+        c: sparse.lil_array,
         k: sparse.lil_array,
-        ln: sparse.lil_array,
         nodes: npt.NDArray
-    ) -> Tuple[sparse.csc_array, sparse.csc_array]:
-        """Sets dirichlet boundary condition for the given matrix.
+    ) -> Tuple[
+        sparse.csc_array,
+        sparse.csc_array,
+        sparse.csc_array,
+        sparse.csc_array
+    ]:
+        # TODO Parameters are not really ndarrays
+        # Set rows of matrices to 0 and diagonal of K to 1 (at node points)
 
-        Parameters:
-            k: Stiffness matrix.
-            l: Nonlinear stiffness matrix.
-            nodes: List of node indices at which the bc are defined.
-
-        Returns:
-            Matrix with set boundary conditions.
-        """
+        # Matrices for u_r component
         for node in nodes:
+            # Set rows to 0
+            m[node, :] = 0
+            c[node, :] = 0
             k[node, :] = 0
-            ln[node, :] = 0
 
+            # Set diagonal values to 1
             k[node, node] = 1
 
-        return k.tocsc(), ln.tocsc()
+        return m.tocsc(), c.tocsc(), k.tocsc()
