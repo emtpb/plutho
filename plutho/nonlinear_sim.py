@@ -12,6 +12,7 @@ import numpy.typing as npt
 # Local libraries
 from plutho import Mesh, MaterialManager, FieldType, MaterialData, \
     MeshData, SimulationData
+from plutho.simulation.nonlinear.piezo_hb import NonlinearPiezoSimHb
 from .simulation import NonlinearPiezoSimStationary, NonlinearPiezoSimTime, \
     NonlinearType
 
@@ -40,7 +41,12 @@ class PiezoNonlinear:
     sim_directory: str
     mesh: Mesh
     material_manager: MaterialManager
-    solver: Union[None, NonlinearPiezoSimTime, NonlinearPiezoSimStationary]
+    solver: Union[
+        None,
+        NonlinearPiezoSimTime,
+        NonlinearPiezoSimStationary,
+        NonlinearPiezoSimHb
+    ]
     boundary_conditions: List[Dict]
 
     def __init__(
@@ -153,8 +159,21 @@ class PiezoNonlinear:
         self.dirichlet_nodes = []
         self.dirichlet_values = []
 
+    def setup_harmonic_balancing(self, harmonic_order: int):
+        """Sets the simulation type to a nonlinear harmonic balancing
+        simulation.
+
+        Parameters:
+            harmonic_order: Number of the harmonics used.
+        """
+        self.solver = NonlinearPiezoSimHb(
+            self.mesh_data,
+            self.material_manager,
+            harmonic_order
+        )
+
     def setup_stationary_simulation(self):
-        """Set the simulation type to a nonlinaer stationary simulation.
+        """Sets the simulation type to a nonlinaer stationary simulation.
         """
         self.solver = NonlinearPiezoSimStationary(
             self.mesh_data,
@@ -189,7 +208,7 @@ class PiezoNonlinear:
         )
 
     def set_nonlinearity_order(self, nl_order: int):
-        if nl_order < 1 or nl_order > 2:
+        if nl_order < 1 or nl_order > 3:
             raise NotImplementedError(
                 "Nonlinearity order only implemented for 2 or 3"
             )
@@ -229,7 +248,6 @@ class PiezoNonlinear:
         self.nonlinear_type = nl_type
         self.nonlinear_params = kwargs
 
-
     def simulate(
         self,
         **kwargs
@@ -266,6 +284,11 @@ class PiezoNonlinear:
             - "load_factor" (float): Can only be set for the stationary
                 simulation. Is multiplied with the load vector. Therefore the
                 given load can be adjusted to achieve a faster convergence.
+            - "angular_frequency" (float): Can only be set for the harmonic
+                balance simulation. Sets the angular frequency at which the
+                simulation is done.
+            - "skip_assembly" (bool) : Set to true if assembly shall be
+                skipped. Default is false.
         """
         # Check if materials are set
         if self.material_manager is None:
@@ -286,20 +309,18 @@ class PiezoNonlinear:
         self.solver.dirichlet_values = np.array(self.dirichlet_values)
 
         # Assemble
-        if "skip_assemble" in kwargs:
-            if not kwargs["skip_assemble"]:
+        if "skip_assembly" in kwargs:
+            skip_assemble = kwargs["skip_assembly"]
+            del kwargs["skip_assembly"]
+        else:
+            skip_assemble = False
+
+        if not skip_assemble:
                 self.solver.assemble(
                     self.nonlinear_order,
                     self.nonlinear_type,
                     **self.nonlinear_params
-            )
-            del kwargs["skip_assemble"]
-        else:
-            self.solver.assemble(
-                self.nonlinear_order,
-                self.nonlinear_type,
-                **self.nonlinear_params
-            )
+                )
 
         # Run simulation
         if isinstance(self.solver, NonlinearPiezoSimTime):
@@ -309,6 +330,10 @@ class PiezoNonlinear:
                 **kwargs
             )
         elif isinstance(self.solver, NonlinearPiezoSimStationary):
+            self.solver.solve_newton(
+                **kwargs
+            )
+        elif isinstance(self.solver, NonlinearPiezoSimHb):
             self.solver.solve_newton(
                 **kwargs
             )
@@ -362,6 +387,8 @@ class PiezoNonlinear:
             simulation_type = "NonlinearStationary"
         elif isinstance(self.solver, NonlinearPiezoSimTime):
             simulation_type = "NonlinearTime"
+        elif isinstance(self.solver, NonlinearPiezoSimHb):
+            simulation_type = "NonlinearHarmonicBalance"
         else:
             raise ValueError(
                 f"Cannot save simulation type {type(self.solver)}"
@@ -395,6 +422,10 @@ class PiezoNonlinear:
         # Simulation data
         if isinstance(self.solver, NonlinearPiezoSimTime):
             settings["simulation"] = self.solver.simulation_data.__dict__
+        elif isinstance(self.solver, NonlinearPiezoSimHb):
+            settings["simulation"] = {
+                "harmonic_order": self.solver.harmonic_order
+             }
 
         # Boundary conditions
         boundary_conditions = {}
@@ -490,6 +521,9 @@ class PiezoNonlinear:
                 simulation_data.gamma,
                 simulation_data.beta
             )
+        elif simulation_type == "NonlinearHarmonicBalance":
+            harmonic_order = int(settings["simulation"]["harmonic_order"])
+            simulation.setup_harmonic_balancing(harmonic_order)
         else:
             raise IOError(
                 f"Cannot deserialize {simulation_type} simulation type"
@@ -576,6 +610,13 @@ class PiezoNonlinear:
             self.solver.u = np.load(u_file)
             if os.path.isfile(q_file):
                 self.solver.q = np.load(q_file)
+        elif isinstance(self.solver, NonlinearPiezoSimHb):
+            # TODO Duplicate with stationary
+            u_file = os.path.join(
+                self.sim_directory,
+                "u.npy"
+            )
+            self.solver.u = np.load(u_file)
         else:
             raise ValueError(
                 "Cannot load simulation settings of simulation type",

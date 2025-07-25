@@ -157,7 +157,8 @@ class NonlinearPiezoSimStationary:
 
         # Check if the initial value already suffices the tolerance condition
         if best_norm < tolerance:
-            return best
+            self.u = best
+            return
 
         for iteration_count in range(max_iter):
             # Calculate tangential stiffness matrix
@@ -184,7 +185,8 @@ class NonlinearPiezoSimStationary:
                     f"Solve Newton found solution after {iteration_count} "
                     f"steps with residual {norm}"
                 )
-                return next_u
+                self.u = next_u
+                return
             elif norm < best_norm:
                 best_norm = norm
                 best = next_u.copy()

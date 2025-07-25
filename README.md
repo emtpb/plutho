@@ -93,6 +93,7 @@ the code. Some of those feature can be discussed and are not mandatory:
 - Check if multiple materials already works or if continuity and boundary
   conditions are needed
 - Add test for thermal simulation with convective boundary condition
+- Put all nonlinear options into one data class
 
 ### Issues
 
