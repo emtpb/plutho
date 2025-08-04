@@ -54,7 +54,7 @@ class NonlinearPiezoSimHb:
         nonlinear_type: NonlinearType,
         **kwargs
     ):
-        """Redirect to general nonlinear assembly function
+        """Redirect to general nonlinear assembly function.
 
         Parameters:
             nonlinear_order: Order of the nonlinearity.
@@ -111,6 +111,8 @@ class NonlinearPiezoSimHb:
         method. Saves the result in self.u
 
         Parameters:
+            angular_frequency: Angualr frequency at which the simulation is
+                done.
             tolerance: Upper bound for the residuum. Iteration stops when the
                 residuum is lower than tolerance.
             max_iter: Maximum number of iteration when the tolerance is not
@@ -136,7 +138,8 @@ class NonlinearPiezoSimHb:
         hb_m, hb_c, hb_k = self.get_harmonic_balancing_matrices(
             fem_m,
             fem_c,
-            fem_k
+            fem_k,
+            angular_frequency
         )
 
         # Apply boundary conditions
@@ -158,9 +161,9 @@ class NonlinearPiezoSimHb:
             # simulation
             current_u = linalg.spsolve(
                 (
-                    angular_frequency**2*hb_m.tocsc()
-                    + angular_frequency**2*hb_c.tocsc()
-                    + hb_k.tocsc()
+                    hb_m
+                    + hb_c
+                    + hb_k
                 ),
                 load_factor*f
             )
@@ -170,8 +173,8 @@ class NonlinearPiezoSimHb:
         # Residual of the Newton algorithm
         def residual(u, nonlinear_force):
             return (
-                angular_frequency**2*hb_m@u
-                 + angular_frequency*hb_c@u
+                hb_m@u
+                 + hb_c@u
                  + hb_k@u
                  + nonlinear_force
                  - load_factor*f
@@ -184,8 +187,6 @@ class NonlinearPiezoSimHb:
             number_of_nodes
         )
 
-        print(nonlinear_force)
-
         # best_field tracks the field with the best norm
         # best norm tracks the value of the norm itself
         # Calculate the first norms based on the starting field guess
@@ -193,15 +194,13 @@ class NonlinearPiezoSimHb:
         best_norm = np.linalg.norm(residual(best_field, nonlinear_force))
 
         # Check if the initial value already suffices the tolerance condition
-        if best_norm < tolerance:
-            print(f"Initial value is already best {best_norm}")
-            self.u = best_field
-            return
+        #if best_norm < tolerance:
+        #    print(f"Initial value is already best {best_norm}")
+        #    self.u = best_field
+        #    return
 
         # Run Newton method
         for iteration_count in range(max_iter):
-            print(f"Iteration {iteration_count}")
-
             if iteration_count > 0:
                 # Does not need to be updated at step 0
                 nonlinear_force = self.calculate_nonlinear_force(
@@ -210,15 +209,13 @@ class NonlinearPiezoSimHb:
                     number_of_nodes
                 )
 
-                print(nonlinear_force)
-
             # Calculate tangential stiffness matrix
-            k_tangent = NonlinearPiezoSimHb. \
-                calculate_tangent_matrix_numerical(
+            k_tangent = self.calculate_tangent_matrix_analytical(
                     current_u,
-                    nonlinear_force,
-                    residual
-                )
+                    hb_m,
+                    hb_c,
+                    hb_k
+            )
 
             # Solve for displacement increment
             delta_u = linalg.spsolve(
@@ -233,7 +230,7 @@ class NonlinearPiezoSimHb:
             norm = scipy.linalg.norm(residual(next_u, nonlinear_force))
             if norm < tolerance:
                 print(
-                    f"Newton found solution after {iteration_count} "
+                    f"Newton found solution after {iteration_count+1} "
                     f"steps with residual {norm}"
                 )
                 self.u = next_u
@@ -270,15 +267,31 @@ class NonlinearPiezoSimHb:
             Vector of nonlinear forces.
         """
         # TODO Currently only for third order nonlinearity
+
+        u_c = u[::2]
+        u_s = u[1::2]
+
+        lu_c = fem_lu.dot(
+            3/4*u_c**3+3/4*np.multiply(u_c, u_s**2)
+        )
+        lu_s = fem_lu.dot(
+            3/4*u_s**3+3/4*np.multiply(u_s, u_c**2)
+        )
+
+        nonlinear_force = np.zeros(2*3*number_of_nodes)
+        nonlinear_force[::2] = lu_c
+        nonlinear_force[1::2] = lu_s
+
+        """
         nonlinear_force = np.zeros(2*3*number_of_nodes)
         for i in range(3*number_of_nodes):
-            for j in range(3*number_of_nodes):
-                a = u[2*j]
-                b = u[2*j+1]
-                nonlinear_force[2*i:2*i+2] += fem_lu[i,j]*np.array([
-                    3/4*(a**3+a*b**2),
-                    3/4*(a**2*b+b**3)
-                ])
+            a = u[2*i]
+            b = u[2*i+1]
+            nonlinear_force[2*i:2*i+2] = fem_lu[i,i]*np.array([
+                3/4*(a**3+a*b**2),
+                3/4*(a**2*b+b**3)
+            ])
+        """
 
         # Add dirichlet boundary conditions
         nonlinear_force[self.dirichlet_nodes] = 0
@@ -290,14 +303,15 @@ class NonlinearPiezoSimHb:
         fem_m: sparse.lil_array,
         fem_c: sparse.lil_array,
         fem_k: sparse.lil_array,
+        angular_frequency: float
     ) -> Tuple[sparse.lil_array, sparse.lil_array, sparse.lil_array]:
         """Calculates the harmonic balancing matrices from the FEM matrices.
         The matrices are getting bigger by a factor of (2*harmonic_order)**2
 
         Parameters:
-            m: FEM mass matrix.
-            c: FEM damping matrix.
-            k: FEM stiffness matrix.
+            fem_m: FEM mass matrix.
+            fem_c: FEM damping matrix.
+            fem_k: FEM stiffness matrix.
 
         Returns:
             Tuple of HB mass matrix, HB damping matrix and HB stiffness
@@ -305,23 +319,29 @@ class NonlinearPiezoSimHb:
         """
         harmonic_order = self.harmonic_order
 
-        # Set harmonic balance derivative matrices
-        nabla_hb = np.zeros(shape=(2*harmonic_order, 2*harmonic_order))
-        nabla_hb_const = np.zeros(shape=(2*harmonic_order, 2*harmonic_order))
+        # Create harmonic balance derivative matrices
+        nabla_m = np.zeros(shape=(2*harmonic_order, 2*harmonic_order))
+        nabla_c = np.zeros(shape=(2*harmonic_order, 2*harmonic_order))
+        nabla_k = np.zeros(shape=(2*harmonic_order, 2*harmonic_order))
         for i in range(harmonic_order):
-            nabla_hb[2*i:2*i+2, 2*i:2*i+2] = np.array([
-                [0, i],
-                [-i, 0]
+            k = i + 1
+            nabla_m[2*i:2*i+2, 2*i:2*i+2] = np.array([
+                [-(angular_frequency**2*k**2), 0],
+                [0, -(angular_frequency**2*k**2)]
             ])
-            nabla_hb_const[2*i:2*i+2, 2*i:2*i+2] = np.array([
+            nabla_c[2*i:2*i+2, 2*i:2*i+2] = np.array([
+                [0, angular_frequency*k],
+                [-(angular_frequency*k), 0]
+            ])
+            nabla_k[2*i:2*i+2, 2*i:2*i+2] = np.array([
                 [1, 0],
                 [0, 1]
             ])
 
         # Apply HB derivative matrices on FEM matrices
-        fem_m = sparse.kron(fem_m, np.square(nabla_hb), format='lil')
-        fem_c = sparse.kron(fem_c, nabla_hb, format='lil')
-        fem_k = sparse.kron(fem_k, nabla_hb_const, format='lil')
+        fem_m = sparse.kron(fem_m, nabla_m, format='lil').tolil()
+        fem_c = sparse.kron(fem_c, nabla_c, format='lil').tolil()
+        fem_k = sparse.kron(fem_k, nabla_k, format='lil').tolil()
 
         return fem_m, fem_c, fem_k
 
@@ -354,21 +374,76 @@ class NonlinearPiezoSimHb:
 
         return f
 
-# -------- Static functions --------
+    def calculate_tangent_matrix_analytical(
+        self,
+        u: npt.NDArray,
+        hb_m: sparse.lil_array,
+        hb_c: sparse.lil_array,
+        hb_k: sparse.lil_array
+    ) -> sparse.csc_array:
+        """Calculates the tangent matrix using a priori analytical
+        calculations.
+
+        Parameters:
+            u: Solution vector containing mechanical and electrical field
+                values.
+            hb_m: Harmonic balancing mass matrix.
+            hb_c: Harmonic balancing damping matrix.
+            hb_k: Harmonic balancing stiffness matrix.
+
+        Returns:
+            The tangent stiffness matrix.
+        """
+        # TODO Only valid for harmonic_order = 1 and nonlinearity_order = 3
+        fem_lu = self.lu
+        lu_diag = fem_lu.diagonal()
+        number_of_nodes = len(self.mesh_data.nodes)
+        size = number_of_nodes*3*self.harmonic_order*2
+
+        center_diag = np.zeros(size)
+        for i in range(len(lu_diag)):
+            diag_value_first = 3/4*lu_diag[i]*(3*u[2*i]**2+u[2*i+1]**2)
+            diag_value_second = 3/4*lu_diag[i]*(u[2*i]**2+3*u[2*i+1]**2)
+
+            center_diag[2*i] = diag_value_first
+            center_diag[2*i+1] = diag_value_second
+
+        left_diag = np.zeros(size-1)
+        left_diag[::2] = np.multiply(u[1::2], lu_diag)
+
+        right_diag = np.zeros(size-1)
+        right_diag[::2] = np.multiply(u[:-1:2], lu_diag)
+
+        return hb_m + hb_c + hb_k + sparse.diags(
+            diagonals=[
+                left_diag,
+                center_diag,
+                right_diag,
+            ],
+            offsets=[-1, 0, 1],
+            format="csc"
+        )
+
+
+    # -------- Static functions --------
 
     @staticmethod
     def calculate_tangent_matrix_numerical(
         u: npt.NDArray,
         nonlinear_force: npt.NDArray,
         residual: Callable
-    ):
+    ) -> sparse.csc_array:
         """Calculates the tanget stiffness matrix numerically using a first
         order finite difference approximation.
+        Important note: Calculation is very slow.
 
         Parameters:
             u: Current solution vector.
             nonlinear_force: Vector of nonlinear forces.
             residual: Residual function.
+
+        Returns:
+            Tangential stiffness matrix in sparse csc format.
         """
         h = 1e-14
         k_tangent = sparse.lil_matrix(
@@ -385,24 +460,6 @@ class NonlinearPiezoSimHb:
 
         return k_tangent.tocsc()
 
-    @staticmethod
-    def calculate_tangent_matrix_hadamard(
-        u: npt.NDArray,
-        k: sparse.sparray,
-        lu: sparse.sparray
-    ):
-        # TODO This matrix is not valid anymore in harmonic balancing approach
-        """Calculates the tangent matrix based on an analytically
-        expression.
-
-        Parameters:
-            u: Current mechanical displacement.
-            k: FEM stiffness matrix.
-            ln: FEM nonlinear stiffness matrix.
-        """
-        k_tangent = k+3*lu@sparse.diags_array(np.square(u))
-
-        return k_tangent
 
     @staticmethod
     def apply_dirichlet_bc(
@@ -413,11 +470,24 @@ class NonlinearPiezoSimHb:
     ) -> Tuple[
         sparse.csc_array,
         sparse.csc_array,
-        sparse.csc_array,
         sparse.csc_array
     ]:
-        # Set rows of matrices to 0 and diagonal of K to 1 (at node points)
+        """Applies dirichlet boundary conditions to the given matrix based on
+        the given nodes. Essentially the rows of the m c and k matrices at the
+        node indices are set to 0. The element of the k matrix at position
+        (node_index, node_index) is set to 1.
 
+        Parameters:
+            m: Mass matrix.
+            c: Damping matrix.
+            k: Stiffness matrix.
+            nodes: Nodes at which the dirichlet boundary conditions shall be
+                applied.
+
+        Returns:
+            Modified mass, damping and stiffness matrix.
+        """
+        # Set rows of matrices to 0 and diagonal of K to 1 (at node points)
         # Matrices for u_r component
         for node in nodes:
             # Set rows to 0

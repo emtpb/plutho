@@ -316,11 +316,11 @@ class PiezoNonlinear:
             skip_assemble = False
 
         if not skip_assemble:
-                self.solver.assemble(
-                    self.nonlinear_order,
-                    self.nonlinear_type,
-                    **self.nonlinear_params
-                )
+            self.solver.assemble(
+                self.nonlinear_order,
+                self.nonlinear_type,
+                **self.nonlinear_params
+            )
 
         # Run simulation
         if isinstance(self.solver, NonlinearPiezoSimTime):
