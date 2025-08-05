@@ -63,10 +63,11 @@ def load_mesh(mesh_file_path):
             mesh_file_path,
             width=0.005,
             height=0.001,
-            mesh_size=0.00004,
-            x_offset=0
+            mesh_size=0.0001,
+            x_offset=0,
+            element_order=1
         )
-    mesh = plutho.Mesh(mesh_file_path)
+    mesh = plutho.Mesh(mesh_file_path, 1)
 
     return mesh
 
