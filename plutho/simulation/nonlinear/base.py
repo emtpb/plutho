@@ -66,7 +66,7 @@ def assemble(
         nm = kwargs["nonlinear_matrix"]
 
         # Check for matrix shape
-        if len(nm.shape) != nonlinear_order+2:
+        if len(nm.shape) != nonlinear_order+1:
             raise ValueError(
                 f"Given nonlinearity matrix shape {nm.shape} does not fit to"
                 f" the given nonlinearity order {nonlinear_order}"
@@ -159,7 +159,7 @@ def assemble(
         )
         if nonlinear_type is NonlinearType.Custom:
             lu_e = (
-                integral_u_nonlinear(
+                integral_u_nonlinear_analytic(
                     current_node_points,
                     nonlinear_matrix,
                     element_order
@@ -236,8 +236,51 @@ def assemble(
 
     return m, c, k, ln
 
+def integral_u_nonlinear_analytic(
+    node_points,
+    nonlinear_elasticity_matrix,
+    element_order
+):
+    def inner(s, t):
+        dn = gradient_local_shape_functions_2d(s, t, element_order)
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_inverted_t = np.linalg.inv(jacobian).T
+        jacobian_det = np.linalg.det(jacobian)
 
-def integral_u_nonlinear(
+        double_b = double_b_operator_global(
+            node_points,
+            jacobian_inverted_t,
+            s,
+            t,
+            element_order
+        )
+        single_b = b_operator_global(
+            node_points,
+            jacobian_inverted_t,
+            s,
+            t,
+            element_order
+        )
+
+        first = np.einsum(
+            "ijk,jl,kl->il",
+            nonlinear_elasticity_matrix,
+            double_b,
+            single_b
+        )
+
+        second = np.einsum(
+            "ijk,jl,kl->il",
+            nonlinear_elasticity_matrix,
+            single_b,
+            double_b
+        )
+
+        return 1/2*(first+second)
+
+    return quadratic_quadrature(inner, element_order)
+
+def integral_u_nonlinear_numeric(
     node_points: npt.NDArray,
     nonlinear_elasticity_matrix: npt.NDArray,
     element_order: int
@@ -341,6 +384,10 @@ def integral_u_nonlinear_analytic(
             t,
             element_order
         )
+
+        print(b_op.shape)
+        print(bb_op.shape)
+        print(nonlinear_elasticity_matrix.shape)
 
         left = np.einsum(
             "ijk,jl,kl->il",
@@ -480,6 +527,7 @@ def second_gradient_local_shape_functions_2d(
         f"order {element_order}"
     )
 
+
 def double_b_operator_global(
     node_points: npt.NDArray,
     jacobian_inverted_t: npt.NDArray,
@@ -495,7 +543,6 @@ def double_b_operator_global(
 
     # Calculate derivatives with respect to global coordinates
     global_ddn = np.zeros(shape=ddn.shape)
-
     for node_index in range(nodes_per_element):
         # Get hessian with shape
         # [ds*ds, ds*dt]
@@ -524,39 +571,19 @@ def double_b_operator_global(
 
     r = local_to_global_coordinates(node_points, s, t, element_order)[0]
 
+    # Calculate B^t{B{N_a}}
     bb = np.zeros(shape=(2*nodes_per_element, 2*nodes_per_element))
     for i in range(nodes_per_element):
         for j in range(nodes_per_element):
-            if i == j:
-                # Diagonal elements have second order derivatives
-                bb[2*i:2*(i+1), 2*j:2*(j+1)] = [
-                    [
-                        global_ddn[0][0][i] + global_ddn[1][1][i]+1/(r**2),
-                        global_ddn[1][0][i]
-                    ],
-                    [
-                        global_ddn[0][1][i],
-                        global_ddn[0][0][i] + global_ddn[1][1][i]
-                    ]
+            bb[2*i:2*(i+1), 2*j:2*(j+1)] = [
+                [
+                    global_ddn[0][0][i]+global_ddn[1][1][i]+r**2,
+                    global_ddn[1][0][i],
+                ],
+                [
+                    global_ddn[0][1][i],
+                    global_ddn[1][1][i]+global_ddn[0][1][i]
                 ]
-            else:
-                # Offdiagional elements have 2 first order derivatives
-                bb[2*i:2*(i+1), 2*j:2*(j+1)] = [
-                    [
-                        (
-                            global_dn[0][i]*global_dn[0][j]
-                            + global_dn[1][i]*global_dn[1][j]
-                            + 1/(r**2)
-                        ),
-                        global_dn[1][i]*global_dn[1][j]
-                    ],
-                    [
-                        global_dn[0][i]*global_dn[1][j],
-                        (
-                            global_dn[0][i]*global_dn[0][j]
-                            + global_dn[1][i]*global_dn[1][j]
-                        )
-                    ]
-                ]
+            ]
 
     return bb
