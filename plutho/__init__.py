@@ -9,4 +9,4 @@ from .materials import MaterialManager
 from .single_sim import SingleSimulation, FieldType
 from .mesh import Mesh
 from .coupled_sim import CoupledThermoPiezoThermoSim, CoupledFreqPiezoTherm
-from .nonlinear_sim import PiezoNonlinear
+from .nonlinear_sim import NonlinearPiezoSimTime

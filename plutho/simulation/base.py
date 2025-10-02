@@ -15,6 +15,14 @@ from ..mesh import Mesh
 
 # -------- ENUMS AND DATACLASSES --------
 
+class FieldType(Enum):
+    """Possible field types which are calculated using differnet simulations.
+    """
+    U_R = 0
+    U_Z = 1
+    PHI = 2
+    THETA = 3
+
 
 class ModelType(Enum):
     """Containts the model type. Since for different model types
@@ -417,7 +425,10 @@ def integral_ku(
         )
         r = local_to_global_coordinates(node_points, s, t, element_order)[0]
 
-        return np.dot(np.dot(b_op.T, elasticity_matrix), b_op)*r*jacobian_det
+        return np.dot(
+            np.dot(b_op.T, elasticity_matrix),
+            b_op
+        ) * r * jacobian_det
 
     return quadratic_quadrature(inner, element_order)
 
@@ -454,7 +465,10 @@ def integral_kuv(
         global_dn = np.dot(jacobian_inverted_t, dn)
         r = local_to_global_coordinates(node_points, s, t, element_order)[0]
 
-        return np.dot(np.dot(b_op.T, piezo_matrix.T), global_dn)*r*jacobian_det
+        return np.dot(
+            np.dot(b_op.T, piezo_matrix.T),
+            global_dn
+        ) * r * jacobian_det
 
     return quadratic_quadrature(inner, element_order)
 
@@ -491,7 +505,7 @@ def integral_kve(
                 permittivity_matrix
             ),
             global_dn
-        )*r*jacobian_det
+        ) * r * jacobian_det
 
     return quadratic_quadrature(inner, element_order)
 
@@ -518,7 +532,7 @@ def energy_integral_theta(
         n = local_shape_functions_2d(s, t, element_order)
         r = local_to_global_coordinates(node_points, s, t, element_order)[0]
 
-        return np.dot(n.T, theta)*r*jacobian_det
+        return np.dot(n.T, theta) * r * jacobian_det
 
     return quadratic_quadrature(inner, element_order)
 
@@ -543,7 +557,7 @@ def integral_volume(node_points: npt.NDArray, element_order: int):
 
         r = local_to_global_coordinates(node_points, s, t, element_order)[0]
 
-        return r*jacobian_det
+        return r * jacobian_det
 
     return quadratic_quadrature(inner, element_order)
 

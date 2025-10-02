@@ -9,111 +9,258 @@ from scipy import sparse
 from scipy.sparse import linalg
 
 # Local libraries
-from .base import assemble, NonlinearType
-from ..base import SimulationData, MeshData
+from .base import assemble, NonlinearType, integral_u_nonlinear_quadratic
+from ..base import SimulationData, MeshData, MaterialData, FieldType, \
+    create_node_points
 from plutho.simulation.piezo_time import calculate_charge
 from plutho.materials import MaterialManager
+from plutho.mesh.mesh import Mesh
 
 
 class NonlinearPiezoSimTime:
-    """Simulates eletro-mechanical fields for the given mesh, material and
-    simulation information. The simulation is using a nonlinear stiffness
-    matrix which is used for a quadratic term in the hooke law.
-
-    Attributes:
-        mesh_data: Contains the mesh information.
-        material_manager: Organizes material parameters. Can use materials
-            with different temperatures.
-        simulation_data: Contains settings for the simulation.
-        dirichlet_nodes_u: Nodes at which a dirichlet bc shall be set for the
-            mechanical field.
-        dirichlet_values_u: Values which are set at the node from the nodes
-            list for the mechanical field.
-        dirichlet_nodes_phi: Nodes at which a dirichlet bc shall be set for
-            the electrical field.
-        dirichlet_values_phi: Values which are set at the node from the nodes
-            list for the electrical field.
-        m: FEM mass matrix for the mechanical field.
-        k: FEM stiffness matrix for the mechanical field.
-        c: FEM damping matrix for the mechanical field.
-        ln: FEM stiffness matrix for the nonlinear part of the
-            mechanical field.
-        u: Mechanical field vector u(element, t).
-        q: Charge q(t).
-
-    Parameters:
-        mesh_data: MeshData object containing the mesh.
-        material_manager: MaterialManager object containing the set materials
-            for each region.
-        simulation_data:SimulationData object containing information on the
-            time domain simulation.
-    """
-
-    # Simulation parameters
-    mesh_data: MeshData
-    material_manager: MaterialManager
-    simulation_data: SimulationData
-
-    # Dirichlet boundary condition
-    dirichlet_nodes: npt.NDArray
-    dirichlet_values: npt.NDArray
-
-    # Resulting fields
-    u: npt.NDArray
-    q: npt.NDArray
-
-    # FEM matrices
-    m: sparse.lil_array
-    c: sparse.lil_array
-    ln: sparse.lil_array
-    k: sparse.lil_array
 
     def __init__(
         self,
-        mesh_data: MeshData,
-        material_manager: MaterialManager,
-        simulation_data: SimulationData
+        simulation_name: str,
+        mesh: Mesh
     ):
-        self.mesh_data = mesh_data
-        self.material_manager = material_manager
-        self.simulation_data = simulation_data
+        self.simulation_name = simulation_name
 
-        self.dirichlet_nodes = np.array([])
-        self.dirichlet_values = np.array([])
+        # Setup simulation data
+        self.boundary_conditions = []
+        self.dirichlet_nodes = []
+        self.dirichlet_values = []
+
+        # Setup mesh and material data
+        nodes, elements = mesh.get_mesh_nodes_and_elements()
+        self.mesh = mesh
+        self.mesh_data = MeshData(nodes, elements, mesh.element_order)
+        self.node_points = create_node_points(
+            nodes,
+            elements,
+            mesh.element_order
+        )
+
+        self.material_manager = MaterialManager(len(elements))
+
+    def add_material(
+        self,
+        material_name: str,
+        material_data: MaterialData,
+        physical_group_name: str
+    ):
+        """Adds a material to the simulation
+
+        Parameters:
+            material_name: Name of the material.
+            material_data: Material data.
+            physical_group_name: Name of the physical group for which the
+                material shall be set. If this is None or "" the material will
+                be set for the whole model.
+        """
+        if physical_group_name is None or physical_group_name == "":
+            element_indices = np.arange(len(self.mesh_data.elements))
+        else:
+            element_indices = self.mesh.get_elements_by_physical_groups(
+                [physical_group_name]
+            )[physical_group_name]
+
+        self.material_manager.add_material(
+            material_name,
+            material_data,
+            physical_group_name,
+            element_indices
+        )
+
+    def add_dirichlet_bc(
+        self,
+        field_type: FieldType,
+        physical_group_name: str,
+        values: npt.NDArray
+    ):
+        """Adds a dirichlet boundary condition (dirichlet bc) to the
+        simulation. The given values are for each time step. Therefore each
+        value is applied to every node from the given physical_group.
+
+        Parameters:
+            field_type: The type of field for which the bc shall be set.
+            physical_group_name: Name of the physical group for which the
+                boundary condition shall be set.
+            values: List of values per time step. Value of the bc for each time
+                step. The value for one time step is applied to every element
+                equally. Length: number_of_time_step.
+        """
+        # Save boundary condition for serialization
+        self.boundary_conditions.append({
+            "field_type": field_type.name,
+            "physical_group": physical_group_name,
+            "values": values.tolist()
+        })
+
+        # Apply the given values for all nodes from the given physical_group
+        node_indices = self.mesh.get_nodes_by_physical_groups(
+            [physical_group_name]
+        )[physical_group_name]
+
+        number_of_nodes = len(self.mesh_data.nodes)
+
+        for node_index in node_indices:
+            real_index = 0
+
+            # Depending on the variable type and the simulation types
+            # the corresponding field variable may be found at different
+            # positions of the solution vector
+            if field_type is FieldType.PHI:
+                real_index = 2*number_of_nodes+node_index
+            elif field_type is FieldType.U_R:
+                real_index = 2*node_index
+            elif field_type is FieldType.U_Z:
+                real_index = 2*node_index+1
+            else:
+                raise ValueError(f"Unknown variable type {field_type}")
+
+            self.dirichlet_nodes.append(real_index)
+            self.dirichlet_values.append(values)
+
+    def clear_dirichlet_bcs(self):
+        """Resets the dirichlet boundary conditions."""
+        self.boundary_conditions = []
+        self.dirichlet_nodes = []
+        self.dirichlet_values = []
+
+    def set_electrode(self, electrode_name: str):
+        self.electrode_elements = self.mesh.get_elements_by_physical_groups(
+            [electrode_name]
+        )[electrode_name]
+        self.electrode_normals = np.tile(
+            [0, 1],
+            (len(self.electrode_elements), 1)
+        )
 
     def assemble(
         self,
-        nonlinear_order: int,
         nonlinear_type: NonlinearType,
-        **kwargs
+        nonlinear_data: Union[float, npt.NDArray]
     ):
         """Redirect to general nonlinear assembly function"""
-        m, c, k, ln = assemble(
+        self.material_manager.initialize_materials()
+        m, c, k = assemble(
             self.mesh_data,
-            self.material_manager,
-            nonlinear_order,
-            nonlinear_type,
-            **kwargs
+            self.material_manager
         )
-        self.nonlinear_order = nonlinear_order
+        self.nonlinear_type = nonlinear_type
         self.m = m
         self.c = c
         self.k = k
-        self.ln = ln
+        self.ln = self._assemble_nonlinear_quadratic(
+            nonlinear_type,
+            nonlinear_data
+        )
 
-    def solve_time_implicit(
+    def _assemble_nonlinear_quadratic(
         self,
+        nonlinear_type: NonlinearType,
+        nonlinear_data: Union[float, npt.NDArray]
+    ) -> sparse.lil_array:
+        if nonlinear_type is NonlinearType.Rayleigh:
+            if not isinstance(nonlinear_data, float):
+                raise ValueError(
+                    "When setting Rayleigh nonlinearity, a float parameter must"
+                    "be given."
+                )
+
+            return nonlinear_data * self.k
+
+        # Custom nonlinearity with full nonlinear tensor
+        if len(nonlinear_data.shape) != 3:
+            raise ValueError("A 6x6x6 tensor must be given.")
+
+        # Reduce to axisymmetric 4x4x4 matrix
+        # TODO Update this for order 3 or make it n dimensional
+        voigt_map = [0, 1, 3, 2]
+        nm_reduced = np.zeros(shape=(4, 4, 4))
+        for i_new, i_old in enumerate(voigt_map):
+            for j_new, j_old in enumerate(voigt_map):
+                for k_new, k_old in enumerate(voigt_map):
+                    nm_reduced[
+                        i_new,
+                        j_new,
+                        k_new
+                    ] = nonlinear_data[i_old, j_old, k_old]
+
+        nodes = self.mesh_data.nodes
+        elements = self.mesh_data.elements
+        element_order = self.mesh_data.element_order
+        number_of_nodes = len(nodes)
+        node_points = self.node_points
+
+        lu = sparse.lil_array(
+            (4*number_of_nodes**2, 2*number_of_nodes),
+            dtype=np.float64
+        )
+
+        for element_index, element in enumerate(elements):
+            current_node_points = node_points[element_index]
+
+            lu_e = integral_u_nonlinear_quadratic(
+                current_node_points,
+                nm_reduced,
+                element_order
+            ) * 2 * np.pi
+            for local_i, global_i in enumerate(element):
+                for local_j, global_j in enumerate(element):
+                    for local_k, global_k in enumerate(element):
+                        global_i_transformed_1 = \
+                            3*number_of_nodes*2*global_k+global_i
+                        global_i_transformed_2 = \
+                            3*number_of_nodes*2*(global_k+1)+global_i
+
+                        lu[
+                            2*global_i_transformed_1:2*global_i_transformed_1+1,
+                            2*global_j:2*global_j+1
+                        ] += lu_e[
+                            2*local_i:2*local_i+1,
+                            2*local_j:2*local_j+1,
+                            0
+                        ]
+                        lu[
+                            2*global_i_transformed_2:2*global_i_transformed_2+1,
+                            2*global_j:2*global_j+1
+                        ] += lu_e[
+                            2*local_i:2*local_i+1,
+                            2*local_j:2*local_j+1,
+                            1
+                        ]
+
+        ln = sparse.lil_array(
+            (9*number_of_nodes**2, 3*number_of_nodes),
+            dtype=np.float64
+        )
+
+        ln[:4*number_of_nodes**2, :2*number_of_nodes] = lu
+
+        return ln
+
+    def simulate(
+        self,
+        delta_t: float,
+        number_of_time_steps: int,
+        gamma: float,
+        beta: float,
         tolerance: float = 1e-11,
         max_iter: int = 300,
-        electrode_elements: npt.NDArray = np.array([]),
-        electrode_normals: npt.NDArray = np.array([]),
-        u0: Union[npt.NDArray, None] = None
+        u_start: Union[npt.NDArray, None] = None
     ):
-        number_of_time_steps = self.simulation_data.number_of_time_steps
-        delta_t = self.simulation_data.delta_t
+        self.dirichlet_nodes = np.array(self.dirichlet_nodes)
+        self.dirichlet_values = np.array(self.dirichlet_values)
+
+        self.simulation_data = SimulationData(
+            delta_t,
+            number_of_time_steps,
+            gamma,
+            beta
+        )
         number_of_nodes = len(self.mesh_data.nodes)
-        beta = self.simulation_data.beta
-        gamma = self.simulation_data.gamma
 
         m = self.m.copy()
         c = self.c.copy()
@@ -148,7 +295,7 @@ class NonlinearPiezoSimTime:
         q = np.zeros(number_of_time_steps, dtype=np.float64)
 
         # Apply dirichlet bc to matrices
-        m, c, k, ln = NonlinearPiezoSimTime.apply_dirichlet_bc(
+        m, c, k, ln = NonlinearPiezoSimTime._apply_dirichlet_bc(
             m,
             c,
             k,
@@ -156,133 +303,169 @@ class NonlinearPiezoSimTime:
             self.dirichlet_nodes
         )
 
-        if u0 is not None:
-            u[:, 0] = u0
+        sparse.save_npz("ln.npz", ln)
 
-        print("Starting nonlinear time domain simulation")
-        for time_index in range(number_of_time_steps-1):
-            # Calculate load vector
-            f = self.get_load_vector(
-                self.dirichlet_nodes,
-                self.dirichlet_values[:, time_index+1]
-            )
+        """
+        def nonlinear_product(u, L):
+            result = np.zeros(3*number_of_nodes) # TODO Move outside this fctn
 
-            # Residual for the newton iterations
-            def residual(next_u, current_u, v, a, f):
-                return (
-                    m@(a1*(next_u-current_u)-a2*v-a3*a)
-                    + c@(a4*(next_u-current_u)+a5*v+a6*a)
-                    + k@next_u+ln@np.square(next_u)-f
+            for k in range(3*number_of_nodes):
+                for i in range(3*number_of_nodes):
+                    for j in range(3*number_of_nodes):
+                        result[k] += u[i]*L[3*number_of_nodes*k+i, j]*u[j]
+
+            return result
+        """
+        def nonlinear_product(u, L):
+            result = np.zeros(3*number_of_nodes)
+
+            for index in range(3*number_of_nodes):
+                L_k = L[index*3*number_of_nodes:(index+1)*3*number_of_nodes, :]
+
+                result[index] = u @ (L_k @ u)
+
+            return result
+
+        if u_start is not None:
+            u[:, 0] = u_start
+
+        try:
+            print("Starting nonlinear time domain simulation")
+            for time_index in range(number_of_time_steps-1):
+                # Calculate load vector
+                f = self._get_load_vector(
+                    self.dirichlet_nodes,
+                    self.dirichlet_values[:, time_index+1]
                 )
 
-            # Values of the current time step
-            current_u = u[:, time_index]
-            current_v = v[:, time_index]
-            current_a = a[:, time_index]
+                # Residual for the newton iterations
+                def residual(next_u, current_u, v, a, f):
+                    #return (
+                    #    m@(a1*(next_u-current_u)-a2*v-a3*a)
+                    #    + c@(a4*(next_u-current_u)+a5*v+a6*a)
+                    #    + k@next_u+next_u.T@ln@next_u-f
+                    #)
+                    return (
+                        m@(a1*(next_u-current_u)-a2*v-a3*a)
+                        + c@(a4*(next_u-current_u)+a5*v+a6*a)
+                        + k@next_u+nonlinear_product(next_u, ln)-f
+                    )
 
-            # Current iteration value of u of the next time step
-            # as a start value this is set to the last converged u of the last
-            # time step
-            u_i = current_u.copy()
+                # Values of the current time step
+                current_u = u[:, time_index]
+                current_v = v[:, time_index]
+                current_a = a[:, time_index]
 
-            # Best values during newton are saved
-            best_u_i = u_i.copy()
-            best_norm = scipy.linalg.norm(residual(
-                u_i,
-                current_u,
-                current_v,
-                current_a,
-                f
-            ))
+                # Current iteration value of u of the next time step
+                # as a start value this is set to the last converged u of the last
+                # time step
+                u_i = current_u.copy()
 
-            # Placeholder for result of newton
-            next_u = np.zeros(3*number_of_nodes)
-            self.converged = False
+                # Best values during newton are saved
+                best_u_i = u_i.copy()
+                best_norm = scipy.linalg.norm(residual(
+                    u_i,
+                    current_u,
+                    current_v,
+                    current_a,
+                    f
+                ))
 
-            if best_norm > tolerance:
-                # Start newton iterations
-                for i in range(max_iter):
-                    # Calculate tangential stiffness matrix
-                    k_tangent = NonlinearPiezoSimTime. \
-                        calculate_tangent_matrix_hadamard(
-                            u_i,
-                            k,
-                            ln
+                # Placeholder for result of newton
+                next_u = np.zeros(3*number_of_nodes)
+                self.converged = False
+
+                if best_norm > tolerance:
+                    # Start newton iterations
+                    for i in range(max_iter):
+                        # Calculate tangential stiffness matrix
+                        k_tangent = NonlinearPiezoSimTime. \
+                            _calculate_tangent_matrix(
+                                u_i,
+                                k,
+                                ln,
+                                number_of_nodes
+                            )
+                        delta_u = linalg.spsolve(
+                            (a1*m+a4*c+k_tangent),
+                            residual(u_i, current_u, current_v, current_a, f)
                         )
-                    delta_u = linalg.spsolve(
-                        (a1*m+a4*c+k_tangent),
-                        residual(u_i, current_u, current_v, current_a, f)
-                    )
-                    u_i_next = u_i - delta_u
+                        u_i_next = u_i - delta_u
 
-                    # Check for convergence
-                    norm = scipy.linalg.norm(
-                        residual(u_i_next, current_u, current_v, current_a, f)
-                    )
-                    # print(
-                    #     f"Time step: {time_index}, iteration: {i}, "
-                    #     f"norm: {norm}"
-                    # )
-                    if norm < tolerance:
+                        # Check for convergence
+                        norm = scipy.linalg.norm(
+                            residual(u_i_next, current_u, current_v, current_a, f)
+                        )
+                        # print(
+                        #     f"Time step: {time_index}, iteration: {i}, "
+                        #     f"norm: {norm}"
+                        # )
+                        if norm < tolerance:
+                            print(
+                                f"Newton converged at time step {time_index} "
+                                f"after {i+1} iteration(s)"
+                            )
+                            # print(u_i_next)
+                            next_u = u_i_next.copy()
+                            self.converged = True
+                            break
+                        elif norm < best_norm:
+                            best_norm = norm
+                            best_u_i = u_i_next.copy()
+
+                        if i % 100 == 0 and i > 0:
+                            print("Iteration:", i)
+
+                        # Update for next iteration
+                        u_i = u_i_next.copy()
+                    if not self.converged:
                         print(
-                            f"Newton converged at time step {time_index} "
-                            f"after {i+1} iteration(s)"
+                            "Newton did not converge.. Choosing best value: "
+                            f"{best_norm}"
                         )
-                        # print(u_i_next)
-                        next_u = u_i_next.copy()
-                        self.converged = True
-                        break
-                    elif norm < best_norm:
-                        best_norm = norm
-                        best_u_i = u_i_next.copy()
-
-                    if i % 100 == 0 and i > 0:
-                        print("Iteration:", i)
-
-                    # Update for next iteration
-                    u_i = u_i_next.copy()
-                if not self.converged:
-                    print(
-                        "Newton did not converge.. Choosing best value: "
-                        f"{best_norm}"
-                    )
+                        next_u = best_u_i.copy()
+                else:
+                    print("Start value norm already below tolerance")
                     next_u = best_u_i.copy()
-            else:
-                print("Start value norm already below tolerance")
-                next_u = best_u_i.copy()
 
-            # Calculate next v and a
-            a[:, time_index+1] = (
-                a1*(next_u-current_u)
-                - a2*current_v
-                - a3*current_a
-            )
-            v[:, time_index+1] = (
-                a4*(next_u-current_u)
-                + a5*current_v
-                + a6*current_a
-            )
-
-            # Set u array value
-            u[:, time_index+1] = next_u
-
-            # Calculate charge
-            if (electrode_elements is not None
-                    and electrode_elements.shape[0] > 0):
-                q[time_index] = calculate_charge(
-                    u[:, time_index+1],
-                    self.material_manager,
-                    electrode_elements,
-                    electrode_normals,
-                    self.mesh_data.nodes,
-                    self.mesh_data.element_order
+                # Calculate next v and a
+                a[:, time_index+1] = (
+                    a1*(next_u-current_u)
+                    - a2*current_v
+                    - a3*current_a
                 )
+                v[:, time_index+1] = (
+                    a4*(next_u-current_u)
+                    + a5*current_v
+                    + a6*current_a
+                )
+
+                # Set u array value
+                u[:, time_index+1] = next_u
+
+                # Calculate charge
+                if (self.electrode_elements is not None
+                        and self.electrode_elements.shape[0] > 0):
+                    q[time_index] = calculate_charge(
+                        u[:, time_index+1],
+                        self.material_manager,
+                        self.electrode_elements,
+                        self.electrode_normals,
+                        self.mesh_data.nodes,
+                        self.mesh_data.element_order
+                    )
+
+        except ValueError as e:
+            print("Caugh't Value Error:", e)
+            np.save("u.npy", u)
+            np.save("q.npy", q)
+            return
 
         self.u = u
         self.q = q
 
 
-    def get_load_vector(
+    def _get_load_vector(
         self,
         nodes: npt.NDArray,
         values: npt.NDArray
@@ -309,7 +492,7 @@ class NonlinearPiezoSimTime:
         return f
 
     @staticmethod
-    def apply_dirichlet_bc(
+    def _apply_dirichlet_bc(
         m: sparse.lil_array,
         c: sparse.lil_array,
         k: sparse.lil_array,
@@ -338,7 +521,7 @@ class NonlinearPiezoSimTime:
         return m.tocsc(), c.tocsc(), k.tocsc(), ln.tocsc()
 
     @staticmethod
-    def calculate_tangent_matrix_hadamard(
+    def _calculate_tangent_matrix_hadamard(
         u: npt.NDArray,
         k: sparse.csc_array,
         ln: sparse.csc_array
@@ -355,3 +538,36 @@ class NonlinearPiezoSimTime:
         k_tangent = k+2*ln@sparse.diags_array(u)
 
         return k_tangent
+
+    @staticmethod
+    def _calculate_tangent_matrix(
+        u: npt.NDArray,
+        k: sparse.csc_array,
+        ln: sparse.csc_array,
+        number_of_nodes: int
+    ):
+        """
+        k_tangent = sparse.csc_array((9*number_of_nodes**2, 3*number_of_nodes))
+
+        for i in range(3*number_of_nodes):
+            k_tangent[i*3*number_of_nodes:(i+1)*3*number_of_nodes] = \
+                k+2*ln[i*3*number_of_nodes]
+        k_tangent = k+2*ln@u
+        """
+        k_tangent = sparse.lil_matrix((
+            3*number_of_nodes, 3*number_of_nodes
+        ))
+
+        k_tangent += k
+
+        for index in range(3*number_of_nodes):
+            l_k = ln[3*number_of_nodes*index:3*number_of_nodes*(index+1), :]
+
+            l_k_diag = sparse.diags(l_k.diagonal(0))
+            left = l_k@u
+            right = u.T@l_k
+            left[0] = 0
+            right[0] = 0
+            k_tangent[index, :] = 2*l_k_diag@u+left+right
+
+        return k_tangent.tocsc()
