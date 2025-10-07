@@ -142,15 +142,6 @@ def assemble(
         [kuv.T, -1*kv]
     ]).tolil()
 
-    print("m:", m.count_nonzero())
-    print("c:", c.count_nonzero())
-    print("k:", k.count_nonzero())
-
-    print("mu:", mu.count_nonzero())
-    print("ku:", ku.count_nonzero())
-    print("kuv:", kuv.count_nonzero())
-    print("kv:", kv.count_nonzero())
-
     return m, c, k
 
 

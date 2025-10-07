@@ -5,7 +5,7 @@ from typing import Tuple, Union
 import numpy as np
 import numpy.typing as npt
 import scipy
-from scipy import sparse
+from scipy import sparse, integrate, optimize
 from scipy.sparse import linalg
 
 # Local libraries
@@ -165,8 +165,8 @@ class NonlinearPiezoSimTime:
         if nonlinear_type is NonlinearType.Rayleigh:
             if not isinstance(nonlinear_data, float):
                 raise ValueError(
-                    "When setting Rayleigh nonlinearity, a float parameter must"
-                    "be given."
+                    "When setting Rayleigh nonlinearity, a float parameter"
+                    "must be given."
                 )
 
             return nonlinear_data * self.k
@@ -207,37 +207,60 @@ class NonlinearPiezoSimTime:
                 nm_reduced,
                 element_order
             ) * 2 * np.pi
+
             for local_i, global_i in enumerate(element):
                 for local_j, global_j in enumerate(element):
                     for local_k, global_k in enumerate(element):
-                        global_i_transformed_1 = \
-                            3*number_of_nodes*2*global_k+global_i
-                        global_i_transformed_2 = \
-                            3*number_of_nodes*2*(global_k+1)+global_i
+                        # lu_e is 6x6x6 but has to be assembled into an
+                        # 4*N**2x2*N sparse matrix
+                        # The k-th plane is therefore append using the i-th
+                        # index
+                        # Since lu_e is 6x6x6, 2x2x2 slices are taken out and
+                        # used for assembling
+                        k_0 = lu_e[
+                            2*local_i:2*(local_i+1),
+                            2*local_j:2*(local_j+1),
+                            2*local_k
+                        ]
+                        k_1 = lu_e[
+                            2*local_i:2*(local_i+1),
+                            2*local_j:2*(local_j+1),
+                            2*local_k+1
+                        ]
 
                         lu[
-                            2*global_i_transformed_1:2*global_i_transformed_1+1,
-                            2*global_j:2*global_j+1
-                        ] += lu_e[
-                            2*local_i:2*local_i+1,
-                            2*local_j:2*local_j+1,
-                            0
-                        ]
+                            (
+                                2*global_i
+                                + 3*number_of_nodes*global_k
+                            ):(
+                                2*(global_i+1)
+                                + 3*number_of_nodes*global_k
+                            ),
+                            2*global_j:2*(global_j+1),
+                        ] += k_0
                         lu[
-                            2*global_i_transformed_2:2*global_i_transformed_2+1,
-                            2*global_j:2*global_j+1
-                        ] += lu_e[
-                            2*local_i:2*local_i+1,
-                            2*local_j:2*local_j+1,
-                            1
-                        ]
+                            (
+                                2*global_i
+                                + 3*number_of_nodes*global_k+1
+                            ):(
+                                2*(global_i+1)
+                                + 3*number_of_nodes*global_k+1
+                            ),
+                            2*global_j:2*(global_j+1),
+                        ] += k_1
 
         ln = sparse.lil_array(
             (9*number_of_nodes**2, 3*number_of_nodes),
             dtype=np.float64
         )
 
-        ln[:4*number_of_nodes**2, :2*number_of_nodes] = lu
+        for k in range(3*number_of_nodes):
+            ln[
+                k*3*number_of_nodes:k*3*number_of_nodes+2*number_of_nodes,
+                :2*number_of_nodes
+            ] = lu[
+                k*2*number_of_nodes:(k+1)*2*number_of_nodes, :
+            ]
 
         return ln
 
@@ -251,8 +274,8 @@ class NonlinearPiezoSimTime:
         max_iter: int = 300,
         u_start: Union[npt.NDArray, None] = None
     ):
-        self.dirichlet_nodes = np.array(self.dirichlet_nodes)
-        self.dirichlet_values = np.array(self.dirichlet_values)
+        dirichlet_nodes = np.array(self.dirichlet_nodes)
+        dirichlet_values = np.array(self.dirichlet_values)
 
         self.simulation_data = SimulationData(
             delta_t,
@@ -295,27 +318,14 @@ class NonlinearPiezoSimTime:
         q = np.zeros(number_of_time_steps, dtype=np.float64)
 
         # Apply dirichlet bc to matrices
-        m, c, k, ln = NonlinearPiezoSimTime._apply_dirichlet_bc(
+        m, c, k, ln = self._apply_dirichlet_bc(
             m,
             c,
             k,
             ln,
-            self.dirichlet_nodes
+            dirichlet_nodes
         )
 
-        sparse.save_npz("ln.npz", ln)
-
-        """
-        def nonlinear_product(u, L):
-            result = np.zeros(3*number_of_nodes) # TODO Move outside this fctn
-
-            for k in range(3*number_of_nodes):
-                for i in range(3*number_of_nodes):
-                    for j in range(3*number_of_nodes):
-                        result[k] += u[i]*L[3*number_of_nodes*k+i, j]*u[j]
-
-            return result
-        """
         def nonlinear_product(u, L):
             result = np.zeros(3*number_of_nodes)
 
@@ -329,141 +339,137 @@ class NonlinearPiezoSimTime:
         if u_start is not None:
             u[:, 0] = u_start
 
-        try:
-            print("Starting nonlinear time domain simulation")
-            for time_index in range(number_of_time_steps-1):
-                # Calculate load vector
-                f = self._get_load_vector(
-                    self.dirichlet_nodes,
-                    self.dirichlet_values[:, time_index+1]
+        print("Starting nonlinear time domain simulation")
+        for time_index in range(number_of_time_steps-1):
+            # Calculate load vector
+            f = self._get_load_vector(
+                dirichlet_nodes,
+                dirichlet_values[:, time_index+1]
+            )
+
+            # Residual for the newton iterations
+            def residual(next_u, current_u, v, a, f):
+                #return (
+                #    m@(a1*(next_u-current_u)-a2*v-a3*a)
+                #    + c@(a4*(next_u-current_u)+a5*v+a6*a)
+                #    + k@next_u+next_u.T@ln@next_u-f
+                #)
+                return (
+                    m@(a1*(next_u-current_u)-a2*v-a3*a)
+                    + c@(a4*(next_u-current_u)+a5*v+a6*a)
+                    + k@next_u+nonlinear_product(
+                        next_u,
+                        ln
+                    )-f
                 )
 
-                # Residual for the newton iterations
-                def residual(next_u, current_u, v, a, f):
-                    #return (
-                    #    m@(a1*(next_u-current_u)-a2*v-a3*a)
-                    #    + c@(a4*(next_u-current_u)+a5*v+a6*a)
-                    #    + k@next_u+next_u.T@ln@next_u-f
-                    #)
-                    return (
-                        m@(a1*(next_u-current_u)-a2*v-a3*a)
-                        + c@(a4*(next_u-current_u)+a5*v+a6*a)
-                        + k@next_u+nonlinear_product(next_u, ln)-f
+            # Values of the current time step
+            current_u = u[:, time_index]
+            current_v = v[:, time_index]
+            current_a = a[:, time_index]
+
+            # Current iteration value of u of the next time step
+            # as a start value this is set to the last converged u of the last
+            # time step
+            u_i = current_u.copy()
+
+            # Best values during newton are saved
+            best_u_i = u_i.copy()
+            best_norm = scipy.linalg.norm(residual(
+                u_i,
+                current_u,
+                current_v,
+                current_a,
+                f
+            ))
+
+            # Placeholder for result of newton
+            next_u = np.zeros(3*number_of_nodes)
+            self.converged = False
+
+            if best_norm > tolerance:
+                # Start newton iterations
+                for i in range(max_iter):
+                    # Calculate tangential stiffness matrix
+                    k_tangent = NonlinearPiezoSimTime. \
+                        _calculate_tangent_matrix(
+                            u_i,
+                            k,
+                            ln,
+                            number_of_nodes
+                        )
+                    delta_u = linalg.spsolve(
+                        (a1*m+a4*c+k_tangent),
+                        residual(u_i, current_u, current_v, current_a, f)
                     )
+                    u_i_next = u_i - delta_u
 
-                # Values of the current time step
-                current_u = u[:, time_index]
-                current_v = v[:, time_index]
-                current_a = a[:, time_index]
-
-                # Current iteration value of u of the next time step
-                # as a start value this is set to the last converged u of the last
-                # time step
-                u_i = current_u.copy()
-
-                # Best values during newton are saved
-                best_u_i = u_i.copy()
-                best_norm = scipy.linalg.norm(residual(
-                    u_i,
-                    current_u,
-                    current_v,
-                    current_a,
-                    f
-                ))
-
-                # Placeholder for result of newton
-                next_u = np.zeros(3*number_of_nodes)
-                self.converged = False
-
-                if best_norm > tolerance:
-                    # Start newton iterations
-                    for i in range(max_iter):
-                        # Calculate tangential stiffness matrix
-                        k_tangent = NonlinearPiezoSimTime. \
-                            _calculate_tangent_matrix(
-                                u_i,
-                                k,
-                                ln,
-                                number_of_nodes
-                            )
-                        delta_u = linalg.spsolve(
-                            (a1*m+a4*c+k_tangent),
-                            residual(u_i, current_u, current_v, current_a, f)
-                        )
-                        u_i_next = u_i - delta_u
-
-                        # Check for convergence
-                        norm = scipy.linalg.norm(
-                            residual(u_i_next, current_u, current_v, current_a, f)
-                        )
-                        # print(
-                        #     f"Time step: {time_index}, iteration: {i}, "
-                        #     f"norm: {norm}"
-                        # )
-                        if norm < tolerance:
-                            print(
-                                f"Newton converged at time step {time_index} "
-                                f"after {i+1} iteration(s)"
-                            )
-                            # print(u_i_next)
-                            next_u = u_i_next.copy()
-                            self.converged = True
-                            break
-                        elif norm < best_norm:
-                            best_norm = norm
-                            best_u_i = u_i_next.copy()
-
-                        if i % 100 == 0 and i > 0:
-                            print("Iteration:", i)
-
-                        # Update for next iteration
-                        u_i = u_i_next.copy()
-                    if not self.converged:
+                    # Check for convergence
+                    norm = scipy.linalg.norm(
+                        residual(u_i_next, current_u, current_v, current_a,
+                                 f)
+                    )
+                    # print(
+                    #     f"Time step: {time_index}, iteration: {i}, "
+                    #     f"norm: {norm}"
+                    # )
+                    if norm < tolerance:
                         print(
-                            "Newton did not converge.. Choosing best value: "
-                            f"{best_norm}"
+                            f"Newton converged at time step {time_index} "
+                            f"after {i+1} iteration(s)"
                         )
-                        next_u = best_u_i.copy()
-                else:
-                    print("Start value norm already below tolerance")
-                    next_u = best_u_i.copy()
+                        # print(u_i_next)
+                        next_u = u_i_next.copy()
+                        self.converged = True
+                        break
+                    elif norm < best_norm:
+                        best_norm = norm
+                        best_u_i = u_i_next.copy()
 
-                # Calculate next v and a
-                a[:, time_index+1] = (
-                    a1*(next_u-current_u)
-                    - a2*current_v
-                    - a3*current_a
-                )
-                v[:, time_index+1] = (
-                    a4*(next_u-current_u)
-                    + a5*current_v
-                    + a6*current_a
-                )
+                    if i % 100 == 0 and i > 0:
+                        print("Iteration:", i)
 
-                # Set u array value
-                u[:, time_index+1] = next_u
-
-                # Calculate charge
-                if (self.electrode_elements is not None
-                        and self.electrode_elements.shape[0] > 0):
-                    q[time_index] = calculate_charge(
-                        u[:, time_index+1],
-                        self.material_manager,
-                        self.electrode_elements,
-                        self.electrode_normals,
-                        self.mesh_data.nodes,
-                        self.mesh_data.element_order
+                    # Update for next iteration
+                    u_i = u_i_next.copy()
+                if not self.converged:
+                    print(
+                        "Newton did not converge.. Choosing best value: "
+                        f"{best_norm}"
                     )
+                    next_u = best_u_i.copy()
+            else:
+                print("Start value norm already below tolerance")
+                next_u = best_u_i.copy()
 
-        except ValueError as e:
-            print("Caugh't Value Error:", e)
-            np.save("u.npy", u)
-            np.save("q.npy", q)
-            return
+            # Calculate next v and a
+            a[:, time_index+1] = (
+                a1*(next_u-current_u)
+                - a2*current_v
+                - a3*current_a
+            )
+            v[:, time_index+1] = (
+                a4*(next_u-current_u)
+                + a5*current_v
+                + a6*current_a
+            )
+
+            # Set u array value
+            u[:, time_index+1] = next_u
+
+            # Calculate charge
+            if (self.electrode_elements is not None
+                    and self.electrode_elements.shape[0] > 0):
+                q[time_index] = calculate_charge(
+                    u[:, time_index+1],
+                    self.material_manager,
+                    self.electrode_elements,
+                    self.electrode_normals,
+                    self.mesh_data.nodes,
+                    self.mesh_data.element_order
+                )
 
         self.u = u
         self.q = q
-
 
     def _get_load_vector(
         self,
@@ -491,8 +497,8 @@ class NonlinearPiezoSimTime:
 
         return f
 
-    @staticmethod
     def _apply_dirichlet_bc(
+        self,
         m: sparse.lil_array,
         c: sparse.lil_array,
         k: sparse.lil_array,
@@ -504,19 +510,18 @@ class NonlinearPiezoSimTime:
         sparse.csc_array,
         sparse.csc_array
     ]:
+        number_of_nodes = len(self.mesh_data.nodes)
         # TODO Parameters are not really ndarrays
         # Set rows of matrices to 0 and diagonal of K to 1 (at node points)
 
         # Matrices for u_r component
-        for node in nodes:
-            # Set rows to 0
-            m[node, :] = 0
-            c[node, :] = 0
-            k[node, :] = 0
-            ln[node, :] = 0
+        m[nodes, :] = 0
+        c[nodes, :] = 0
+        k[nodes, :] = 0
+        k[nodes, nodes] = 1
 
-            # Set diagonal values to 1
-            k[node, node] = 1
+        for index in range(3*number_of_nodes):
+            ln[nodes+index*3*number_of_nodes, :] = 0
 
         return m.tocsc(), c.tocsc(), k.tocsc(), ln.tocsc()
 
@@ -546,28 +551,20 @@ class NonlinearPiezoSimTime:
         ln: sparse.csc_array,
         number_of_nodes: int
     ):
-        """
-        k_tangent = sparse.csc_array((9*number_of_nodes**2, 3*number_of_nodes))
-
-        for i in range(3*number_of_nodes):
-            k_tangent[i*3*number_of_nodes:(i+1)*3*number_of_nodes] = \
-                k+2*ln[i*3*number_of_nodes]
-        k_tangent = k+2*ln@u
-        """
         k_tangent = sparse.lil_matrix((
             3*number_of_nodes, 3*number_of_nodes
         ))
 
         k_tangent += k
 
-        for index in range(3*number_of_nodes):
-            l_k = ln[3*number_of_nodes*index:3*number_of_nodes*(index+1), :]
+        m = np.arange(3*number_of_nodes)
 
-            l_k_diag = sparse.diags(l_k.diagonal(0))
-            left = l_k@u
-            right = u.T@l_k
-            left[0] = 0
-            right[0] = 0
-            k_tangent[index, :] = 2*l_k_diag@u+left+right
+        # TODO This calculation is very slow
+        for i in range(3*number_of_nodes):
+            l_k = ln[3*number_of_nodes*i:3*number_of_nodes*(i+1), :]
+            l_i = ln[3*number_of_nodes*m+i, :]
 
-        return k_tangent.tocsc()
+            k_tangent += (l_k*u[i]).T
+            k_tangent += (l_i*u[i]).T
+
+        return k_tangent
