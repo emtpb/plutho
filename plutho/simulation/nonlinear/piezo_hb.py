@@ -16,7 +16,8 @@ from .base import assemble, NonlinearType
 from ..base import MeshData
 from plutho.materials import MaterialManager
 
-class NonlinearPiezoSimHb:
+
+class NLPiezoHB:
     """Implementes a nonlinear FEM harmonic balancing simulation.
     """
     # Simulation parameters
@@ -80,7 +81,7 @@ class NonlinearPiezoSimHb:
         """Solves the linear problem Ku=f (ln is not used).
         """
         # Apply boundary conditions
-        _, _, k = NonlinearPiezoSimHb.apply_dirichlet_bc(
+        _, _, k = NLPiezoHB.apply_dirichlet_bc(
             None,
             None,
             self.k.copy(),
@@ -143,7 +144,7 @@ class NonlinearPiezoSimHb:
         )
 
         # Apply boundary conditions
-        hb_m, hb_c, hb_k = NonlinearPiezoSimHb.apply_dirichlet_bc(
+        hb_m, hb_c, hb_k = NLPiezoHB.apply_dirichlet_bc(
             hb_m,
             hb_c,
             hb_k,

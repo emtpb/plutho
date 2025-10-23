@@ -193,6 +193,9 @@ class PiezoSimFreq:
                 * 2 * np.pi
             )
 
+            if 3 in element and 2 in element:
+                print("Zero element")
+
             # Now assemble all element matrices
             for local_p, global_p in enumerate(element):
                 for local_q, global_q in enumerate(element):
@@ -243,6 +246,15 @@ class PiezoSimFreq:
         self.m = m.tolil()
         self.c = c.tolil()
         self.k = k.tolil()
+
+        content = ""
+        for i in range(3*number_of_nodes):
+            for j in range(3*number_of_nodes):
+                content += f"{self.k[i,j].real} {self.k[i,j].imag} "
+            content += "\n"
+
+        with open("k_py.txt", "w") as fd:
+            fd.write(content)
 
     def solve_frequency(
         self,
@@ -306,6 +318,18 @@ class PiezoSimFreq:
                 + k
             )
 
+            """
+            content = ""
+            for i in range(3*number_of_nodes):
+                for j in range(3*number_of_nodes):
+                    val = a[i,j]
+                    content += f"{val.real} {val.imag} "
+                content += "\n"
+
+            with open("a.txt", "w") as fd:
+                fd.write(content)
+            """
+            
             f = self.get_load_vector(
                 self.dirichlet_nodes,
                 self.dirichlet_values,

@@ -5,20 +5,18 @@ implicit formulation"""
 from typing import Tuple, Union
 import numpy as np
 import numpy.typing as npt
-import scipy
-from scipy import sparse, integrate, optimize
+from scipy import sparse, integrate
 from scipy.sparse import linalg
 
 # Local libraries
-from .base import assemble, NonlinearType, integral_u_nonlinear_quadratic, \
-    integral_m, integral_ku, integral_kuv, integral_kve
-from ..base import SimulationData, MeshData, MaterialData, FieldType, \
+from .base import integral_u_nonlinear_quadratic, \
+    integral_m, integral_ku, integral_kuv, integral_kve, NonlinearType
+from ..base import MeshData, MaterialData, FieldType, \
     create_node_points
-from plutho.simulation.piezo_time import calculate_charge
 from plutho.materials import MaterialManager
 from plutho.mesh.mesh import Mesh
 
-class NonlinearPiezoSimTimeImplicit:
+class NLPiezoTimeImplicit:
     def __init__(
         self,
         simulation_name: str,
