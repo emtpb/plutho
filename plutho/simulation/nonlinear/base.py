@@ -6,7 +6,6 @@ from typing import Tuple
 
 # Third party libraries
 import numpy as np
-import numpy.typing as npt
 from scipy import sparse
 
 # Local libraries
@@ -15,67 +14,29 @@ from ..base import MeshData, local_to_global_coordinates, b_operator_global, \
     create_node_points, quadratic_quadrature, gradient_local_shape_functions_2d
 from plutho.materials import MaterialManager
 
-
+#
+# -------- Enums --------
+#
 class NonlinearType(Enum):
-    Rayleigh = "Rayleigh"
-    Custom = "Custom"
+    QuadraticRayleigh = 0,
+    QuadraticCustom = 1,
+    CubicRayleigh = 2,
+    CubicCustom = 3
 
-
+#
+# -------- Functions --------
+#
 def assemble(
-        mesh_data: MeshData,
-        material_manager: MaterialManager,
-        nonlinear_type: NonlinearType,
-        **kwargs
+    mesh_data: MeshData,
+    material_manager: MaterialManager
 ) -> Tuple[
-    sparse.lil_array,
     sparse.lil_array,
     sparse.lil_array,
     sparse.lil_array
 ]:
-    """Assembles the FEM matrices based on the set mesh_data and
-    material_data. Resulting FEM matrices are saved in global variables.
-
-    Parameters:
-        ntype: NonlinearType object.
-        kwargs: Can contain different parameters based on the nonlinear
-            type:
-            - If ntype=NonlinearType.Rayleigh:
-                "zeta" (float): Scalar nonlinearity parameter.
-            - If ntype=NonlinearType.Custom:
-                "nonlinear_matrix" (npt.NDArray): 6x6 custom nonlinear
-                    material matrix.
-
-    Returns:
-        Tuple containing the assembled matrices m, c, k, ln
-    """
-
-    # Check for nonlinear types
-    if nonlinear_type is NonlinearType.Rayleigh:
-        if "zeta" not in kwargs:
-            raise ValueError(
-                "Missing 'zeta' parameter for nonlinear type: Rayleigh"
-            )
-        zeta = kwargs["zeta"]
-    elif nonlinear_type is NonlinearType.Custom:
-        if "nonlinear_matrix" not in kwargs:
-            raise ValueError(
-                "Missing 'nonlinear_matrix' parameter for nonlinaer type:"
-                " Rayleigh"
-            )
-        nm = kwargs["nonlinear_matrix"]
-        nonlinear_matrix = np.array([
-            [nm[0, 0], nm[0, 2], 0, nm[0, 1]],
-            [nm[0, 2], nm[2, 2], 0, nm[0, 2]],
-            [0, 0, nm[3, 3], 0],
-            [nm[0, 1], nm[0, 2], 0, nm[0, 0]]
-        ])
-    else:
-        raise NotImplementedError(
-            f"Nonlinearity type {NonlinearType.value} is not implemented"
-        )
-
     # TODO Assembly takes to long rework this algorithm
     # Maybe the 2x2 matrix slicing is not very fast
+    # TODO Change to lil_array
     nodes = mesh_data.nodes
     elements = mesh_data.elements
     element_order = mesh_data.element_order
@@ -96,10 +57,6 @@ def assemble(
     )
     kv = sparse.lil_matrix(
         (number_of_nodes, number_of_nodes),
-        dtype=np.float64
-    )
-    lu = sparse.lil_matrix(
-        (2*number_of_nodes, 2*number_of_nodes),
         dtype=np.float64
     )
 
@@ -139,14 +96,6 @@ def assemble(
                 element_order
             ) * 2 * np.pi
         )
-        if nonlinear_type is NonlinearType.Custom:
-            lu_e = (
-                integral_u_nonlinear(
-                    current_node_points,
-                    nonlinear_matrix,
-                    element_order
-                ) * 2 * np.pi
-            )
 
         # Now assemble all element matrices
         for local_p, global_p in enumerate(element):
@@ -171,16 +120,6 @@ def assemble(
                 # be set directly.
                 kv[global_p, global_q] += kve_e[local_p, local_q]
 
-                if nonlinear_type is NonlinearType.Custom:
-                    # L_e is similar to Ku_e
-                    lu[
-                        2*global_p:2*global_p+2,
-                        2*global_q:2*global_q+2
-                    ] += lu_e[
-                        2*local_p:2*local_p+2,
-                        2*local_q:2*local_q+2
-                    ]
-
     # Calculate damping matrix
     # Currently in the simulations only one material is used
     # TODO Add algorithm to calculate cu for every element on its own
@@ -189,10 +128,6 @@ def assemble(
         material_manager.get_alpha_m(0) * mu
         + material_manager.get_alpha_k(0) * ku
     )
-
-    if nonlinear_type is NonlinearType.Rayleigh:
-        # Set Rayleigh type nonlinear matrix
-        lu = zeta*ku
 
     # Calculate block matrices
     zeros1x1 = np.zeros((number_of_nodes, number_of_nodes))
@@ -211,32 +146,15 @@ def assemble(
         [ku, kuv],
         [kuv.T, -1*kv]
     ]).tolil()
-    ln = sparse.block_array([
-        [lu, zeros2x1],
-        [zeros1x2, zeros1x1]
-    ]).tolil()
 
-    return m, c, k, ln
+    return m, c, k
 
 
-def integral_u_nonlinear(
-    node_points: npt.NDArray,
-    nonlinear_elasticity_matrix: npt.NDArray,
-    element_order: int
+def integral_u_nonlinear_quadratic(
+    node_points,
+    nonlinear_elasticity_tensor,
+    element_order
 ):
-    """Calculates the Ku integral
-
-    Parameters:
-        node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
-            one triangle.
-        jacobian_inverted_t: Jacobian matrix inverted and transposed, needed
-            for calculation of global derivatives.
-        elasticity_matrix: Elasticity matrix for the current element
-            (c matrix).
-
-    Returns:
-        npt.NDArray: 6x6 Ku matrix for the given element.
-    """
     def inner(s, t):
         dn = gradient_local_shape_functions_2d(s, t, element_order)
         jacobian = np.dot(node_points, dn.T)
@@ -252,12 +170,241 @@ def integral_u_nonlinear(
         )
         r = local_to_global_coordinates(node_points, s, t, element_order)[0]
 
-        return np.dot(
-            np.dot(
-                b_op.T,
-                nonlinear_elasticity_matrix
-            ),
-            b_op
-        ) * 1/2 * r * jacobian_det
+        B_TC = np.einsum("im,mjk->ijk", b_op.T, nonlinear_elasticity_tensor)
+        B_TCB = np.einsum("ink,nj->ijk", B_TC, b_op)
+        B_TCBB = np.einsum("ijp,pk->ijk", B_TCB, b_op)
+
+        return B_TCBB * r * jacobian_det
 
     return quadratic_quadrature(inner, element_order)
+
+#
+# -------- Classes --------
+#
+class Nonlinearity:
+
+    def __init__(self):
+        self.nonlinear_type = None
+        self.mesh_data = None
+        self.node_points = None
+
+    def set_mesh_data(self, mesh_data, node_points):
+        self.mesh_data = mesh_data
+        self.node_points = node_points
+
+    def set_quadratic_rayleigh(self, zeta):
+        self.nonlinear_type = NonlinearType.QuadraticRayleigh
+        self.zeta = zeta
+
+    def set_quadratic_custom(self, nonlinear_data):
+        self.nonlinear_type = NonlinearType.QuadraticCustom
+
+        # Reduce to axisymmetric 4x4x4 matrix
+        # TODO Update this for order 3 or make it n dimensional
+        voigt_map = [0, 1, 3, 2]
+        nm_reduced = np.zeros(shape=(4, 4, 4))
+        for i_new, i_old in enumerate(voigt_map):
+            for j_new, j_old in enumerate(voigt_map):
+                for k_new, k_old in enumerate(voigt_map):
+                    nm_reduced[
+                        i_new,
+                        j_new,
+                        k_new
+                    ] = nonlinear_data[i_old, j_old, k_old]
+
+        self.custom_data = nm_reduced
+
+    def set_cubic_rayleigh(self, zeta):
+        self.nonlinear_type = NonlinearType.CubicRayleigh
+        self.zeta = zeta
+
+    def set_cubic_custom(self, nonlinear_data):
+        self.nonlinear_type = NonlinearType.CubicCustom
+
+        # Reduce to axisymmetric 4x4x4 matrix
+        # TODO Update this for order 3 or make it n dimensional
+        voigt_map = [0, 1, 3, 2]
+        nm_reduced = np.zeros(shape=(4, 4, 4))
+        for i_new, i_old in enumerate(voigt_map):
+            for j_new, j_old in enumerate(voigt_map):
+                for k_new, k_old in enumerate(voigt_map):
+                    for l_new, l_old in enumerate(voigt_map):
+                        nm_reduced[
+                            i_new,
+                            j_new,
+                            k_new,
+                            l_new
+                        ] = nonlinear_data[i_old, j_old, k_old, l_old]
+
+        self.custom_data = nm_reduced
+
+    def evaluate_force_vector(self, u, m, c, k):
+        if self.nonlinear_type is None:
+            raise ValueError("Cannot evaluate force vector, since no \
+                nonlinear type is set")
+
+        match self.nonlinear_type:
+            case NonlinearType.QuadraticRayleigh:
+                return self.ln@(u**2)
+            case NonlinearType.QuadraticCustom:
+                # Use jit compiler --> wimp
+                """
+                result = np.zeros(3*number_of_nodes)
+
+                for index in range(3*number_of_nodes):
+                    L_k = L[index*3*number_of_nodes:(index+1)*3*number_of_nodes, :]
+
+                    result[index] = u @ (L_k @ u)
+
+                return result
+                """
+                raise NotImplementedError()
+            case NonlinearType.CubicRayleigh:
+                return self.ln@(u**3)
+            case NonlinearType.CubicCustom:
+                raise NotImplementedError()
+
+    def evaluate_jacobian(self, u, m, c, k):
+        if self.nonlinear_type is None:
+            raise ValueError("Cannot evaluate jacobian, since no \
+                nonlinear type is set")
+
+        match self.nonlinear_type:
+            case NonlinearType.QuadraticRayleigh:
+                return 2*self.ln@sparse.diags_array(u)
+            case NonlinearType.QuadraticCustom:
+                """
+                k_tangent = sparse.lil_matrix((
+                    3*number_of_nodes, 3*number_of_nodes
+                ))
+
+                k_tangent += k
+
+                m = np.arange(3*number_of_nodes)
+
+                # TODO This calculation is very slow
+                for i in range(3*number_of_nodes):
+                    l_k = ln[3*number_of_nodes*i:3*number_of_nodes*(i+1), :]
+                    l_i = ln[3*number_of_nodes*m+i, :]
+
+                    k_tangent += (l_k*u[i]).T
+                    k_tangent += (l_i*u[i]).T
+                """
+                raise NotImplementedError()
+            case NonlinearType.CubicRayleigh:
+                return 3*self.ln@sparse.diags_array(u**2)
+            case NonlinearType.CubicCustom:
+                raise NotImplementedError()
+
+    def apply_dirichlet_bc(self, dirichlet_nodes):
+        if self.nonlinear_type is None:
+            raise ValueError("Cannot apply dirichlet boundary \
+                conditions, since no nonlinear type is set")
+
+        match self.nonlinear_type:
+            case NonlinearType.QuadraticRayleigh | \
+                    NonlinearType.CubicRayleigh:
+                self.ln[dirichlet_nodes, :] = 0
+            case NonlinearType.QuadraticCustom:
+                raise NotImplementedError()
+            case NonlinearType.CubicCustom:
+                raise NotImplementedError()
+
+    def assemble(self, m, c, k):
+        if self.nonlinear_type is None:
+            raise ValueError("Cannot assemble matrices, since no \
+                nonlinear type is set")
+
+        match self.nonlinear_type:
+            case NonlinearType.QuadraticRayleigh | \
+                    NonlinearType.CubicRayleigh:
+                self.ln = k*self.zeta
+            case NonlinearType.QuadraticCustom:
+                self._assemble_quadratic_custom()
+            case NonlinearType.CubicCustom:
+                self._assemble_cubic_custom()
+
+    def _assemble_quadratic_custom(self):
+        nodes = self.mesh_data.nodes
+        elements = self.mesh_data.elements
+        element_order = self.mesh_data.element_order
+        number_of_nodes = len(nodes)
+        node_points = create_node_points(
+            nodes,
+            elements,
+            element_order
+        )
+
+        lu = sparse.lil_array(
+            (4*number_of_nodes**2, 2*number_of_nodes),
+            dtype=np.float64
+        )
+
+        for element_index, element in enumerate(elements):
+            current_node_points = node_points[element_index]
+
+            lu_e = integral_u_nonlinear_quadratic(
+                current_node_points,
+                self.custom_data,
+                element_order
+            ) * 2 * np.pi
+
+            for local_i, global_i in enumerate(element):
+                for local_j, global_j in enumerate(element):
+                    for local_k, global_k in enumerate(element):
+                        # lu_e is 6x6x6 but has to be assembled into an
+                        # 4*N**2x2*N sparse matrix
+                        # The k-th plane is therefore append using the i-th
+                        # index
+                        # Since lu_e is 6x6x6, 2x2x2 slices are taken out and
+                        # used for assembling
+                        k_0 = lu_e[
+                            2*local_i:2*(local_i+1),
+                            2*local_j:2*(local_j+1),
+                            2*local_k
+                        ]
+                        k_1 = lu_e[
+                            2*local_i:2*(local_i+1),
+                            2*local_j:2*(local_j+1),
+                            2*local_k+1
+                        ]
+
+                        lu[
+                            (
+                                2*global_i
+                                + 3*number_of_nodes*global_k
+                            ):(
+                                2*(global_i+1)
+                                + 3*number_of_nodes*global_k
+                            ),
+                            2*global_j:2*(global_j+1),
+                        ] += k_0
+                        lu[
+                            (
+                                2*global_i
+                                + 3*number_of_nodes*global_k+1
+                            ):(
+                                2*(global_i+1)
+                                + 3*number_of_nodes*global_k+1
+                            ),
+                            2*global_j:2*(global_j+1),
+                        ] += k_1
+
+        ln = sparse.lil_array(
+            (9*number_of_nodes**2, 3*number_of_nodes),
+            dtype=np.float64
+        )
+
+        for k in range(3*number_of_nodes):
+            ln[
+                k*3*number_of_nodes:k*3*number_of_nodes+2*number_of_nodes,
+                :2*number_of_nodes
+            ] = lu[
+                k*2*number_of_nodes:(k+1)*2*number_of_nodes, :
+            ]
+
+        self.ln = ln
+
+
+    def _assemble_cubic_custom(self):
+        pass

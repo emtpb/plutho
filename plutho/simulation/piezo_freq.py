@@ -305,7 +305,7 @@ class PiezoSimFreq:
                 + 1j*angular_frequency*c
                 + k
             )
-
+            
             f = self.get_load_vector(
                 self.dirichlet_nodes,
                 self.dirichlet_values,

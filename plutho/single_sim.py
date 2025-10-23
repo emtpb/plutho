@@ -1,4 +1,5 @@
 """Basic module to handle single simulations."""
+# TODO Remove this module and make an abstract class for the normal simulations
 # Python standard libraries
 import os
 from enum import Enum
@@ -16,19 +17,11 @@ from .simulation import ThermoSimTime, PiezoSimTime, ThermoPiezoSimTime, \
     PiezoSimFreq
 from .materials import MaterialData, MaterialManager
 from .mesh import Mesh
-
+from .simulation.base import FieldType
 
 class SimulationException(Exception):
     """Custom exception to simplify errors."""
 
-
-class FieldType(Enum):
-    """Possible field types which are calculated using differnet simulations.
-    """
-    U_R = 0
-    U_Z = 1
-    PHI = 2
-    THETA = 3
 
 
 class SingleSimulation:

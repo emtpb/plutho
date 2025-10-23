@@ -1,4 +1,3 @@
-from .base import assemble, NonlinearType
-from .piezo_time import NonlinearPiezoSimTime, NonlinearType
-from .piezo_stationary import NonlinearPiezoSimStationary
-
+from .base import assemble, Nonlinearity, NonlinearType
+from .piezo_time import NLPiezoTime
+from .piezo_hb import NLPiezoHB

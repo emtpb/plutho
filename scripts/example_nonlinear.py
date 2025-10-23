@@ -5,6 +5,8 @@ import os
 
 # Third party libraries
 import numpy as np
+import matplotlib.pyplot as plt
+from scipy import signal
 
 # Local libraries
 import plutho
@@ -43,6 +45,22 @@ c_nonlin_6x6_nonsymmetric = np.array([
 ])
 
 
+def create_chirp(
+    start_frequency,
+    end_frequency,
+    number_of_time_steps,
+    delta_t
+):
+    time_values = np.arange(number_of_time_steps)*delta_t
+    return signal.chirp(
+        time_values,
+            start_frequency,
+            time_values[-1],
+            end_frequency,
+            method="linear"
+    )
+
+
 def create_sinusoidal_excitation(
     amplitude,
     delta_t,
@@ -62,108 +80,37 @@ def create_sinusoidal_excitation(
     return amplitude*np.sin(2*np.pi*frequency*time_steps)
 
 
-def simulate_nonlinear_stationary(CWD):
-    sim_name = "nonlinear_stationary_sim"
-    mesh_file = os.path.join(CWD, "ring_mesh.msh")
-
-    # Load/create ring mesh
-    if not os.path.exists(mesh_file):
-        plutho.Mesh.generate_rectangular_mesh(
-            mesh_file,
-            width=0.00635,
-            height=0.001,
-            x_offset=0.0026,
-            mesh_size=0.0001
-        )
-    mesh = plutho.Mesh(mesh_file)
-
-    # Create simulation
-    sim = plutho.PiezoNonlinear(
-        sim_name,
-        CWD,
-        mesh
-    )
-
-    # Set materials
-    sim.add_material(
-        material_name="pic181",
-        material_data=pic181,
-        physical_group_name=""  # Means all elements
-    )
-    sim.set_nonlinearity_type(
-        plutho.NonlinearType.Custom,
-        nonlinear_matrix=c_nonlin_6x6_nonsymmetric
-    )
-
-    # Set boundary conditions
-    excitation = 1000
-    sim.add_dirichlet_bc(
-        plutho.FieldType.PHI,
-        "Electrode",
-        np.array(excitation)
-    )
-    sim.add_dirichlet_bc(
-        plutho.FieldType.PHI,
-        "Ground",
-        np.array(0)
-    )
-
-    sim.setup_stationary_simulation()
-
-    # For better convergence set u_r and u_z for one node to 0
-    sim.dirichlet_nodes.append(0)
-    sim.dirichlet_nodes.append(1)
-    sim.dirichlet_values.append(0)
-    sim.dirichlet_values.append(0)
-
-    sim.simulate(
-        tolerance=1e-10
-    )
-
-
-def simulate_nonlinaer_time_dep(CWD):
-    sim_name = "nonlinear_time_dep_sim"
-    mesh_file = os.path.join(CWD, "ring_mesh.msh")
-
-    # Load/create ring mesh
-    if not os.path.exists(mesh_file):
-        plutho.Mesh.generate_rectangular_mesh(
-            mesh_file,
-            width=0.00635,
-            height=0.001,
-            x_offset=0.0026,
-            mesh_size=0.0001
-        )
-    mesh = plutho.Mesh(mesh_file)
-
-    # Create simulation
-    sim = plutho.PiezoNonlinear(
-        sim_name,
-        CWD,
-        mesh
-    )
-
-    # Set materials
-    sim.add_material(
-        material_name="pic181",
-        material_data=pic181,
-        physical_group_name=""  # Means all elements
-    )
-    sim.set_nonlinearity_type(
-        plutho.NonlinearType.Custom,
-        nonlinear_matrix=c_nonlin_6x6_nonsymmetric
-    )
-
+def simulate_nl_time(CWD, mesh, delta_t, number_of_time_steps):
     # Simulation parameters
-    DELTA_T = 1e-8
-    NUMBER_OF_TIME_STEPS = 1000
+    GAMMA = 0.5
+    BETA = 0.25
+    ZETA = 10
+    AMPLITUDE = 10
+    FREQUENCY = 2.07e6
+
+    nonlinearity = plutho.Nonlinearity()
+    nonlinearity.set_cubic_rayleigh(ZETA)
+
+    # Create simulation
+    sim = plutho.NLPiezoTime(
+        nl_time_sim_name,
+        mesh,
+        nonlinearity
+    )
+
+    # Set materials
+    sim.add_material(
+        material_name="pic181",
+        material_data=pic181,
+        physical_group_name=""  # Means all elements
+    )
 
     # Set boundary conditions
     excitation = create_sinusoidal_excitation(
-        amplitude=10,
-        delta_t=DELTA_T,
-        number_of_time_steps=NUMBER_OF_TIME_STEPS,
-        frequency=2.07e6
+        amplitude=AMPLITUDE,
+        delta_t=delta_t,
+        number_of_time_steps=number_of_time_steps,
+        frequency=FREQUENCY
     )
     sim.add_dirichlet_bc(
         plutho.FieldType.PHI,
@@ -173,27 +120,48 @@ def simulate_nonlinaer_time_dep(CWD):
     sim.add_dirichlet_bc(
         plutho.FieldType.PHI,
         "Ground",
-        np.zeros(NUMBER_OF_TIME_STEPS)
+        np.zeros(number_of_time_steps)
     )
-
-    sim.setup_time_dependent_simulation(
-        delta_t=DELTA_T,
-        number_of_time_steps=NUMBER_OF_TIME_STEPS,
-        gamma=0.5,
-        beta=0.25
-    )
-
-    # Needed in order to get the charge
-    electrode_elements = mesh.get_elements_by_physical_groups(
-        ["Electrode"]
-    )["Electrode"]
-    electrode_normals = np.tile([0, 1], (len(electrode_elements), 1))
+    sim.set_electrode("Electrode")
 
     # Run simulation
+    sim.assemble()
     sim.simulate(
-        electrode_elements=electrode_elements,
-        electrode_normals=electrode_normals
+        delta_t,
+        number_of_time_steps,
+        GAMMA,
+        BETA,
+        tolerance=5e-9,
+        max_iter=40
     )
+
+    # Save results
+    if not os.path.isdir(CWD):
+        os.makedirs(CWD)
+
+    u_file = os.path.join(CWD, "u.npy")
+    q_file = os.path.join(CWD, "q.npy")
+    np.save(u_file, sim.u)
+    np.save(q_file, sim.q)
+
+
+def plot_displacement_spectrum(
+    working_directory,
+    delta_t,
+    number_of_time_steps
+):
+    node_index = 129
+
+    u = np.load(os.path.join(working_directory, "u.npy"))
+    u_r = u[2*node_index, :]
+    u_z = u[2*node_index+1, :]
+    U_r_jw = np.fft.fft(u_r)
+
+    frequencies = np.fft.fftfreq(number_of_time_steps, delta_t)
+
+    plt.plot(frequencies, np.abs(U_r_jw))
+    plt.grid()
+    plt.show()
 
 
 if __name__ == "__main__":
@@ -205,5 +173,30 @@ if __name__ == "__main__":
     if not os.path.isdir(CWD):
         os.makedirs(CWD)
 
-    simulate_nonlinear_stationary(CWD)
-    simulate_nonlinaer_time_dep(CWD)
+
+    # Load/create ring mesh
+    mesh_file = os.path.join(CWD, "ring_mesh.msh")
+    if not os.path.exists(mesh_file):
+        plutho.Mesh.generate_rectangular_mesh(
+            mesh_file,
+            width=0.00635,
+            height=0.001,
+            x_offset=0.0026,
+            mesh_size=0.0001
+        )
+    mesh = plutho.Mesh(mesh_file, element_order=1)
+
+    DELTA_T = 1e-9
+    NUMBER_OF_TIME_STEPS = 20000
+
+    nl_time_sim_name = "nonlinear_time_dep_sim_20k_1e-9"
+    nl_time_wd = os.path.join(CWD, nl_time_sim_name)
+
+    ## Simulate
+    if True:
+        # simulate_nonlinear_stationary(CWD)
+        simulate_nl_time(nl_time_wd, mesh, DELTA_T, NUMBER_OF_TIME_STEPS)
+
+    ## Plot
+    if False:
+        plot_displacement_spectrum(nl_time_wd, DELTA_T, NUMBER_OF_TIME_STEPS)
