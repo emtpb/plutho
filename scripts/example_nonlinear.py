@@ -54,10 +54,10 @@ def create_chirp(
     time_values = np.arange(number_of_time_steps)*delta_t
     return signal.chirp(
         time_values,
-            start_frequency,
-            time_values[-1],
-            end_frequency,
-            method="linear"
+        start_frequency,
+        time_values[-1],
+        end_frequency,
+        method="linear"
     )
 
 
