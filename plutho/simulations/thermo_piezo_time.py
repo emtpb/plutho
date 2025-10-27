@@ -1,124 +1,42 @@
-"""Main module for the simulation of piezoelectric systems with
-thermal field."""
+"""Module for the simulation of thermo-piezoelectric systems in the time
+domain."""
 
 # Python standard libraries
-from typing import List
+from typing import Union
+
+# Third party libraries
 import numpy as np
 import numpy.typing as npt
 import scipy.sparse.linalg as slin
 from scipy import sparse
 
 # Local libraries
-from .base import SimulationData, MeshData, \
-    create_node_points, \
-    local_to_global_coordinates, b_operator_global, integral_m, \
-    integral_ku, integral_kuv, integral_kve, apply_dirichlet_bc, \
-    quadratic_quadrature, calculate_volumes, \
-    gradient_local_shape_functions_2d, get_avg_temp_field_per_element
-from .piezo_time import calculate_charge
-from .thermo_time import integral_ktheta, integral_theta_load
-from ..materials import MaterialManager
+from .solver import FEMSolver
+from ..enums import SolverType
+from ..mesh import Mesh
+from .helpers import create_node_points, mat_apply_dbcs, calculate_volumes, \
+    get_avg_temp_field_per_element
+from .integrals import integral_m, integral_ku, integral_kuv, \
+    integral_kve, integral_ktheta, integral_theta_load, integral_loss_scs_time
 
 
-def loss_integral_scs(
-    node_points: npt.NDArray,
-    u_e_t: npt.NDArray,
-    u_e_t_minus_1: npt.NDArray,
-    u_e_t_minus_2: npt.NDArray,
-    delta_t: float,
-    elasticity_matrix: npt.NDArray,
-    element_order: int
-):
-    """Calculates the integral of dS/dt*c*dS/dt over one triangle. Since foward
-    difference quotient of second oder is used the last 2 values of e_u are
-    needed.
-
-    Parameters:
-        node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
-            one triangle.
-        u_e_t: Values of u_e at the current time point.
-            Format: [u1_r, u1_z, u2_r, u2_z, u3_r, u3_z].
-        u_e_t_minus_1: Values of u_e at one time point earlier. Same format
-            as u_e_t.
-        u_e_t_minus_2: Values of u_e at two time points earlier. Same format
-            as u_e_t.
-        delta_t: Difference between the time steps.
-        jacobian_inverted_t: Jacobian matrix inverted and transposed, needed
-            for calculation of global derivatives.
-        elasticity_matrix: Elasticity matrix for the current element
-            (c matrix).
-        element_order: Order of the shape functions.
-    """
-    def inner(s, t):
-        dn = gradient_local_shape_functions_2d(s, t, element_order)
-        jacobian = np.dot(node_points, dn.T)
-        jacobian_inverted_t = np.linalg.inv(jacobian).T
-        jacobian_det = np.linalg.det(jacobian)
-
-        r = local_to_global_coordinates(node_points, s, t, element_order)[0]
-        b_opt = b_operator_global(
-            node_points,
-            jacobian_inverted_t,
-            s,
-            t,
-            element_order
-        )
-
-        s_e = np.dot(b_opt, u_e_t)
-        s_e_t_minus_1 = np.dot(b_opt, u_e_t_minus_1)
-        s_e_t_minus_2 = np.dot(b_opt, u_e_t_minus_2)
-        dt_s = (3*s_e-4*s_e_t_minus_1+s_e_t_minus_2)/(2*delta_t)
-
-        return np.dot(
-            dt_s.T,
-            np.dot(
-                elasticity_matrix.T,
-                dt_s
-            )
-        ) * r * jacobian_det
-
-    return quadratic_quadrature(inner, element_order)
+__all__ = [
+    "ThermoPiezoTime"
+]
 
 
-class ThermoPiezoSimTime:
-    """Class for the coupled simulation of mechanical-electric and
-    thermal field.
-
-    Parameters:
-        mesh_data: MeshData format.
-        material_data: MaterialData format.
-        simulation_data: SimulationData format.
+class ThermoPiezoTime(FEMSolver):
+    """Class for solving time domain themo-piezoelectric systems.
 
     Attributes:
-        mesh_data: Contains the mesh information.
-        material_data: Contains the information about the materials.
-        simulation_data: Contains the information about the simulation.
-        dirichlet_nodes: List of nodes for which dirichlet values are set.
-        dirichlet_values: List of values of the corresponding dirichlet nodes
-            per time step.
-        m: Mass matrix.
-        c: Damping matrix.
-        k: Stiffness matrix.
-        u: Resulting vector of size 4*number_of_nodes containing u_r, u_z, v
-            and theta. u[node_index, time_index]. An offset needs to be
-            added to the node_index in order to access the different field
-            paramteters:
-                u_r: 0,
-                u_z: 1*number_of_nodes,
-                v: 2*number_of_nodes,
-                theta: 3*number_of_nodes
-        q: Resulting charges for each time step q[time_index].
-        mech_loss: Mechanical loss for each element per time step
-            mech_loss[element_index, time_index].
+        node_points: List of node points per elements.
+        m: Sparse mass matrix.
+        c: Sparse damping matrix.
+        k: Sparse stiffness matrix.
+        mech_loss: Mechanical loss field.
     """
-    # Simulation parameters
-    mesh_data: MeshData
-    material_manager: MaterialManager
-    simulation_data: SimulationData
-
-    # Dirichlet boundary condition
-    dirichlet_nodes: npt.NDArray
-    dirichlet_values: npt.NDArray
+    # Internal simulation data
+    node_points: npt.NDArray
 
     # FEM matrices
     m: sparse.lil_array
@@ -126,22 +44,12 @@ class ThermoPiezoSimTime:
     k: sparse.lil_array
 
     # Resulting fields
-    u: npt.NDArray
-    q: npt.NDArray
     mech_loss: npt.NDArray
 
-    # Internal simulation data
-    node_points: npt.NDArray
+    def __init__(self, simulation_name: str, mesh: Mesh):
+        super().__init__(simulation_name, mesh)
 
-    def __init__(
-        self,
-        mesh_data: MeshData,
-        material_manager: MaterialManager,
-        simulation_data: SimulationData
-    ):
-        self.mesh_data = mesh_data
-        self.material_manager = material_manager
-        self.simulation_data = simulation_data
+        self.solver_type = SolverType.ThermoPiezoTime
 
     def assemble(self):
         """Assembles the FEM matrices based on the set mesh_data and
@@ -150,6 +58,7 @@ class ThermoPiezoSimTime:
         """
         # TODO Assembly takes long rework this algorithm?
         # Maybe the 2x2 matrix slicing is not very fast
+        self.material_manager.initialize_materials()
         nodes = self.mesh_data.nodes
         elements = self.mesh_data.elements
         element_order = self.mesh_data.element_order
@@ -284,39 +193,37 @@ class ThermoPiezoSimTime:
         self.c = c.tolil()
         self.k = k.tolil()
 
-    def solve_time(
+    def simulate(
         self,
-        electrode_elements: npt.NDArray,
-        electrode_normals: npt.NDArray,
-        theta_start = None
+        delta_t: float,
+        number_of_time_steps: int,
+        gamma: float,
+        beta: float,
+        theta_start: Union[None, npt.NDArray] = None
     ):
-        """Runs the simulation using the assembled m, c and k matrices as well
-        as the set excitation.
-        Calculates the displacement field, potential field and the thermal
-        field of the given model (all saved in u).
-        Calculates the electric charge in the elctrode and the
-        mechanical losses of the whole body.
-        Saves u[node_index, time_index], q[time_index] and
-        mechanical_losses[element_index, time_index].
+        """Runs the time domain simulation. Dirichlet boundary conditions must
+        be set beforehand.
+        The resulting displacement field is stored in self.u, which contains
+        the fields u_r, u_z, phi and theta.
+        The mechanical losses are calculated in each time step and used as a
+        source for the thermal field.
 
         Parameters:
-            electrode_elements: List of all elements which are in
-                the electrode.
-            electrode_normals: List of normal vectors corresponding to the
-                electrode_elements list.
-            set_symmetric_bc: True if the symmetric boundary condition for u
-                shall be set. False otherwise.
+            delta_t: Distance between two time steps.
+            number_of_time_steps: Total number of time steps for the
+                simulation.
+            gamma: Newmark integration parameter.
+            beta: Newmark integration parameter.
+            theta_start: Possible initial field for theta.
         """
-        number_of_time_steps = self.simulation_data.number_of_time_steps
-        beta = self.simulation_data.beta
-        gamma = self.simulation_data.gamma
-        delta_t = self.simulation_data.delta_t
         elements = self.mesh_data.elements
         nodes = self.mesh_data.nodes
         element_order = self.mesh_data.element_order
         points_per_element = int(1/2*(element_order+1)*(element_order+2))
-        number_of_elements = len(elements)
-        number_of_nodes = len(nodes)
+        node_count = len(nodes)
+        element_count = len(elements)
+        dirichlet_nodes = np.array(self.dirichlet_nodes)
+        dirichlet_values = np.array(self.dirichlet_values)
 
         m = self.m
         c = self.c
@@ -324,16 +231,13 @@ class ThermoPiezoSimTime:
 
         # Init arrays
         # Displacement u which is calculated
-        u = np.zeros((m.shape[0], number_of_time_steps), dtype=np.float64)
+        u = np.zeros((number_of_time_steps, 4*node_count), dtype=np.float64)
         # Displacement u derived after t (du/dt)
-        v = np.zeros((m.shape[0], number_of_time_steps), dtype=np.float64)
+        v = np.zeros((number_of_time_steps, 4*node_count), dtype=np.float64)
         # v derived after u (d^2u/dt^2)
-        a = np.zeros((m.shape[0], number_of_time_steps), dtype=np.float64)
+        a = np.zeros((number_of_time_steps, 4*node_count), dtype=np.float64)
 
-        # Charge calculated during simulation (for impedance)
-        q = np.zeros(number_of_time_steps, dtype=np.float64)
-
-        m, c, k = apply_dirichlet_bc(
+        m, c, k = mat_apply_dbcs(
             m,
             c,
             k,
@@ -344,7 +248,7 @@ class ThermoPiezoSimTime:
 
         # Mechanical loss calculated during simulation (for thermal field)
         mech_loss = np.zeros(
-            shape=(number_of_elements, number_of_time_steps),
+            shape=(number_of_time_steps, element_count),
             dtype=np.float64
         )
 
@@ -354,11 +258,11 @@ class ThermoPiezoSimTime:
         )
 
         if theta_start is not None:
-            if len(theta_start) != number_of_nodes:
+            if len(theta_start) != node_count:
                 raise ValueError(
                     "theta start must have the size of number of nodes"
                 )
-            u[3*number_of_nodes:, 0] = theta_start
+            u[3*node_count:, 0] = theta_start
 
         print("Starting simulation")
         for time_index in range(number_of_time_steps-1):
@@ -366,7 +270,7 @@ class ThermoPiezoSimTime:
             # material parameters are used
             if self.material_manager.is_temperature_dependent:
                 temp_field_per_elements = get_avg_temp_field_per_element(
-                    u[3*number_of_nodes:, time_index],
+                    u[time_index, 3*node_count:],
                     self.mesh_data.elements
                 )
                 update = self.material_manager.update_temperature(
@@ -376,7 +280,7 @@ class ThermoPiezoSimTime:
                     # Assemble the matrices with new parameters
                     print(f"Assemble new (time step: {time_index})")
                     self.assemble()
-                    m, c, k = apply_dirichlet_bc(
+                    m, c, k = mat_apply_dbcs(
                         self.m,
                         self.c,
                         self.k,
@@ -389,45 +293,32 @@ class ThermoPiezoSimTime:
                     ).tocsr()
 
             # Calculate load vector and add dirichlet boundary conditions
-            f = self.get_load_vector(
-                    self.dirichlet_nodes,
-                    self.dirichlet_values[:, time_index+1],
-                    mech_loss[:, time_index]
-            )
+            f = self.calculate_load_vector(mech_loss[time_index, :])
+            f[dirichlet_nodes] = dirichlet_values[:, time_index+1]
 
             # Perform Newmark method
             # Predictor step
             u_tilde = (
-                u[:, time_index]
-                + delta_t*v[:, time_index]
-                + delta_t**2/2*(1-2*beta)*a[:, time_index]
+                u[time_index, :]
+                + delta_t*v[time_index, :]
+                + delta_t**2/2*(1-2*beta)*a[time_index, :]
             )
             v_tilde = (
-                v[:, time_index]
-                + (1-gamma)*delta_t*a[:, time_index]
+                v[time_index, :]
+                + (1-gamma)*delta_t*a[time_index, :]
             )
 
             # Solve for next time step
-            u[:, time_index+1] = slin.spsolve(
+            u[time_index+1, :] = slin.spsolve(
                 k_star, (
                     f
                     - c*v_tilde
                     + (1/(beta*delta_t**2)*m
-                       + gamma/(beta*delta_t)*c)*u_tilde)
+                    + gamma/(beta*delta_t)*c)*u_tilde)
             )
             # Perform corrector step
-            a[:, time_index+1] = (u[:, time_index+1]-u_tilde)/(beta*delta_t**2)
-            v[:, time_index+1] = v_tilde + gamma*delta_t*a[:, time_index+1]
-
-            if electrode_elements is not None:
-                q[time_index+1] = calculate_charge(
-                    u[:, time_index+1],
-                    self.material_manager,
-                    electrode_elements,
-                    electrode_normals,
-                    nodes,
-                    element_order
-                )
+            a[time_index+1, :] = (u[time_index+1, :]-u_tilde)/(beta*delta_t**2)
+            v[time_index+1, :] = v_tilde + gamma*delta_t*a[time_index+1, :]
 
             # Calculate power_loss
             for element_index, element in enumerate(elements):
@@ -438,18 +329,18 @@ class ThermoPiezoSimTime:
                 u_e_t_minus_1 = np.zeros(2*points_per_element)
                 u_e_t_minus_2 = np.zeros(2*points_per_element)
                 for i in range(points_per_element):
-                    u_e[2*i] = u[2*element[i], time_index+1]
-                    u_e[2*i+1] = u[2*element[i]+1, time_index+1]
-                    u_e_t_minus_1[2*i] = u[2*element[i], time_index]
-                    u_e_t_minus_1[2*i+1] = u[2*element[i]+1, time_index]
-                    u_e_t_minus_2[2*i] = u[2*element[i], time_index-1]
-                    u_e_t_minus_2[2*i+1] = u[2*element[i]+1, time_index-1]
+                    u_e[2*i] = u[time_index+1, 2*element[i]]
+                    u_e[2*i+1] = u[time_index+1, 2*element[i]+1]
+                    u_e_t_minus_1[2*i] = u[time_index, 2*element[i]]
+                    u_e_t_minus_1[2*i+1] = u[time_index, 2*element[i]+1]
+                    u_e_t_minus_2[2*i] = u[time_index-1, 2*element[i]]
+                    u_e_t_minus_2[2*i+1] = u[time_index-1, 2*element[i]+1]
 
                 # The mech loss of the element is divided by the volume
                 # because it must be a power density.
                 if time_index > 0:
-                    mech_loss[element_index, time_index+1] = (
-                        loss_integral_scs(
+                    mech_loss[time_index+1, element_index] = (
+                        integral_loss_scs_time(
                             node_points,
                             u_e,
                             u_e_t_minus_1,
@@ -468,34 +359,23 @@ class ThermoPiezoSimTime:
             if (time_index + 1) % 100 == 0:
                 print(f"Finished time step {time_index+1}")
 
-        self.q = q
         self.u = u
         self.mech_loss = mech_loss
 
-    def get_load_vector(
+    def calculate_load_vector(
         self,
-        dirichlet_nodes: npt.NDArray,
-        values: npt.NDArray,
         mech_loss_density: npt.NDArray
     ) -> npt.NDArray:
         """Calculates the load vector (right hand side) vector for the
-        simulation.
+        simulation based on the mechanical loss density.
 
         Parameters:
-            nodes: Nodes where the dirichlet bc is set.
-            values: Values at which the corresponding nodes are set.
             mech_loss_density: Power loss density of every element of the
                 current time step.
 
         Returns:
             Right hand side vector for the simulation.
         """
-        # For u and v the load vector is set to the corresponding dirichlet
-        # values given by values_u and values_v
-        # at the nodes nodes_u and nodes_v since there is no inner charge and
-        # no forces given.
-        # For the temperature field the load vector represents the temperature
-        # sources given by the mechanical losses.
         nodes = self.mesh_data.nodes
         element_order = self.mesh_data.element_order
         points_per_element = int(1/2*(element_order+1)*(element_order+2))
@@ -504,10 +384,6 @@ class ThermoPiezoSimTime:
         # Can be initialized to 0 because external load and volume charge
         # density is 0.
         f = np.zeros(4*number_of_nodes, dtype=np.float64)
-
-        # Set dirichlet values for given ndoes and values
-        for node, value in zip(dirichlet_nodes, values):
-            f[node] = value
 
         # Calculation for theta load.
         # It needs to be assembled every step and every element since the

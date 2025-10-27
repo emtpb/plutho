@@ -1,7 +1,6 @@
 """Module for io functions for the resulting fields and values."""
 
 # Python standard libraries
-from typing import Tuple
 import os
 
 # Third party libraries
@@ -10,83 +9,14 @@ import numpy.typing as npt
 import yaml
 
 # Local libraries
-from .simulation.base import MaterialData
+from .materials import MaterialData
 
 
-def parse_charge_hist_file(file_path: str) -> Tuple[npt.NDArray, npt.NDArray]:
-    """Reads the charge file from an OpenCFS simulation.
-
-    Parameters:
-        file_path: Path to the charge (*.hist) file.
-
-    Returns:
-        Tuple containing the time list and charge list read from the
-        given file.
-    """
-    lines = []
-    with open(file_path, "r", encoding="UTF-8") as fd:
-        lines = fd.readlines()[3:]
-
-    time = []
-    charge = []
-    for line in lines:
-        current_time, current_charge = line.split()
-        time.append(float(current_time))
-        charge.append(float(current_charge))
-
-    return np.array(time), np.array(charge)
-
-
-def parse_charge_freq_hist_file(
-    file_path: str
-) -> Tuple[npt.NDArray, npt.NDArray]:
-    """Reads the charge file from an OpenCFS simulation.
-
-    Parameters:
-        file_path: Path to the charge (*.hist) file.
-
-    Returns:
-        Tuple containing the time list and charge list read from the
-        given file.
-    """
-    lines = []
-    with open(file_path, "r", encoding="UTF-8") as fd:
-        lines = fd.readlines()[3:]
-
-    frequencies = []
-    charge = []
-    for line in lines:
-        current_frequency, current_charge, _ = line.split()
-        frequencies.append(float(current_frequency))
-        charge.append(float(current_charge))
-
-    return np.array(frequencies), np.array(charge)
-
-
-def parse_displacement_hist_file(
-    file_path: str
-) -> Tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
-    """Reads the displacement file from and OpenCFS simulation.
-
-    Parameters:
-        file_path: Path to the displacement (*.hist) file.
-
-    Returns:
-        Tuple containg the time steps, u_r and u_z.
-    """
-    lines = []
-    with open(file_path, "r", encoding="UTF-8") as fd:
-        lines = fd.readlines()
-    time_steps = []
-    u_r = []
-    u_z = []
-    for _, line in enumerate(lines[3:]):
-        current_time_step, current_u_r, current_u_z = line.split()
-        time_steps.append(float(current_time_step))
-        u_r.append(float(current_u_r))
-        u_z.append(float(current_u_z))
-
-    return np.array(time_steps), np.array(u_r), np.array(u_z)
+__all__ = [
+    "create_scalar_field_as_csv",
+    "create_vector_field_as_csv",
+    "load_temperature_dependent_material_data_pic181"
+]
 
 
 def create_scalar_field_as_csv(

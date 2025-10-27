@@ -1,159 +1,22 @@
-"""Module for base functionalities needed for the simulations."""
+"""General module for the implementation of various functions on local and
+global shape functions as well as integration techniques"""
 
 # Python standard libraries
-import os
-import json
-from typing import Tuple, Callable, List, Any, Union
-from dataclasses import dataclass, fields
-from enum import Enum
+from typing import Callable
+
+# Third party libraries
 import numpy as np
 import numpy.typing as npt
-from scipy import sparse
-
-# Local libraries
-from ..mesh import Mesh
-
-# -------- ENUMS AND DATACLASSES --------
-
-class FieldType(Enum):
-    """Possible field types which are calculated using differnet simulations.
-    """
-    U_R = 0
-    U_Z = 1
-    PHI = 2
-    THETA = 3
 
 
-class ModelType(Enum):
-    """Containts the model type. Since for different model types
-    different boundary conditions are needed it is necessary to make a
-    distinction.
-    Additionaly the Ring model type needs an appropiate mesh set separately
-    (using x_offset in the mesh generation).
-    """
-    DISC = "disc"
-    RING = "ring"
-
-
-class SimulationType(Enum):
-    """Contains the simulation type. Currently it is possible to have
-    a simulation with or without thermal field."""
-    PIEZOELECTRIC = "piezoelectric"
-    THERMOPIEZOELECTRIC = "thermo-piezoelectric"
-    FREQPIEZOELECTRIC = "frequency-piezoelectric"
-
-
-@dataclass
-class SimulationData:
-    """Contains data for the simulation itself."""
-    delta_t: float
-    number_of_time_steps: int
-    gamma: float
-    beta: float
-
-
-@dataclass
-class MeshData:
-    """Contains the mesh data is used in the simulation."""
-    nodes: npt.NDArray
-    elements: npt.NDArray
+#
+# -------- Local shape functions --------
+#
+def local_shape_functions_2d(
+    s: float,
+    t: float,
     element_order: int
-
-
-class ExcitationType(Enum):
-    """Sets the excitation type of the simulation."""
-    SINUSOIDAL = "sinusoidal"
-    TRIANGULAR_PULSE = "triangular_pulse"
-
-
-@dataclass
-class ExcitationInfo:
-    """Contains information about the excitation. Is used to save the
-    excitation data in the simulation config file."""
-    amplitude: Union[float, npt.NDArray]
-    frequency: Union[float, npt.NDArray]
-    excitation_type: ExcitationType
-
-    def asdict(self):
-        """Returns this object as a dictionary."""
-        content = self.__dict__
-        if self.frequency is None:
-            del content["frequency"]
-        content["excitation_type"] = self.excitation_type.value
-        return content
-
-
-@dataclass
-class MaterialData:
-    """Contains the plain material data. Some parameters can either be
-    a float or an array depending if they are temperature dependent.
-    If they are temperature dependent the index in the array corresponds to
-    the temperature value from the temperatures array at the same index.
-    """
-    c11: Union[float, npt.NDArray]
-    c12: Union[float, npt.NDArray]
-    c13: Union[float, npt.NDArray]
-    c33: Union[float, npt.NDArray]
-    c44: Union[float, npt.NDArray]
-    e15: Union[float, npt.NDArray]
-    e31: Union[float, npt.NDArray]
-    e33: Union[float, npt.NDArray]
-    eps11: Union[float, npt.NDArray]
-    eps33: Union[float, npt.NDArray]
-    alpha_m: float
-    alpha_k: float
-    thermal_conductivity: float
-    heat_capacity: float
-    temperatures: Union[float, npt.NDArray]
-    density: float
-
-    def to_dict(self):
-        """Convert the dataclass to dict for json serialization."""
-        json_dict = {}
-        for attribute in fields(self.__class__):
-            value = getattr(self, attribute.name)
-            if isinstance(value, float) or isinstance(value, int):
-                json_dict[attribute.name] = value
-            elif isinstance(value, np.ndarray):
-                json_dict[attribute.name] = value.tolist()
-            else:
-                raise ValueError(
-                    "Wrong type saved in MaterialData. Value is of type "
-                    f"{type(value)}"
-                )
-        return json_dict
-
-    @staticmethod
-    def from_dict(contents):
-        """Convert given dict, e.g. from a json deserialization, to a
-        MaterialData object."""
-        for key, value in contents.items():
-            if isinstance(value, List):
-                contents[key] = np.array(value)
-
-        return MaterialData(**contents)
-
-    @staticmethod
-    def load_from_file(file_path: str):
-        """Load the data from given file.
-
-        Parameters:
-            file_path: Path to the file
-        """
-        if not os.path.exists(file_path):
-            raise IOError(
-                "Given file path {} does not exist. Cannot load "
-                "material data."
-            )
-
-        with open(file_path, "r", encoding="UTF-8") as fd:
-            return MaterialData.from_dict(json.load(fd))
-
-
-# -------- Local functions and integrals --------
-
-
-def local_shape_functions_2d(s, t, element_order):
+) -> npt.NDArray:
     """Returns the local linear shape functions based on a reference triangle
     with corner points [(0,0), (1,0), (1,1)] for the given coordinates.
 
@@ -207,7 +70,11 @@ def local_shape_functions_2d(s, t, element_order):
             )
 
 
-def gradient_local_shape_functions_2d(s, t, element_order) -> npt.NDArray:
+def gradient_local_shape_functions_2d(
+    s: float,
+    t: float,
+    element_order: int
+) -> npt.NDArray:
     """Returns the gradient of the local shape functions.
 
     Parameters:
@@ -285,7 +152,7 @@ def local_to_global_coordinates(
     s: float,
     t: float,
     element_order: int
-) -> Any:
+) -> npt.NDArray:
     """Transforms the local coordinates given by dimensions using the node
     points to the global coordinates r, z.
 
@@ -314,7 +181,7 @@ def b_operator_global(
     s: float,
     t: float,
     element_order: int
-):
+) -> npt.NDArray:
     """Calculates the B operator for the local coordinantes which is needed
     for voigt-notation.
     The derivates are with respect to the global coordinates r and z.
@@ -363,8 +230,10 @@ def b_operator_global(
 
     return b
 
-
-def integral_m(node_points: npt.NDArray, element_order: int):
+#
+# -------- Integrals --------
+#
+def integral_m(node_points: npt.NDArray, element_order: int) -> npt.NDArray:
     """Calculates the M integral.
 
     Parameters:
@@ -375,7 +244,7 @@ def integral_m(node_points: npt.NDArray, element_order: int):
     Returns:
         npt.NDArray: 3x3 M matrix for the given element.
     """
-    def inner(s, t):
+    def inner(s: float, t: float) -> npt.NDArray:
         dn = gradient_local_shape_functions_2d(s, t, element_order)
         jacobian = np.dot(node_points, dn.T)
         jacobian_det = np.linalg.det(jacobian)
@@ -397,7 +266,7 @@ def integral_ku(
     node_points: npt.NDArray,
     elasticity_matrix: npt.NDArray,
     element_order: int
-):
+) -> npt.NDArray:
     """Calculates the Ku integral
 
     Parameters:
@@ -410,7 +279,7 @@ def integral_ku(
     Returns:
         npt.NDArray: 6x6 Ku matrix for the given element.
     """
-    def inner(s, t):
+    def inner(s: float, t: float) -> npt.NDArray:
         dn = gradient_local_shape_functions_2d(s, t, element_order)
         jacobian = np.dot(node_points, dn.T)
         jacobian_inverted_t = np.linalg.inv(jacobian).T
@@ -437,7 +306,7 @@ def integral_kuv(
     node_points: npt.NDArray,
     piezo_matrix: npt.NDArray,
     element_order: int
-):
+) -> npt.NDArray:
     """Calculates the KuV integral.
 
     Parameters:
@@ -449,7 +318,7 @@ def integral_kuv(
     Returns:
         npt.NDArray: 6x3 KuV matrix for the given element.
     """
-    def inner(s, t):
+    def inner(s: float, t: float) -> npt.NDArray:
         dn = gradient_local_shape_functions_2d(s, t, element_order)
         jacobian = np.dot(node_points, dn.T)
         jacobian_inverted_t = np.linalg.inv(jacobian).T
@@ -477,7 +346,7 @@ def integral_kve(
     node_points: npt.NDArray,
     permittivity_matrix: npt.NDArray,
     element_order: int
-):
+) -> npt.NDArray:
     """Calculates the KVe integral.
 
     Parameters:
@@ -490,7 +359,7 @@ def integral_kve(
     Returns:
         npt.NDArray: 3x3 KVe matrix for the given element.
     """
-    def inner(s, t):
+    def inner(s: float, t: float) -> npt.NDArray:
         dn = gradient_local_shape_functions_2d(s, t, element_order)
         jacobian = np.dot(node_points, dn.T)
         jacobian_inverted_t = np.linalg.inv(jacobian).T
@@ -514,7 +383,7 @@ def energy_integral_theta(
     node_points: npt.NDArray,
     theta: npt.NDArray,
     element_order: int
-):
+) -> npt.NDArray:
     """Integrates the given element over the given theta field.
 
     Parameters:
@@ -524,7 +393,7 @@ def energy_integral_theta(
             [theta1, theta2, theta3].
         element_order: Order of the shape functions.
     """
-    def inner(s, t):
+    def inner(s: float, t: float) -> npt.NDArray:
         dn = gradient_local_shape_functions_2d(s, t, element_order)
         jacobian = np.dot(node_points, dn.T)
         jacobian_det = np.linalg.det(jacobian)
@@ -537,7 +406,10 @@ def energy_integral_theta(
     return quadratic_quadrature(inner, element_order)
 
 
-def integral_volume(node_points: npt.NDArray, element_order: int):
+def integral_volume(
+    node_points: npt.NDArray,
+    element_order: int
+) -> npt.NDArray:
     """Calculates the volume of the triangle given by the node points.
     HINT: Must be multiplied with 2*np.pi and the jacobian determinant in order
     to give the correct volume of any rotationsymmetric triangle.
@@ -550,7 +422,7 @@ def integral_volume(node_points: npt.NDArray, element_order: int):
     Returns:
         Float. Volume of the triangle.
     """
-    def inner(s, t):
+    def inner(s: float, t: float) -> npt.NDArray:
         dn = gradient_local_shape_functions_2d(s, t, element_order)
         jacobian = np.dot(node_points, dn.T)
         jacobian_det = np.linalg.det(jacobian)
@@ -562,7 +434,270 @@ def integral_volume(node_points: npt.NDArray, element_order: int):
     return quadratic_quadrature(inner, element_order)
 
 
-def quadratic_quadrature(func: Callable, element_order: int):
+def integral_loss_scs(
+    node_points: npt.NDArray,
+    u_e: npt.NDArray,
+    elasticity_matrix: npt.NDArray,
+    element_order: int
+):
+    """Calculate sthe integral of dS/dt*c*dS/dt over one triangle in the
+    frequency domain for the given frequency.
+
+    Parameters:
+        node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of one
+            triangle.
+        u_e: Displacement at this element [u1_r, u1_z, u_2r, u_2z, u_3r, u_3z].
+        angular_frequency: Angular frequency at which the loss shall be
+            calculated.
+        elasticity_matrix: Elasticity matrix for the current element
+            (c matrix).
+        element_order: Order of the shape functions.
+    """
+    def inner(s, t):
+        dn = gradient_local_shape_functions_2d(s, t, element_order)
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_inverted_t = np.linalg.inv(jacobian).T
+        jacobian_det = np.linalg.det(jacobian)
+
+        b_opt = b_operator_global(
+            node_points,
+            jacobian_inverted_t,
+            s,
+            t,
+            element_order
+        )
+        r = local_to_global_coordinates(node_points, s, t, element_order)[0]
+
+        s_e = np.dot(b_opt, u_e)
+
+        # return np.dot(dt_s.T, np.dot(elasticity_matrix.T, dt_s))*r
+        return np.dot(
+            np.conjugate(s_e).T,
+            np.dot(
+                elasticity_matrix.T,
+                s_e
+            )
+        ) * r * jacobian_det
+
+    return quadratic_quadrature(inner, element_order)
+
+
+def integral_charge_u(
+    node_points: npt.NDArray,
+    u_e: npt.NDArray,
+    piezo_matrix: npt.NDArray,
+    element_order: int
+):
+    """Calculates the integral of eBu of the given element.
+
+    Parameters:
+        node_points: List of node points [[x1, x2], [y1, y2]] of
+            one line.
+        u_e: List of u values at the nodes of the triangle
+            [u1_r, u1_z, u2_r, u2_z].
+        piezo_matrix: Piezo matrix for the current element (e matrix).
+        element_order: Order of the shape functions.
+
+    Returns:
+        Float: Integral of eBu of the current triangle.
+    """
+    def inner(s):
+        dn = gradient_local_shape_functions_2d(s, 0, element_order)
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_inverted_t = np.linalg.inv(jacobian).T
+
+        b_opt_global = b_operator_global(
+            node_points,
+            jacobian_inverted_t,
+            s,
+            0,
+            element_order
+        )
+        r = local_to_global_coordinates(node_points, s, 0, element_order)[0]
+
+        return -np.dot(np.dot(piezo_matrix, b_opt_global), u_e)*r
+
+    return line_quadrature(inner, element_order)
+
+
+def integral_charge_v(
+    node_points: npt.NDArray,
+    v_e: npt.NDArray,
+    permittivity_matrix: npt.NDArray,
+    element_order: int
+):
+    """Calculates the integral of epsilonBVe of the given element.
+
+    Parameters:
+        node_points: List of node points [[x1, x2], [y1, y2]] of
+            one line.
+        v_e: List of u values at the nodes of the line
+            [v1, v2].
+        permittivity_matrix: Permittivity matrix for the current
+            element (e matrix).
+        element_order: Order of the shape functions.
+
+    Returns:
+        Float: Integral of epsilonBVe of the current triangle.
+    """
+    def inner(s):
+        dn = gradient_local_shape_functions_2d(s, 0, element_order)
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_inverted_t = np.linalg.inv(jacobian).T
+
+        global_dn = np.dot(jacobian_inverted_t, dn)
+        r = local_to_global_coordinates(node_points, s, 0, element_order)[0]
+
+        return -np.dot(np.dot(permittivity_matrix, global_dn), v_e)*r
+
+    return line_quadrature(inner, element_order)
+
+
+def integral_heat_flux(
+    node_points: npt.NDArray,
+    heat_flux: npt.NDArray,
+    element_order: int
+) -> npt.NDArray:
+    """Integrates the heat flux using the shape functions.
+
+    Parameters:
+        node_points: List of node points [[x1, x2, ..], [y1, y2, ..]].
+        heat_flux: Heat flux at the points.
+        element_order: Order of the shape functions.
+
+    Returns:
+        npt.NDArray heat flux integral on each point.
+    """
+    def inner(s: float) -> npt.NDArray:
+        n = local_shape_functions_2d(s, 0, element_order)
+        r = local_to_global_coordinates(node_points, s, 0, element_order)[0]
+
+        return n*heat_flux*r
+
+    return line_quadrature(inner, element_order)
+
+
+def integral_ktheta(
+    node_points: npt.NDArray,
+    element_order: int
+) -> npt.NDArray:
+    """Calculates the Ktheta integral.
+
+    Parameters:
+        node_points: List of node points [[x1, x2, ..], [y1, y2, ..]].
+        element_order: Order of the shape functions.
+
+    Returns:
+        npt.NDArray: 3x3 Ktheta matrix for the given element.
+    """
+    def inner(s: float, t: float) -> npt.NDArray:
+        dn = gradient_local_shape_functions_2d(s, t, element_order)
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_inverted_t = np.linalg.inv(jacobian).T
+        jacobian_det = np.linalg.det(jacobian)
+
+        global_dn = np.dot(jacobian_inverted_t, dn)
+        r = local_to_global_coordinates(node_points, s, t, element_order)[0]
+
+        return np.dot(global_dn.T, global_dn)*r*jacobian_det
+
+    return quadratic_quadrature(inner, element_order)
+
+
+def integral_theta_load(
+    node_points: npt.NDArray,
+    mech_loss: float,
+    element_order: int
+) -> npt.NDArray:
+    """Returns the load value for the temperature field (f) for the specific
+    element.
+
+    Parameters:
+        node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
+            one triangle.
+        point_loss: Loss power on each node (heat source).
+        element_order: Order of the shape functions.
+
+    Returns:
+        npt.NDArray: f vector value at the specific ndoe
+    """
+    def inner(s: float, t: float) -> npt.NDArray:
+        dn = gradient_local_shape_functions_2d(s, t, element_order)
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_det = np.linalg.det(jacobian)
+
+        n = local_shape_functions_2d(s, t, element_order)
+        r = local_to_global_coordinates(node_points, s, t, element_order)[0]
+
+        return n*mech_loss*r*jacobian_det
+
+    return quadratic_quadrature(inner, element_order)
+
+
+def integral_loss_scs_time(
+    node_points: npt.NDArray,
+    u_e_t: npt.NDArray,
+    u_e_t_minus_1: npt.NDArray,
+    u_e_t_minus_2: npt.NDArray,
+    delta_t: float,
+    elasticity_matrix: npt.NDArray,
+    element_order: int
+) -> npt.NDArray:
+    """Calculates the integral of dS/dt*c*dS/dt over one triangle. Since foward
+    difference quotient of second oder is used the last 2 values of e_u are
+    needed.
+
+    Parameters:
+        node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of
+            one triangle.
+        u_e_t: Values of u_e at the current time point.
+            Format: [u1_r, u1_z, u2_r, u2_z, u3_r, u3_z].
+        u_e_t_minus_1: Values of u_e at one time point earlier. Same format
+            as u_e_t.
+        u_e_t_minus_2: Values of u_e at two time points earlier. Same format
+            as u_e_t.
+        delta_t: Difference between the time steps.
+        jacobian_inverted_t: Jacobian matrix inverted and transposed, needed
+            for calculation of global derivatives.
+        elasticity_matrix: Elasticity matrix for the current element
+            (c matrix).
+        element_order: Order of the shape functions.
+    """
+    def inner(s: float, t: float) -> npt.NDArray:
+        dn = gradient_local_shape_functions_2d(s, t, element_order)
+        jacobian = np.dot(node_points, dn.T)
+        jacobian_inverted_t = np.linalg.inv(jacobian).T
+        jacobian_det = np.linalg.det(jacobian)
+
+        r = local_to_global_coordinates(node_points, s, t, element_order)[0]
+        b_opt = b_operator_global(
+            node_points,
+            jacobian_inverted_t,
+            s,
+            t,
+            element_order
+        )
+
+        s_e = np.dot(b_opt, u_e_t)
+        s_e_t_minus_1 = np.dot(b_opt, u_e_t_minus_1)
+        s_e_t_minus_2 = np.dot(b_opt, u_e_t_minus_2)
+        dt_s = (3*s_e-4*s_e_t_minus_1+s_e_t_minus_2)/(2*delta_t)
+
+        return np.dot(
+            dt_s.T,
+            np.dot(
+                elasticity_matrix.T,
+                dt_s
+            )
+        ) * r * jacobian_det
+
+    return quadratic_quadrature(inner, element_order)
+
+
+#
+# -------- Numerical calculations --------
+#
+def quadratic_quadrature(func: Callable, element_order: int) -> npt.NDArray:
     """Integrates the given function of 2 variables using gaussian
     quadrature along 2 variables for a reference triangle.
     This gives exact results for linear shape functions.
@@ -628,7 +763,7 @@ def quadratic_quadrature(func: Callable, element_order: int):
     return sum
 
 
-def line_quadrature(func: Callable, element_order: int):
+def line_quadrature(func: Callable, element_order: int) -> npt.NDArray:
     """Integrates the given function of 2 variables along one variable
     for a reference triangle.
     This gives exact results for linear shape functions.
@@ -669,235 +804,3 @@ def line_quadrature(func: Callable, element_order: int):
 
     return sum
 
-
-# -------- Boundary condition functions --------
-
-
-def apply_dirichlet_bc(
-    m: sparse.lil_array,
-    c: sparse.lil_array,
-    k: sparse.lil_array,
-    nodes: npt.NDArray
-) -> Tuple[sparse.lil_array, sparse.lil_array, sparse.lil_array]:
-    """Prepares the given matrices m, c and k for the dirichlet boundary
-    conditions. This is done by setting the corresponding rows to 0
-    excepct for the node which will contain the specific value (this is set
-    to 1). Right now only boundary conditions for v and u_r can be set, not
-    for u_z (not neede yet).
-
-    Parameters:
-        m: Mass matrix M.
-        c: Damping matrix C.
-        k: Stiffness matrix K.
-        nodes: List of nodes at which a dirichlet boundary condition
-            shall be applied.
-
-    Returns:
-        Modified mass, damping and stiffness matrix.
-    """
-    # Set rows of matrices to 0 and diagonal of K to 1 (at node points)
-
-    # Matrices for u_r component
-    for node in nodes:
-        # Set rows to 0
-        m[node, :] = 0
-        c[node, :] = 0
-        k[node, :] = 0
-
-        # Set diagonal values to 1
-        k[node, node] = 1
-
-    return m, c, k
-
-
-def create_dirichlet_bc_nodes_freq(
-    mesh: Mesh,
-    amplitudes: npt.NDArray,
-    number_of_frequencies: int,
-    set_symmetric_bc: bool = True
-) -> Tuple:
-    """Create the dirichlet boundary condition nodes for a simulation in the
-    frequency domain.
-
-    Parameters:
-        mesh: Mesh class for accessing nodes.
-        amplitudes: List of amplitude per frequency step.
-        number_of_frequencies: Total number of frequency steps.
-        set_symmetric_bc: Set to True of the left border of the model is on
-            the ordinate axis.
-
-    Returns:
-        The dirichlet nodes and values for u and v respectively.
-    """
-
-    # Get nodes from mesh
-    pg_nodes = mesh.get_nodes_by_physical_groups(
-        ["Electrode", "Symaxis", "Ground"])
-
-    electrode_nodes = pg_nodes["Electrode"]
-    symaxis_nodes = pg_nodes["Symaxis"]
-    ground_nodes = pg_nodes["Ground"]
-
-    if set_symmetric_bc:
-        dirichlet_nodes_u = symaxis_nodes
-        dirichlet_values_u = np.zeros(
-            (number_of_frequencies, len(dirichlet_nodes_u), 2))
-    else:
-        dirichlet_nodes_u = np.array([])
-        dirichlet_values_u = np.array([])
-
-    # For potential v set electrode to excitation and ground to 0
-    dirichlet_nodes_v = np.concatenate((electrode_nodes, ground_nodes))
-    dirichlet_values_v = np.zeros(
-        (number_of_frequencies, len(dirichlet_nodes_v)))
-
-    # Set excitation value for electrode nodes points
-    for freq_index, amplitude in enumerate(amplitudes):
-        dirichlet_values_v[freq_index, :len(electrode_nodes)] = \
-            amplitude
-
-    return [dirichlet_nodes_u, dirichlet_nodes_v], \
-        [dirichlet_values_u, dirichlet_values_v]
-
-
-def create_dirichlet_bc_nodes(
-    mesh: Mesh,
-    electrode_excitation: npt.NDArray,
-    number_of_time_steps: int,
-    set_symmetric_bc: bool = True
-):
-    """Creates lists of nodes and values used in the simulation to
-    apply the boundary conditions.
-    There are 4 lists returning: nodes_u, values_u, nodes_v, values_v.
-    The values are corresponding to the nodes with the same index.
-    The lists are set using the given electrode excitation as well
-    as the information if a symmetric bc is needed
-        Disc -> Symmetric bc
-        Ring -> No symmtric bc
-    The symmetric bc sets the u_r values at the symmetric axis nodes to 0.
-    The ground electrode nodes are implicitly set to 0.
-
-    Parameters:
-        electrode_nodes: Nodes in the electrode region.
-        symaxis_nodes: Nodes on the symmetrical axis (r=0).
-        ground_nodes: Nodes in the ground region.
-        electrode_excitation: Excitation values for each time step.
-        number_of_time_steps: Total number of time steps of the simulation.
-
-    Returns:
-        Tuple of 2 tuples. The first inner tuple is a tuple containing
-        the nodes and values for u and the second inner tuple contains
-        the nodes and values for v.
-    """
-    # Get nodes from gmsh handler
-    pg_nodes = mesh.get_nodes_by_physical_groups(
-        ["Electrode", "Symaxis", "Ground"])
-
-    electrode_nodes = pg_nodes["Electrode"]
-    symaxis_nodes = pg_nodes["Symaxis"]
-    ground_nodes = pg_nodes["Ground"]
-
-    # For Potential set "Electrode" to excitation function
-    # "Ground" is set to 0
-    # For displacement set symaxis values to 0.
-    # Zeros are set for u_r and u_z but the u_z component is not used.
-    # Others are implicit natrual bcs (Neumann B.C. -> 0).
-    if set_symmetric_bc:
-        dirichlet_nodes_u = symaxis_nodes
-        dirichlet_values_u = np.zeros(
-            (number_of_time_steps, len(dirichlet_nodes_u), 2))
-    else:
-        dirichlet_nodes_u = np.array([])
-        dirichlet_values_u = np.array([])
-
-    # For potential v set electrode to excitation and ground to 0
-    dirichlet_nodes_v = np.concatenate((electrode_nodes, ground_nodes))
-    dirichlet_values_v = np.zeros(
-        (number_of_time_steps, len(dirichlet_nodes_v)))
-
-    # Set excitation value for electrode nodes points
-    for time_index, excitation_value in enumerate(electrode_excitation):
-        dirichlet_values_v[time_index, :len(electrode_nodes)] = \
-            excitation_value
-
-    return [dirichlet_nodes_u, dirichlet_nodes_v], \
-        [dirichlet_values_u, dirichlet_values_v]
-
-
-def create_node_points(
-    nodes: npt.NDArray,
-    elements: npt.NDArray,
-    element_order: int
-) -> npt.NDArray:
-    """Create the local node data for every given element.
-
-    Parameters:
-        nodes: Nodes of the mesh.
-        elements: Elements of the mesh.
-        element_order: Order of the elements.
-
-    Returns:
-        List of nodes.
-    """
-    points_per_element = int(1/2*(element_order+1)*(element_order+2))
-
-    node_points = np.zeros(
-        shape=(len(elements), 2, points_per_element)
-    )
-
-    for element_index, element in enumerate(elements):
-        # Get node points of element in format
-        # [x1 x2 x3 ... xn]
-        # [y1 y2 y3 ... yn] where (xi, yi) are the coordinates for Node i
-        for node_index in range(points_per_element):
-            node_points[element_index, :, node_index] = [
-                nodes[element[node_index]][0],
-                nodes[element[node_index]][1]
-            ]
-
-    return node_points
-
-
-def calculate_volumes(node_points: npt.NDArray, element_order):
-    """Calculates the volume of each element. The element information
-    is given by the local_element_data
-
-    Parameters:
-        node_points: Node points of all elements for which the volume shall be
-            calculated.
-
-    Returns:
-        List of volumes of the elements.
-    """
-    volumes = []
-
-    number_of_elements = node_points.shape[0]
-
-    for element_index in range(number_of_elements):
-        volumes.append(
-            integral_volume(node_points[element_index], element_order)
-            *2*np.pi
-        )
-
-    return volumes
-
-
-def get_avg_temp_field_per_element(
-    theta: npt.NDArray,
-    elements: npt.NDArray
-):
-    """Returns the average temperature for each element.
-
-    Parameters:
-        theta: Temperatures for each node.
-        elements: List of elements.
-
-    Returns:
-        Mean temperature for each element.
-    """
-    theta_elements = np.zeros(len(elements))
-
-    for element_index, element in enumerate(elements):
-        theta_elements[element_index] = np.mean(theta[element])
-
-    return np.array(theta_elements)

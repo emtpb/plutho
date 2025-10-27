@@ -9,7 +9,6 @@ import plutho
 
 # -------- Global variables --------
 
-NUMBER_OF_TIME_STEPS = 1000
 ATOL = 1e-14
 RTOL = 1e-4
 
@@ -51,26 +50,21 @@ def test_thermo_time(tmp_path):
     )
     mesh = plutho.Mesh(mesh_path, element_order)
 
-    sim = plutho.SingleSimulation(
-        tmp_path,
+    sim = plutho.ThermoTime(
         "thermo_time_test",
         mesh
     )
 
     # Simulation parameters
     INPUT_POWER_DENSITY = 1
-    delta_t = 0.001
+    NUMBER_OF_TIME_STEPS = 1000
+    DELTA_T = 0.001
+    GAMMA = 0.5
     nodes, elements = mesh.get_mesh_nodes_and_elements()
     number_of_elements = len(elements)
 
     print(f"Nodes {nodes}")
     print(f"Elements {elements}")
-
-    sim.setup_thermo_time_domain(
-        delta_t,
-        NUMBER_OF_TIME_STEPS,
-        0.5
-    )
 
     sim.add_material(
         "pic255",
@@ -79,16 +73,21 @@ def test_thermo_time(tmp_path):
     )
 
     # Set constant volume loss density
-    sim.solver.set_constant_volume_heat_source(
+    sim.set_constant_volume_heat_source(
         INPUT_POWER_DENSITY*np.ones(number_of_elements),
         NUMBER_OF_TIME_STEPS
     )
 
-    sim.simulate()
+    sim.assemble()
+    sim.simulate(
+        DELTA_T,
+        NUMBER_OF_TIME_STEPS,
+        GAMMA
+    )
 
     # Calculated thermal stored energy
     temp_field_energy = plutho.calculate_stored_thermal_energy(
-        sim.solver.theta[:, -1],
+        sim.theta[-1, :],
         nodes,
         elements,
         element_order,
@@ -97,8 +96,8 @@ def test_thermo_time(tmp_path):
     )
 
     volume = np.sum(
-        plutho.simulation.base.calculate_volumes(
-            sim.solver.node_points,
+        plutho.calculate_volumes(
+            sim.node_points,
             element_order
         )
     )
@@ -123,8 +122,7 @@ def test_piezo_time(tmp_path, test=True):
     )
     mesh = plutho.Mesh(mesh_path, element_order)
 
-    sim = plutho.SingleSimulation(
-        tmp_path,
+    sim = plutho.PiezoTime(
         "piezo_time_test",
         mesh
     )
@@ -135,12 +133,10 @@ def test_piezo_time(tmp_path, test=True):
         ""
     )
 
-    sim.setup_piezo_time_domain(
-        number_of_time_steps=NUMBER_OF_TIME_STEPS,
-        delta_t=1e-8,
-        gamma=0.5,
-        beta=0.25
-    )
+    DELTA_T = 1e-8
+    NUMBER_OF_TIME_STEPS = 1000
+    GAMMA = 0.5
+    BETA = 0.25
 
     # Set triangular excitation
     excitation = np.zeros(NUMBER_OF_TIME_STEPS)
@@ -165,15 +161,16 @@ def test_piezo_time(tmp_path, test=True):
         np.zeros(NUMBER_OF_TIME_STEPS)
     )
 
-    electrode_elements = mesh.get_elements_by_physical_groups(
-        ["Electrode"]
-    )["Electrode"]
-    electrode_normals = np.tile([0, 1], (len(electrode_elements), 1))
-
+    sim.assemble()
     sim.simulate(
-        electrode_elements=electrode_elements,
-        electrode_normals=electrode_normals
+        DELTA_T,
+        NUMBER_OF_TIME_STEPS,
+        GAMMA,
+        BETA,
     )
+
+    sim.calculate_charge("Electrode")
+
     test_folder_name = "piezo_time"
 
     if test:
@@ -187,8 +184,8 @@ def test_piezo_time(tmp_path, test=True):
         test_q = np.load(os.path.join(test_folder, "q.npy"))
         test_u = np.load(os.path.join(test_folder, "u.npy"))
 
-        uut_q = sim.solver.q
-        uut_u = sim.solver.u[:, -1]
+        uut_q = sim.q
+        uut_u = sim.u[-1, :]
 
         # Compare arrays
         # For displacement just take last time step. TODO Is this sufficient?
@@ -232,8 +229,7 @@ def test_piezo_freq(tmp_path, test=True):
     )
     mesh = plutho.Mesh(mesh_path, element_order)
 
-    sim = plutho.SingleSimulation(
-        tmp_path,
+    sim = plutho.PiezoFreq(
         "piezo_freq_test",
         mesh
     )
@@ -243,8 +239,6 @@ def test_piezo_freq(tmp_path, test=True):
         pic255,
         ""
     )
-
-    sim.setup_piezo_freq_domain(np.array([2e6]))
 
     # Set boundary conditions
     sim.add_dirichlet_bc(
@@ -263,15 +257,12 @@ def test_piezo_freq(tmp_path, test=True):
         np.zeros(1)
     )
 
-    electrode_elements = mesh.get_elements_by_physical_groups(
-        ["Electrode"]
-    )["Electrode"]
-    electrode_normals = np.array([[0, 1]] * len(electrode_elements))
-
+    sim.assemble()
     sim.simulate(
-        electrode_elements=electrode_elements,
-        electrode_normals=electrode_normals
+        frequencies=np.array([2e6])
     )
+
+    sim.calculate_charge("Electrode", is_complex=True)
 
     test_folder_name = "piezo_freq"
 
@@ -287,8 +278,8 @@ def test_piezo_freq(tmp_path, test=True):
         test_q = np.load(os.path.join(test_folder, "q.npy"))
         test_u = np.load(os.path.join(test_folder, "u.npy"))
 
-        uut_q = sim.solver.q
-        uut_u = sim.solver.u[:, -1]
+        uut_q = sim.q
+        uut_u = sim.u[-1, :]
 
         # Compare arrays
         # For displacement just take last time step. TODO Is this sufficient?
@@ -334,8 +325,7 @@ def test_thermo_piezo_time(tmp_path, test=True):
     )
     mesh = plutho.Mesh(mesh_path, element_order)
 
-    sim = plutho.SingleSimulation(
-        tmp_path,
+    sim = plutho.ThermoPiezoTime(
         "thermo_piezo_time",
         mesh
     )
@@ -351,13 +341,8 @@ def test_thermo_piezo_time(tmp_path, test=True):
     number_of_nodes = len(nodes)
     DELTA_T = 1e-8
     NUMBER_OF_TIME_STEPS = 5000
-
-    sim.setup_thermo_piezo_time_domain(
-        number_of_time_steps=NUMBER_OF_TIME_STEPS,
-        delta_t=DELTA_T,
-        gamma=0.5,
-        beta=0.25
-    )
+    GAMMA = 0.5
+    BETA = 0.25
 
     # Set sinusoidal excitation
     AMPLITUDE = 1
@@ -388,30 +373,30 @@ def test_thermo_piezo_time(tmp_path, test=True):
         np.zeros(NUMBER_OF_TIME_STEPS)
     )
 
-    electrode_elements = mesh.get_elements_by_physical_groups(
-        ["Electrode"]
-    )["Electrode"]
-    electrode_normals = np.array([[0, 1]] * len(electrode_elements))
-
+    sim.assemble()
     sim.simulate(
-        electrode_elements=electrode_elements,
-        electrode_normals=electrode_normals
+        DELTA_T,
+        NUMBER_OF_TIME_STEPS,
+        GAMMA,
+        BETA
     )
+
+    sim.calculate_charge("Electrode")
 
     # Calculate input energy
     input_energy = plutho.calculate_electrical_input_energy(
         excitation,
-        sim.solver.q,
+        sim.q,
         DELTA_T
     )
 
     # Calculate total loss energy
-    volumes = plutho.simulation.base.calculate_volumes(
-        sim.solver.node_points, element_order
+    volumes = plutho.calculate_volumes(
+        sim.node_points, element_order
     )
     power = np.zeros(NUMBER_OF_TIME_STEPS)
     for time_step in range(NUMBER_OF_TIME_STEPS):
-        power[time_step] = np.dot(sim.solver.mech_loss[:, time_step], volumes)
+        power[time_step] = np.dot(sim.mech_loss[:, time_step], volumes)
 
     total_loss_energy = np.trapezoid(
         power,
@@ -420,9 +405,9 @@ def test_thermo_piezo_time(tmp_path, test=True):
     )
 
     # Calculate stored thermal energy
-    theta = sim.solver.u[3*number_of_nodes:]
+    theta = sim.u[3*number_of_nodes:]
     stored_thermal_energy = plutho.calculate_stored_thermal_energy(
-        theta[:, -1],
+        theta[-1, :],
         nodes,
         elements,
         element_order,
@@ -452,9 +437,9 @@ def test_thermo_piezo_time(tmp_path, test=True):
         test_u = np.load(os.path.join(test_folder, "u.npy"))
         test_mech_loss = np.load(os.path.join(test_folder, "mech_loss.npy"))
 
-        uut_q = sim.solver.q
-        uut_u = sim.solver.u[:, -1]
-        uut_mech_loss = sim.solver.mech_loss[:, -1]
+        uut_q = sim.q
+        uut_u = sim.u[-1, :]
+        uut_mech_loss = sim.mech_loss[-1, :]
 
         # Compare arrays
         np.testing.assert_allclose(
@@ -482,15 +467,15 @@ def test_thermo_piezo_time(tmp_path, test=True):
         # Save data
         np.save(
             os.path.join(tmp_path, test_folder_name, "q.npy"),
-            sim.solver.q
+            sim.q
         )
         np.save(
             os.path.join(tmp_path, test_folder_name, "u.npy"),
-            sim.solver.u[:, -1]
+            sim.u[-1, :]
         )
         np.save(
             os.path.join(tmp_path, test_folder_name, "mech_loss.npy"),
-            sim.solver.mech_loss[:, -1]
+            sim.mech_loss[-1, :]
         )
 
 

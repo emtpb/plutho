@@ -1,20 +1,92 @@
 """Contains different materials which can be used in the simulations."""
 
 # Python standard libraries
+import json
+from dataclasses import dataclass, fields
 from typing import List, Union
-import numpy as np
-import numpy.typing as npt
 
 # Third party libraries
+import numpy as np
+import numpy.typing as npt
 from scipy import interpolate
 
-# Local libraries
-from .simulation.base import MaterialData
+
+__all__ = [
+    "MaterialData",
+    "MaterialManager"
+]
+
+
+@dataclass
+class MaterialData:
+    """Contains the plain material data. Some parameters can either be
+    a float or an array depending if they are temperature dependent.
+    If they are temperature dependent the index in the array corresponds to
+    the temperature value from the temperatures array at the same index.
+    """
+    c11: Union[float, npt.NDArray]
+    c12: Union[float, npt.NDArray]
+    c13: Union[float, npt.NDArray]
+    c33: Union[float, npt.NDArray]
+    c44: Union[float, npt.NDArray]
+    e15: Union[float, npt.NDArray]
+    e31: Union[float, npt.NDArray]
+    e33: Union[float, npt.NDArray]
+    eps11: Union[float, npt.NDArray]
+    eps33: Union[float, npt.NDArray]
+    alpha_m: float
+    alpha_k: float
+    thermal_conductivity: float
+    heat_capacity: float
+    temperatures: Union[float, npt.NDArray]
+    density: float
+
+    def to_dict(self):
+        """Convert the dataclass to dict for json serialization."""
+        json_dict = {}
+        for attribute in fields(self.__class__):
+            value = getattr(self, attribute.name)
+            if isinstance(value, float) or isinstance(value, int):
+                json_dict[attribute.name] = value
+            elif isinstance(value, np.ndarray):
+                json_dict[attribute.name] = value.tolist()
+            else:
+                raise ValueError(
+                    "Wrong type saved in MaterialData. Value is of type "
+                    f"{type(value)}"
+                )
+        return json_dict
+
+    @staticmethod
+    def from_dict(contents):
+        """Convert given dict, e.g. from a json deserialization, to a
+        MaterialData object."""
+        for key, value in contents.items():
+            if isinstance(value, List):
+                contents[key] = np.array(value)
+
+        return MaterialData(**contents)
+
+    @staticmethod
+    def load_from_file(file_path: str):
+        """Load the data from given file.
+
+        Parameters:
+            file_path: Path to the file
+        """
+        if not os.path.exists(file_path):
+            raise IOError(
+                "Given file path {} does not exist. Cannot load "
+                "material data."
+            )
+
+        with open(file_path, "r", encoding="UTF-8") as fd:
+            return MaterialData.from_dict(json.load(fd))
 
 
 class Material:
-    """Class to handle a single material. The material can have either constant
-    material properties or temperature variant properties.
+    """Class to handle a single material. The material can have either
+    constant material properties or temperature variant properties.
     The temperature properties are determined using linear interpolation.
 
     Attributes:

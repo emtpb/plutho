@@ -1,104 +1,39 @@
-"""Main module for the simulation of piezoelectric systems."""
+"""Module for the simulation of freqwuency domain piezoelectric systems."""
 
 # Python standard libraries
-from typing import List
+from typing import Union
 import numpy as np
 import numpy.typing as npt
 import scipy.sparse as sparse
 import scipy.sparse.linalg as slin
 
 # Local libraries
-from .base import MeshData, local_to_global_coordinates, b_operator_global, \
-    integral_m, integral_ku, integral_kuv, integral_kve, apply_dirichlet_bc, \
-    create_node_points, quadratic_quadrature, \
-    calculate_volumes, gradient_local_shape_functions_2d
-from .piezo_time import calculate_charge
-from ..materials import MaterialManager
+from .solver import FEMSolver
+from .helpers import create_node_points, calculate_volumes, \
+    mat_apply_dbcs
+from .integrals import integral_m, integral_ku, integral_kuv, integral_kve, \
+    integral_loss_scs
+from ..enums import SolverType
+from ..mesh import Mesh
 
 
-def loss_integral_scs(
-    node_points: npt.NDArray,
-    u_e: npt.NDArray,
-    elasticity_matrix: npt.NDArray,
-    element_order: int
-):
-    """Calculate sthe integral of dS/dt*c*dS/dt over one triangle in the
-    frequency domain for the given frequency.
-
-    Parameters:
-        node_points: List of node points [[x1, x2, x3], [y1, y2, y3]] of one
-            triangle.
-        u_e: Displacement at this element [u1_r, u1_z, u_2r, u_2z, u_3r, u_3z].
-        angular_frequency: Angular frequency at which the loss shall be
-            calculated.
-        elasticity_matrix: Elasticity matrix for the current element
-            (c matrix).
-        element_order: Order of the shape functions.
-    """
-    def inner(s, t):
-        dn = gradient_local_shape_functions_2d(s, t, element_order)
-        jacobian = np.dot(node_points, dn.T)
-        jacobian_inverted_t = np.linalg.inv(jacobian).T
-        jacobian_det = np.linalg.det(jacobian)
-
-        b_opt = b_operator_global(
-            node_points,
-            jacobian_inverted_t,
-            s,
-            t,
-            element_order
-        )
-        r = local_to_global_coordinates(node_points, s, t, element_order)[0]
-
-        s_e = np.dot(b_opt, u_e)
-
-        # return np.dot(dt_s.T, np.dot(elasticity_matrix.T, dt_s))*r
-        return np.dot(
-            np.conjugate(s_e).T,
-            np.dot(
-                elasticity_matrix.T,
-                s_e
-            )
-        ) * r * jacobian_det
-
-    return quadratic_quadrature(inner, element_order)
+__all__ = [
+    "PiezoFreq"
+]
 
 
-class PiezoSimFreq:
-    """Class for the simulation of mechanical-electric fields.
-
-    Parameters:
-        mesh_data: MeshData format.
-        material_manager: MaterialManager object.
-        simulation_data: SimulationData format.
+class PiezoFreq(FEMSolver):
+    """Simulation class for frequency-domain piezoelectric simulations.
 
     Attributes:
-        mesh_data: Contains the mesh information.
-        material_manager: Contains the information about the materials.
-        simulation_data: Contains the information about the simulation.
-        dirichlet_nodes: List of nodes for which dirichlet values are set.
-        dirichlet_values: List of values of the corresponding dirichlet nodes
-            per time step.
-        m: Mass matrix.
-        c: Damping matrix.
-        k: Stiffness matrix.
-        u: Resulting vector of size 4*number_of_nodes containing u_r, u_z
-            and v. u[node_index, time_index]. An offset needs to be
-            added to the node_index in order to access the different field
-            paramteters:
-                u_r: 0,
-                u_z: 1*number_of_nodes,
-                v: 2*number_of_nodes
-        q: Resulting charges for each time step q[time_index].
+        node_points: List of node points per elements.
+        m: Sparse mass matrix.
+        c: Sparse damping matrix.
+        k: Sparse stiffness matrix.
+        mech_loss: Mechanical loss field.
     """
-    # Simulation parameters
-    mesh_data: MeshData
-    material_manager: MaterialManager
-    frequencies: npt.NDArray
-
-    # Dirichlet boundary condition
-    dirichlet_nodes: npt.NDArray
-    dirichlet_values: npt.NDArray
+    # Internal simulation data
+    node_points: npt.NDArray
 
     # FEM matrices
     m: sparse.lil_array
@@ -106,22 +41,13 @@ class PiezoSimFreq:
     k: sparse.lil_array
 
     # Resulting fields
-    u: npt.NDArray
-    q: npt.NDArray
-    mech_loss: npt.NDArray
+    mech_loss: Union[npt.NDArray, None]
 
-    # Internal simulation data
-    node_points: npt.NDArray
+    def __init__(self, simulation_name: str, mesh: Mesh):
+        super().__init__(simulation_name, mesh)
 
-    def __init__(
-        self,
-        mesh_data: MeshData,
-        material_manager: MaterialManager,
-        frequencies: npt.NDArray
-    ):
-        self.mesh_data = mesh_data
-        self.material_manager = material_manager
-        self.frequencies = frequencies
+        self.solver_type = SolverType.PiezoFreq
+        self.mech_loss = None
 
     def assemble(self):
         """Assembles the FEM matrices based on the set mesh_data and
@@ -130,6 +56,12 @@ class PiezoSimFreq:
         """
         # TODO Assembly takes to long rework this algorithm
         # Maybe the 2x2 matrix slicing is not very fast
+        self.material_manager.initialize_materials()
+
+        # Check if some materials are set
+        if len(self.material_manager.materials) == 0:
+            raise ValueError("Before assembly some materials must be added.")
+
         nodes = self.mesh_data.nodes
         elements = self.mesh_data.elements
         element_order = self.mesh_data.element_order
@@ -244,48 +176,44 @@ class PiezoSimFreq:
         self.c = c.tolil()
         self.k = k.tolil()
 
-    def solve_frequency(
+    def simulate(
         self,
-        electrode_elements: npt.NDArray,
-        electrode_normals: npt.NDArray,
-        calculate_mech_loss: bool
+        frequencies: npt.NDArray,
+        calculate_mech_loss: bool = False
     ):
-        """Run the frequency simulation using the given frequencies.
-        If electrode elements are given the charge at those elements is
-        calculated.
+        """Run the frequency domain simulation for each given frequency.
+        The resulting displacement field is saved in self.u.
 
         Parameters:
             frequencies: Array of frequencies at which the simulation is done.
-            electrode_elements: Array of element indices. At those indices
-                the charge is calculated, summed up and saved in q.
-            electrode_normals: List of normal vectors corresponding to the
-                electrode_elements list.
+            calculate_mech_loss: Set to true if the mechanical losses shall be
+                calculated. They are saved in self.mech_loss.
         """
         m = self.m
         c = self.c
         k = self.k
 
-        frequencies = self.frequencies
         number_of_nodes = len(self.mesh_data.nodes)
         number_of_elements = len(self.mesh_data.elements)
         element_order = self.mesh_data.element_order
         points_per_element = int(1/2*(element_order+1)*(element_order+2))
+        dirichlet_nodes = np.array(self.dirichlet_nodes)
+        dirichlet_values = np.array(self.dirichlet_values)
 
         u = np.zeros(
-            (3*number_of_nodes, len(frequencies)),
+            (len(frequencies), 3*number_of_nodes),
             dtype=np.complex128
         )
-        q = np.zeros((len(frequencies)), dtype=np.complex128)
         mech_loss = np.zeros(
-            (number_of_elements, len(frequencies)),
+            (len(frequencies), number_of_elements),
             dtype=np.complex128
         )
 
-        m, c, k = apply_dirichlet_bc(
+        m, c, k = mat_apply_dbcs(
             m,
             c,
             k,
-            self.dirichlet_nodes
+            dirichlet_nodes
         )
 
         volumes = calculate_volumes(
@@ -305,39 +233,28 @@ class PiezoSimFreq:
                 + 1j*angular_frequency*c
                 + k
             )
-            
-            f = self.get_load_vector(
-                self.dirichlet_nodes,
-                self.dirichlet_values,
-                frequency_index
-            )
 
-            u[:, frequency_index] = slin.spsolve(a, f)
+            # Apply dirichlet bc for f
+            f = np.zeros(3*number_of_nodes)
+            f[dirichlet_nodes] = dirichlet_values[:, frequency_index]
 
-            if electrode_elements is not None:
-                q[frequency_index] = calculate_charge(
-                    u[:, frequency_index],
-                    self.material_manager,
-                    electrode_elements,
-                    electrode_normals,
-                    self.mesh_data.nodes,
-                    self.mesh_data.element_order,
-                    True
-                )
+            u[frequency_index, :] = slin.spsolve(a, f)
 
             # Calculate mech_loss for every element
-            for element_index, element in enumerate(self.mesh_data.elements):
-                node_points = self.node_points[element_index]
+            if calculate_mech_loss:
+                for element_index, element in enumerate(
+                    self.mesh_data.elements
+                ):
+                    node_points = self.node_points[element_index]
 
-                # Get field values
-                u_e = np.zeros(2*points_per_element, dtype=np.complex128)
-                for i in range(points_per_element):
-                    u_e[2*i] = u[2*element[i], frequency_index]
-                    u_e[2*i+1] = u[2*element[i]+1, frequency_index]
+                    # Get field values
+                    u_e = np.zeros(2*points_per_element, dtype=np.complex128)
+                    for i in range(points_per_element):
+                        u_e[2*i] = u[frequency_index, 2*element[i]]
+                        u_e[2*i+1] = u[frequency_index, 2*element[i]+1]
 
-                if calculate_mech_loss:
-                    mech_loss[element_index, frequency_index] = (
-                        loss_integral_scs(
+                    mech_loss[frequency_index, element_index] = (
+                        integral_loss_scs(
                             node_points,
                             u_e,
                             self.material_manager.get_elasticity_matrix(
@@ -356,33 +273,6 @@ class PiezoSimFreq:
                 print(f"Frequency step {frequency_index} finished")
 
         self.u = u
-        self.q = q
-        self.mech_loss = mech_loss
 
-    def get_load_vector(
-        self,
-        dirichlet_nodes: npt.NDArray,
-        dirichlet_values: npt.NDArray,
-        frequency_index: int
-    ) -> npt.NDArray:
-        """Calculates the load vector (right hand side) vector for the
-        simulation.
-
-        Parameters:
-            dirichlet_nodes: Nodes at which the dirichlet value shall be set.
-            dirichlet_values: Dirichlet value which is set at the corresponding
-                node.
-
-        Returns:
-            Right hand side vector for the simulation.
-        """
-        number_of_nodes = len(self.mesh_data.nodes)
-
-        # Can be initialized to 0 because external load and volume
-        # charge density is 0.
-        f = np.zeros(3*number_of_nodes, dtype=np.float64)
-
-        for node, value in zip(dirichlet_nodes, dirichlet_values):
-            f[node] = value[frequency_index]
-
-        return f
+        if calculate_mech_loss:
+            self.mech_loss = mech_loss

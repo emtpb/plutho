@@ -2,6 +2,7 @@
 
 # Python standard libraries
 import os
+from dataclasses import dataclass
 from typing import Union, Tuple, Dict, List
 
 # Third party libraries
@@ -12,6 +13,14 @@ import numpy.typing as npt
 # Local libraries
 from .gmsh_parser import GmshParser
 from .custom_mesh_parser import CustomParser
+
+
+@dataclass
+class MeshData:
+    """Contains the mesh data is used in the simulation."""
+    nodes: npt.NDArray
+    elements: npt.NDArray
+    element_order: int
 
 
 class Mesh:
