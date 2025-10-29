@@ -1,6 +1,7 @@
 """Contains different materials which can be used in the simulations."""
 
 # Python standard libraries
+import os
 import json
 from dataclasses import dataclass, fields
 from typing import List, Union

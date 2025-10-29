@@ -15,7 +15,7 @@ from scipy import sparse
 from .integrals import integral_heat_flux, integral_ktheta, \
     integral_theta_load, integral_m
 from .solver import FEMSolver
-from .helpers import create_node_points, mat_apply_dbcs, \
+from .helpers import mat_apply_dbcs, \
     get_avg_temp_field_per_element
 from ..enums import SolverType
 from ..mesh import Mesh
@@ -30,7 +30,6 @@ class ThermoTime(FEMSolver):
     """Class for the simulation of time domain heat conduction problems.
 
     Attributes:
-        node_points: List of node points per elements.
         c: Sparse damping matrix.
         k: Sparse stiffness matrix.
         theta: Resulting thermal field.
@@ -41,9 +40,6 @@ class ThermoTime(FEMSolver):
         convective_outer_temp: Temperature of the material outside of the
             simulated material.
     """
-    # Internal simulation data
-    node_points: npt.NDArray
-
     # FEM Matrices
     c: sparse.lil_array
     k: sparse.lil_array
@@ -73,9 +69,7 @@ class ThermoTime(FEMSolver):
         # Maybe the 2x2 matrix slicing is not very fast
         self.material_manager.initialize_materials()
         nodes = self.mesh_data.nodes
-        elements = self.mesh_data.elements
         element_order = self.mesh_data.element_order
-        self.node_points = create_node_points(nodes, elements, element_order)
 
         number_of_nodes = len(nodes)
         c = sparse.lil_array(

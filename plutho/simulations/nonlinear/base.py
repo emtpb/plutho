@@ -17,6 +17,12 @@ from ..helpers import create_node_points
 from plutho.materials import MaterialManager
 from ...enums import NonlinearType
 
+
+__all__ = [
+    "Nonlinearity"
+]
+
+
 #
 # -------- Functions --------
 #
@@ -434,6 +440,9 @@ class Nonlinearity:
         """Local function. Assembles the nonlinear FEM matrix for a quadratic
         custom nonlinearity type.
         """
+        if self.mesh_data is None:
+            raise ValueError("Mesh data is not set")
+
         nodes = self.mesh_data.nodes
         elements = self.mesh_data.elements
         element_order = self.mesh_data.element_order

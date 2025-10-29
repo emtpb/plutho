@@ -9,7 +9,7 @@ import scipy.sparse.linalg as slin
 
 # Local libraries
 from .solver import FEMSolver
-from .helpers import create_node_points, calculate_volumes, \
+from .helpers import calculate_volumes, \
     mat_apply_dbcs
 from .integrals import integral_m, integral_ku, integral_kuv, integral_kve, \
     integral_loss_scs
@@ -26,15 +26,11 @@ class PiezoFreq(FEMSolver):
     """Simulation class for frequency-domain piezoelectric simulations.
 
     Attributes:
-        node_points: List of node points per elements.
         m: Sparse mass matrix.
         c: Sparse damping matrix.
         k: Sparse stiffness matrix.
         mech_loss: Mechanical loss field.
     """
-    # Internal simulation data
-    node_points: npt.NDArray
-
     # FEM matrices
     m: sparse.lil_array
     c: sparse.lil_array
@@ -63,9 +59,7 @@ class PiezoFreq(FEMSolver):
             raise ValueError("Before assembly some materials must be added.")
 
         nodes = self.mesh_data.nodes
-        elements = self.mesh_data.elements
         element_order = self.mesh_data.element_order
-        self.node_points = create_node_points(nodes, elements, element_order)
 
         number_of_nodes = len(nodes)
         mu = sparse.lil_matrix(

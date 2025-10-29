@@ -15,7 +15,7 @@ import numpy.typing as npt
 from ..enums import SolverType, FieldType
 from ..materials import MaterialManager, MaterialData
 from ..mesh.mesh import Mesh, MeshData
-from .helpers import calculate_charge
+from .helpers import calculate_charge, create_node_points
 
 
 __all__ = [
@@ -30,6 +30,7 @@ class FEMSolver(ABC):
     Attributes:
         simulation_name: Name of the simulation.
         mesh: Mesh object, stores all the mesh information.
+        node_points: Lists of node points per element.
         material_manager: MaterialManager object, stores all the material
             informations.
         dirichlet_nodes: List of nodes for which a dirichlet bc is applied.
@@ -45,6 +46,7 @@ class FEMSolver(ABC):
     """
     simulation_name: str
     mesh: Mesh
+    node_points: npt.NDArray
     material_manager: MaterialManager
     dirichlet_nodes: List
     dirichlet_values: List
@@ -57,8 +59,10 @@ class FEMSolver(ABC):
         self.solver_type = None
 
         nodes, elements = mesh.get_mesh_nodes_and_elements()
+        element_order = mesh.element_order
         self.mesh_data = MeshData(nodes, elements, mesh.element_order)
         self.material_manager = MaterialManager(len(elements))
+        self.node_points = create_node_points(nodes, elements, element_order)
 
         self.dirichlet_nodes = []
         self.dirichlet_values = []

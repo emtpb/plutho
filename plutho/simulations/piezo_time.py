@@ -3,12 +3,11 @@
 
 # Third party libraries
 import numpy as np
-import numpy.typing as npt
 import scipy.sparse as sparse
 import scipy.sparse.linalg as slin
 
 # Local libraries
-from .helpers import create_node_points, mat_apply_dbcs
+from .helpers import mat_apply_dbcs
 from .integrals import integral_m, integral_ku, integral_kuv, \
     integral_kve
 from ..enums import SolverType
@@ -25,14 +24,10 @@ class PiezoTime(FEMSolver):
     """Class for the simulation of time domain piezoelectric systems.
 
     Attributes:
-        node_points: List of node points per elements.
         m: Sparse mass matrix.
         c: Sparse damping matrix.
         k: Sparse stiffness matrix.
     """
-    # Internal simulation data
-    node_points: npt.NDArray
-
     # FEM matrices
     m: sparse.lil_array
     c: sparse.lil_array
@@ -52,9 +47,7 @@ class PiezoTime(FEMSolver):
         # Maybe the 2x2 matrix slicing is not very fast
         self.material_manager.initialize_materials()
         nodes = self.mesh_data.nodes
-        elements = self.mesh_data.elements
         element_order = self.mesh_data.element_order
-        self.node_points = create_node_points(nodes, elements, element_order)
 
         number_of_nodes = len(nodes)
         mu = sparse.lil_matrix(

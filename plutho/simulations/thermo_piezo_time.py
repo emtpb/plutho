@@ -14,7 +14,7 @@ from scipy import sparse
 from .solver import FEMSolver
 from ..enums import SolverType
 from ..mesh import Mesh
-from .helpers import create_node_points, mat_apply_dbcs, calculate_volumes, \
+from .helpers import mat_apply_dbcs, calculate_volumes, \
     get_avg_temp_field_per_element
 from .integrals import integral_m, integral_ku, integral_kuv, \
     integral_kve, integral_ktheta, integral_theta_load, integral_loss_scs_time
@@ -29,15 +29,11 @@ class ThermoPiezoTime(FEMSolver):
     """Class for solving time domain themo-piezoelectric systems.
 
     Attributes:
-        node_points: List of node points per elements.
         m: Sparse mass matrix.
         c: Sparse damping matrix.
         k: Sparse stiffness matrix.
         mech_loss: Mechanical loss field.
     """
-    # Internal simulation data
-    node_points: npt.NDArray
-
     # FEM matrices
     m: sparse.lil_array
     c: sparse.lil_array
@@ -60,9 +56,7 @@ class ThermoPiezoTime(FEMSolver):
         # Maybe the 2x2 matrix slicing is not very fast
         self.material_manager.initialize_materials()
         nodes = self.mesh_data.nodes
-        elements = self.mesh_data.elements
         element_order = self.mesh_data.element_order
-        self.node_points = create_node_points(nodes, elements, element_order)
 
         number_of_nodes = len(nodes)
         mu = sparse.lil_matrix(
