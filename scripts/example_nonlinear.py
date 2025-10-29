@@ -54,10 +54,10 @@ def create_chirp(
     time_values = np.arange(number_of_time_steps)*delta_t
     return signal.chirp(
         time_values,
-            start_frequency,
-            time_values[-1],
-            end_frequency,
-            method="linear"
+        start_frequency,
+        time_values[-1],
+        end_frequency,
+        method="linear"
     )
 
 
@@ -122,7 +122,6 @@ def simulate_nl_time(CWD, mesh, delta_t, number_of_time_steps):
         "Ground",
         np.zeros(number_of_time_steps)
     )
-    sim.set_electrode("Electrode")
 
     # Run simulation
     sim.assemble()
@@ -134,6 +133,7 @@ def simulate_nl_time(CWD, mesh, delta_t, number_of_time_steps):
         tolerance=5e-9,
         max_iter=40
     )
+    sim.calculate_charge("Electrode")
 
     # Save results
     if not os.path.isdir(CWD):

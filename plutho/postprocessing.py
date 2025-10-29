@@ -6,8 +6,14 @@ import numpy as np
 import numpy.typing as npt
 
 # Local libraries
-from plutho.simulation.base import energy_integral_theta, \
-    gradient_local_shape_functions_2d
+from .simulations.integrals import energy_integral_theta
+
+
+__all__ = [
+    "calculate_impedance",
+    "calculate_electrical_input_energy",
+    "calculate_stored_thermal_energy"
+]
 
 
 def calculate_impedance(
@@ -38,7 +44,7 @@ def calculate_electrical_input_energy(
     voltage_excitation: npt.NDArray,
     charge: npt.NDArray,
     delta_t: float
-):
+) -> float:
     """Calculates the energy of the elctric input.
 
     Parameters:
@@ -85,7 +91,7 @@ def calculate_stored_thermal_energy(
         stored_energies = np.zeros(theta.shape[1])
 
         for time_index in range(theta.shape[1]):
-            for element_index, element in enumerate(elements):
+            for _, element in enumerate(elements):
                 node_points = np.zeros(shape=(2, points_per_element))
                 for node_index in range(points_per_element):
                     node_points[:, node_index] = [
@@ -112,7 +118,7 @@ def calculate_stored_thermal_energy(
         # Only one time step
         stored_energy = 0
 
-        for element_index, element in enumerate(elements):
+        for _, element in enumerate(elements):
             node_points = np.zeros(shape=(2, points_per_element))
             for node_index in range(points_per_element):
                 node_points[:, node_index] = [

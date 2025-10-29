@@ -87,20 +87,11 @@ def simulate_piezo_impedance(base_directory, show_results):
     # directory.
     mesh = load_mesh(os.path.join(base_directory, "disc_mesh.msh"))
 
-    # Create the simulation
-    sim = plutho.SingleSimulation(
-        # Folder IN which the simulation folder is created
-        working_directory=base_directory,
-        # Name of the simulation & sim folder name
+    # Create the frequency domain simulation
+    sim = plutho.PiezoFreq(
         simulation_name="pic255_impedance_example",
-        # Mesh which is used in the simulation
         mesh=mesh
     )
-
-    # Frequencies for which the simulation is done
-    frequencies = np.linspace(0, 1e7, 1000)[1:]
-    # Set a frequency domain piezo simulation
-    sim.setup_piezo_freq_domain(frequencies)
 
     # Add a material to the model and specify for which elements this element
     # is used.
@@ -112,6 +103,9 @@ def simulate_piezo_impedance(base_directory, show_results):
         # Since this is None the material will be applied everywhere
         physical_group_name=""
     )
+
+    # Frequencies for which the simulation shall be done
+    frequencies = np.linspace(0, 1e7, 1000)[1:]
 
     # Setup boundary conditions
     # First two boundary conditions for PHI (electrical potenzial) are added
@@ -141,34 +135,21 @@ def simulate_piezo_impedance(base_directory, show_results):
         values=np.zeros(len(frequencies))
     )
 
-    # Since the charge shall be simulated in order to calculate the impedance
-    # it is necesarry to determine the elements for which a charge is
-    # calculated
-    electrode_elements = mesh.get_elements_by_physical_groups(
-        ["Electrode"]
-    )["Electrode"]
-    # Additionally the orientation of the electrode elements is needed to
-    # calculate the charge. Since they all lie on the uppder electrode, the
-    # (outer) normal vector only points in z direction.
-    electrode_normals = np.tile([0, 1], (len(electrode_elements), 1))
-
     # Now the simulation can be done
-    sim.simulate(
-        electrode_elements=electrode_elements,
-        electrode_normals=electrode_normals
-    )
+    sim.assemble()
+    sim.simulate(frequencies)
 
-    # The simulation settings and results are saved in the simulation folder
-    sim.save_simulation_settings()
-    sim.save_simulation_results()
+    # Charge can be calculated when given the name of the electrode (physical
+    # group in gmsh)
+    # Resulting charge is saved in sim.q
+    sim.calculate_charge("Electrode", is_complex=True)
 
-    # Calculate impedance
-    # The charge can be accessed using sim.solver
-    charge = sim.solver.q
+    sim.save_simulation_settings(base_directory)
+    sim.save_simulation_results(base_directory)
 
     # Since the simulation is already in the frequency domain the impedance
     # can be calculated directly
-    impedance = np.abs(1/(1j*2*np.pi*frequencies*charge))
+    impedance = np.abs(1/(1j*2*np.pi*frequencies*sim.q))
 
     if show_results:
         # Plot results
@@ -193,26 +174,18 @@ def simulate_thermo_piezo(base_directory):
     """
     mesh = load_mesh(os.path.join(base_directory, "disc_mesh.msh"))
 
-    sim = plutho.SingleSimulation(
-        base_directory,
+    sim = plutho.ThermoPiezoTime(
         "thermo_piezo_sim_20k",
         mesh
     )
+
     # Simulation parameters
     NUMBER_OF_TIME_STEPS = 20000
     DELTA_T = 1e-8
-
     # Time integration parameters: Those values make sure that the simulation
     # is unconditionally stable.
     GAMMA = 0.5
     BETA = 0.25
-
-    sim.setup_thermo_piezo_time_domain(
-        NUMBER_OF_TIME_STEPS,
-        DELTA_T,
-        GAMMA,
-        BETA
-    )
 
     sim.add_material(
         "pic255",
@@ -242,9 +215,18 @@ def simulate_thermo_piezo(base_directory):
         np.zeros(NUMBER_OF_TIME_STEPS)
     )
 
-    sim.simulate(calculate_mech_loss=True)
-    sim.save_simulation_settings()
-    sim.save_simulation_results()
+    sim.assemble()
+    sim.simulate(
+        DELTA_T,
+        NUMBER_OF_TIME_STEPS,
+        GAMMA,
+        BETA
+    )
+
+    sim.calculate_charge("Electrode")
+
+    sim.save_simulation_settings(base_directory)
+    sim.save_simulation_results(base_directory)
 
 
 def simulate_coupled_thermo_time(base_directory):
@@ -278,11 +260,8 @@ def simulate_coupled_thermo_time(base_directory):
         0  # Not needed in thermo simulation
     )
 
-    coupled_sim = plutho.CoupledThermoPiezoThermoSim(
-        base_directory,
+    coupled_sim = plutho.CoupledThermoPiezoTime(
         "CoupledThermoPiezoelectricSim",
-        piezo_sim_data,
-        thermo_sim_data,
         mesh
     )
 
@@ -301,9 +280,14 @@ def simulate_coupled_thermo_time(base_directory):
         is_disc=True
     )
 
-    coupled_sim.simulate()
-    coupled_sim.save_simulation_settings()
-    coupled_sim.save_simulation_results()
+    coupled_sim.assemble()
+    coupled_sim.simulate(
+        piezo_sim_data,
+        thermo_sim_data
+    )
+
+    coupled_sim.save_simulation_settings(base_directory)
+    coupled_sim.save_simulation_results(base_directory)
 
 
 def simulate_coupled_thermo_freq(base_directory):
@@ -328,11 +312,8 @@ def simulate_coupled_thermo_freq(base_directory):
         0  # Not needed in thermo simulation
     )
 
-    coupled_sim = plutho.CoupledFreqPiezoTherm(
-        base_directory,
+    coupled_sim = plutho.CoupledPiezoThermoFreq(
         "CoupledThermopiezoelectricFreqSim",
-        FREQUENCY,
-        thermo_sim_data,
         mesh
     )
 
@@ -347,30 +328,29 @@ def simulate_coupled_thermo_freq(base_directory):
         is_disc=True
     )
 
+    coupled_sim.assemble()
     coupled_sim.simulate(
+        FREQUENCY,
+        thermo_sim_data,
         material_starting_temperature=25,
         temperature_dependent=False
     )
-    coupled_sim.save_simulation_settings()
-    coupled_sim.save_simulation_results()
+
+    coupled_sim.save_simulation_settings(base_directory)
+    coupled_sim.save_simulation_results(base_directory)
 
 
 def simulate_thermo_time(base_directory):
     mesh = load_mesh(os.path.join(base_directory, "disc_mesh.msh"))
 
-    sim = plutho.SingleSimulation(base_directory, "ThermoTimeSim", mesh)
+    sim = plutho.ThermoTime("ThermoTimeSim", mesh)
 
     DELTA_T = 0.001
     NUMBER_OF_TIME_STEPS = 1000
+    GAMMA = 0.5
 
     _, elements = mesh.get_mesh_nodes_and_elements()
     number_of_elements = len(elements)
-
-    sim.setup_thermo_time_domain(
-        DELTA_T,
-        NUMBER_OF_TIME_STEPS,
-        0.5
-    )
 
     sim.add_material(
         "pic255",
@@ -379,7 +359,7 @@ def simulate_thermo_time(base_directory):
     )
 
     # As an example set a constant volume heat source
-    sim.solver.set_constant_volume_heat_source(
+    sim.set_constant_volume_heat_source(
         np.ones(number_of_elements),
         NUMBER_OF_TIME_STEPS
     )
@@ -395,15 +375,22 @@ def simulate_thermo_time(base_directory):
             elements["RightBoundary"]
         ]
     )
-    sim.solver.set_convection_bc(
+
+    sim.set_convection_bc(
         convective_boundary_elements,
         80,  # Heat transfer coefficient
         20  # Outer temperature
     )
 
-    sim.simulate(initial_theta_field=25)
-    sim.save_simulation_settings()
-    sim.save_simulation_results()
+    sim.assemble()
+    sim.simulate(
+        DELTA_T,
+        NUMBER_OF_TIME_STEPS,
+        GAMMA
+    )
+
+    sim.save_simulation_settings(base_directory)
+    sim.save_simulation_results(base_directory)
 
 
 if __name__ == "__main__":
@@ -415,7 +402,8 @@ if __name__ == "__main__":
     if not os.path.isdir(CWD):
         os.makedirs(CWD)
 
-    simulate_piezo_impedance(CWD, False)
-    simulate_thermo_piezo(CWD)
+    # simulate_piezo_impedance(CWD, True)
+    # simulate_thermo_piezo(CWD)
     simulate_coupled_thermo_time(CWD)
-    simulate_coupled_thermo_freq(CWD)
+    # simulate_coupled_thermo_freq(CWD)
+    # simulate_thermo_time(CWD)

@@ -13,7 +13,7 @@ from scipy.sparse import linalg
 
 # Local libraries
 from .base import assemble, NonlinearType
-from ..base import MeshData
+from ...mesh.mesh import MeshData
 from plutho.materials import MaterialManager
 
 
@@ -63,19 +63,17 @@ class NLPiezoHB:
             **kwargs: Parameters for the nonlinear material.
         """
         # Get the default FEM matrices
-        m, c, k, lu = assemble(
+        m, c, k = assemble(
             self.mesh_data,
             self.material_manager,
-            nonlinear_order,
-            nonlinear_type,
-            **kwargs
         )
         self.nonlinear_order = nonlinear_order
 
         self.m = m
         self.c = c
         self.k = k
-        self.lu = lu
+
+        raise NotImplementedError("Nonlinear assembly not implemented for HB")
 
     def solve_linear(self):
         """Solves the linear problem Ku=f (ln is not used).
