@@ -396,7 +396,7 @@ def test_thermo_piezo_time(tmp_path, test=True):
     )
     power = np.zeros(NUMBER_OF_TIME_STEPS)
     for time_step in range(NUMBER_OF_TIME_STEPS):
-        power[time_step] = np.dot(sim.mech_loss[:, time_step], volumes)
+        power[time_step] = np.dot(sim.mech_loss[time_step, :], volumes)
 
     total_loss_energy = np.trapezoid(
         power,
@@ -405,7 +405,7 @@ def test_thermo_piezo_time(tmp_path, test=True):
     )
 
     # Calculate stored thermal energy
-    theta = sim.u[3*number_of_nodes:]
+    theta = sim.u[:, 3*number_of_nodes:]
     stored_thermal_energy = plutho.calculate_stored_thermal_energy(
         theta[-1, :],
         nodes,
