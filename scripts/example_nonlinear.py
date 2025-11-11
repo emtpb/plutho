@@ -65,7 +65,8 @@ def create_sinusoidal_excitation(
     amplitude,
     delta_t,
     number_of_time_steps,
-    frequency
+    frequency,
+    rise_steps = 0
 ):
     """Creates a sinusoidal excitation array.
 
@@ -76,8 +77,12 @@ def create_sinusoidal_excitation(
             this is the same as for the simulation
         frequency: Frequency of the sin function.
     """
-    time_steps = np.arange(number_of_time_steps)*delta_t
-    return amplitude*np.sin(2*np.pi*frequency*time_steps)
+    time = np.arange(number_of_time_steps)*delta_t
+    window = signal.windows.tukey(
+        number_of_time_steps,
+        rise_steps/number_of_time_steps*2
+    )
+    return window*amplitude*np.sin(2*np.pi*frequency*time)
 
 
 def simulate_nl_time(CWD, mesh, delta_t, number_of_time_steps):
@@ -87,6 +92,9 @@ def simulate_nl_time(CWD, mesh, delta_t, number_of_time_steps):
     ZETA = 10
     AMPLITUDE = 10
     FREQUENCY = 2.07e6
+    NEWTON_DAMPING = 0.25
+    MAX_ITER = 1000
+    TOLERANCE = 5e-9
 
     nonlinearity = plutho.Nonlinearity()
     nonlinearity.set_cubic_rayleigh(ZETA)
@@ -112,6 +120,7 @@ def simulate_nl_time(CWD, mesh, delta_t, number_of_time_steps):
         number_of_time_steps=number_of_time_steps,
         frequency=FREQUENCY
     )
+
     sim.add_dirichlet_bc(
         plutho.FieldType.PHI,
         "Electrode",
@@ -130,14 +139,17 @@ def simulate_nl_time(CWD, mesh, delta_t, number_of_time_steps):
         number_of_time_steps,
         GAMMA,
         BETA,
-        tolerance=5e-9,
-        max_iter=40
+        tolerance=TOLERANCE,
+        max_iter=MAX_ITER,
+        newton_damping=NEWTON_DAMPING
     )
     sim.calculate_charge("Electrode")
 
     # Save results
     if not os.path.isdir(CWD):
         os.makedirs(CWD)
+
+    print(u[:2*node_count])
 
     u_file = os.path.join(CWD, "u.npy")
     q_file = os.path.join(CWD, "q.npy")
@@ -159,6 +171,8 @@ def plot_displacement_spectrum(
 
     frequencies = np.fft.fftfreq(number_of_time_steps, delta_t)
 
+    plt.plot(np.arange(number_of_time_steps)*delta_t, u_r)
+    plt.show()
     plt.plot(frequencies, np.abs(U_r_jw))
     plt.grid()
     plt.show()
@@ -186,17 +200,17 @@ if __name__ == "__main__":
         )
     mesh = plutho.Mesh(mesh_file, element_order=1)
 
-    DELTA_T = 1e-9
+    DELTA_T = 1e-8
     NUMBER_OF_TIME_STEPS = 20000
 
-    nl_time_sim_name = "nonlinear_time_dep_sim_20k_1e-9"
+    nl_time_sim_name = "nonlinear_20000_1e8_10"
     nl_time_wd = os.path.join(CWD, nl_time_sim_name)
 
     ## Simulate
-    if True:
+    if False:
         # simulate_nonlinear_stationary(CWD)
         simulate_nl_time(nl_time_wd, mesh, DELTA_T, NUMBER_OF_TIME_STEPS)
 
     ## Plot
-    if False:
+    if True:
         plot_displacement_spectrum(nl_time_wd, DELTA_T, NUMBER_OF_TIME_STEPS)
