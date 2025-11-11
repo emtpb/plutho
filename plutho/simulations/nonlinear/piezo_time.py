@@ -98,17 +98,17 @@ class NLPiezoTime(FEMSolver):
         # Init arrays
         # Displacement u which is calculated
         u = np.zeros(
-            (3*number_of_nodes, number_of_time_steps),
+            (number_of_time_steps, 3*number_of_nodes),
             dtype=np.float64
         )
         # Displacement u derived after t (du/dt)
         v = np.zeros(
-            (3*number_of_nodes, number_of_time_steps),
+            (number_of_time_steps, 3*number_of_nodes),
             dtype=np.float64
         )
         # v derived after u (d^2u/dt^2)
         a = np.zeros(
-            (3*number_of_nodes, number_of_time_steps),
+            (number_of_time_steps, 3*number_of_nodes),
             dtype=np.float64
         )
 
@@ -135,20 +135,20 @@ class NLPiezoTime(FEMSolver):
             )
 
         if u_start is not None:
-            u[:, 0] = u_start
+            u[0, :] = u_start
 
         print("Starting nonlinear time domain simulation")
         for time_index in range(number_of_time_steps-1):
             # Calculate load vector
             f = self._get_load_vector(
                 dirichlet_nodes,
-                dirichlet_values[:, time_index+1]
+                dirichlet_values[:, time_index+1]  # TODO Swap indices
             )
 
             # Values of the current time step
-            current_u = u[:, time_index]
-            current_v = v[:, time_index]
-            current_a = a[:, time_index]
+            current_u = u[time_index, :]
+            current_v = v[time_index, :]
+            current_a = a[time_index, :]
 
             # Current iteration value of u of the next time step
             # as a start value this is set to the last converged u of the last
@@ -191,10 +191,10 @@ class NLPiezoTime(FEMSolver):
                     ))
 
                     if norm < tolerance:
-                        print(
-                            f"Newton converged at time step {time_index} "
-                            f"after {i+1} iteration(s)"
-                        )
+                        # print(
+                        #     f"Newton converged at time step {time_index} "
+                        #     f"after {i+1} iteration(s)"
+                        # )
                         # print(u_i_next)
                         next_u = u_i_next
                         self.converged = True
@@ -210,8 +210,8 @@ class NLPiezoTime(FEMSolver):
                     u_i = u_i_next
                 if not self.converged:
                     print(
-                        "Newton did not converge.. Choosing best value: "
-                        f"{best_norm}"
+                        f"Newton did not converge at time index: {time_index}. "
+                        f"Choosing best value: {best_norm}"
                     )
                     next_u = best_u_i
             else:
@@ -219,19 +219,22 @@ class NLPiezoTime(FEMSolver):
                 next_u = best_u_i
 
             # Calculate next v and a
-            a[:, time_index+1] = (
+            a[time_index+1, :] = (
                 a1*(next_u-current_u)
                 - a2*current_v
                 - a3*current_a
             )
-            v[:, time_index+1] = (
+            v[time_index+1, :] = (
                 a4*(next_u-current_u)
                 + a5*current_v
                 + a6*current_a
             )
 
             # Set u array value
-            u[:, time_index+1] = next_u
+            u[time_index+1, :] = next_u
+
+            if (time_index > 0 and time_index % 100 == 0):
+                print(f"Time index {time_index} finished.")
 
         self.u = u
 
