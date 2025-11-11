@@ -65,6 +65,7 @@ class NLPiezoTime(FEMSolver):
         beta: float,
         tolerance: float = 1e-11,
         max_iter: int = 300,
+        newton_damping: float = 1,
         u_start: Union[npt.NDArray, None] = None
     ):
         """Simulates the nonlinear piezo time system.
@@ -182,7 +183,7 @@ class NLPiezoTime(FEMSolver):
                         (a1*m+a4*c+tangent_matrix),
                         residual(u_i, current_u, current_v, current_a, f)
                     )
-                    u_i_next = u_i - delta_u
+                    u_i_next = u_i - delta_u * newton_damping
 
                     # Check for convergence
                     norm = scipy.linalg.norm(residual(
