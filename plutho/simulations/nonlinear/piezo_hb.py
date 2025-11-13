@@ -2,352 +2,208 @@
 harmonic balancing method."""
 
 # Python standard libraries
-from typing import Union, Tuple, Callable
+from typing import Tuple
 
 # Third party libraries
 import numpy as np
 import numpy.typing as npt
-import scipy
 from scipy import sparse
-from scipy.sparse import linalg
+import scipy.sparse.linalg as slin
+import scipy
 
 # Local libraries
-from .base import assemble, NonlinearType
-from ...mesh.mesh import MeshData
-from plutho.materials import MaterialManager
+from ...enums import SolverType
+from .base import assemble, Nonlinearity
+from ...mesh.mesh import Mesh
+from ..solver import FEMSolver
 
 
-class NLPiezoHB:
+__all__ = [
+    "NLPiezoHB"
+]
+
+
+class NLPiezoHB(FEMSolver):
     """Implementes a nonlinear FEM harmonic balancing simulation.
     """
-    # Simulation parameters
-    mesh_data: MeshData
-    material_manager: MaterialManager
+    # Nonlinear simulation
+    nonlinearity: Nonlinearity
 
-    # Boundary conditions
-    dirichlet_nodes: npt.NDArray
-    dirichlet_values: npt.NDArray
+    # Harmonic balancing
+    hb_order: int
 
-    # FEM matrices
-    k: sparse.lil_array
-    c: sparse.lil_array
-    m: sparse.lil_array
-    lu: sparse.lil_array
-
-    # Resulting fields
-    u: npt.NDArray
 
     def __init__(
         self,
-        mesh_data: MeshData,
-        material_manager: MaterialManager,
-        harmonic_order: int
+        simulation_name: str,
+        mesh: Mesh,
+        nonlinearity: Nonlinearity,
+        hb_order: int
     ):
-        self.mesh_data = mesh_data
-        self.material_manager = material_manager
-        self.harmonic_order = harmonic_order
-        self.dirichlet_nodes = np.array([])
-        self.dirichlet_valuse = np.array([])
+        super().__init__(simulation_name, mesh)
 
-    def assemble(
-        self,
-        nonlinear_order: int,
-        nonlinear_type: NonlinearType,
-        **kwargs
-    ):
-        """Redirect to general nonlinear assembly function.
+        self.solver_type = SolverType.PiezoHB
 
-        Parameters:
-            nonlinear_order: Order of the nonlinearity.
-            nonlinear_type: Type of the nonlinear material.
-            **kwargs: Parameters for the nonlinear material.
-        """
-        # Get the default FEM matrices
+        self.nonlinearity = nonlinearity
+        self.nonlinearity.set_mesh_data(self.mesh_data, self.node_points)
+        self.hb_order = hb_order
+
+    def assemble(self):
+        """Redirect to general nonlinear assembly function"""
+        self.material_manager.initialize_materials()
+
         m, c, k = assemble(
             self.mesh_data,
-            self.material_manager,
+            self.material_manager
         )
-        self.nonlinear_order = nonlinear_order
-
         self.m = m
         self.c = c
         self.k = k
 
-        raise NotImplementedError("Nonlinear assembly not implemented for HB")
+        self.nonlinearity.assemble(m, c, k)
 
-    def solve_linear(self):
-        """Solves the linear problem Ku=f (ln is not used).
-        """
-        # Apply boundary conditions
-        _, _, k = NLPiezoHB.apply_dirichlet_bc(
-            None,
-            None,
-            self.k.copy(),
-            self.dirichlet_nodes
-        )
-
-        f = self.get_load_vector(
-            self.dirichlet_nodes,
-            self.dirichlet_values
-        )
-
-        # Calculate u using phi as load vector
-        self.u = linalg.spsolve(
-            k,
-            f
-        ).todense()
-
-    def solve_newton(
+    def simulate(
         self,
-        angular_frequency: float,
-        tolerance: float = 1e-10,
-        max_iter: int = 100,
-        u_start: Union[npt.NDArray, None] = None,
-        alpha: float = 1,
-        load_factor: float = 1
+        frequencies: npt.NDArray,
+        tolerance: float = 1e-11,
+        max_iter: int = 300,
     ):
-        """Solves the system of nonlinear equations using the Newton-Raphson
-        method. Saves the result in self.u
-
-        Parameters:
-            angular_frequency: Angualr frequency at which the simulation is
-                done.
-            tolerance: Upper bound for the residuum. Iteration stops when the
-                residuum is lower than tolerance.
-            max_iter: Maximum number of iteration when the tolerance is not
-                met. Then the best solution (lowest residuum) is returned
-            u_start: Initial guess for the nonlinear problem. If it is None
-                a linear solution is calculated and used as a guess for
-                nonlinear u.
-            alpha: Damping parameter for updating the guess for u. Can be used
-                to improve convergence. Choose a value between 0 and 1.
-            load_factor: Multiplied with the load vector. Used to apply less
-                than than the full excitation. Could improve conversion of the
-                algorithm. Choose a value between 0 and 1.
-        """
+        dirichlet_nodes = np.array(self.dirichlet_nodes)
+        dirichlet_values = np.array(self.dirichlet_values)
         number_of_nodes = len(self.mesh_data.nodes)
 
-        # Get FEM matrices
-        fem_m = self.m.copy()
-        fem_c = self.c.copy()
-        fem_k = self.k.copy()
-        fem_lu = self.lu.copy()
+        m = self.m.copy()
+        c = self.c.copy()
+        k = self.k.copy()
 
-        # Create the harmonic balancing matrices from the FEM matrices
-        hb_m, hb_c, hb_k = self.get_harmonic_balancing_matrices(
-            fem_m,
-            fem_c,
-            fem_k,
-            angular_frequency
+        # Apply dirichlet bc to matrices
+        m, c, k = self._apply_dirichlet_bc(
+            m,
+            c,
+            k,
+            dirichlet_nodes
+        )
+        self.nonlinearity.apply_dirichlet_bc(dirichlet_nodes)
+
+        # Prepare array
+        u = np.zeros(
+            (len(frequencies), 3*self.hb_order*number_of_nodes),
+            dtype=np.complex128
         )
 
-        # Apply boundary conditions
-        hb_m, hb_c, hb_k = NLPiezoHB.apply_dirichlet_bc(
-            hb_m,
-            hb_c,
-            hb_k,
-            self.dirichlet_nodes
-        )
-
-        f = self.get_load_vector(
-            self.dirichlet_nodes,
-            self.dirichlet_values
-        )
-
-        # Set start value
-        if u_start is None:
-            # If no start value is given calculate one using a linear
-            # simulation
-            current_u = linalg.spsolve(
-                (
-                    hb_m
-                    + hb_c
-                    + hb_k
-                ),
-                load_factor*f
-            )
-        else:
-            current_u = u_start
-
-        # Residual of the Newton algorithm
-        def residual(u, nonlinear_force):
-            return (
-                hb_m@u
-                 + hb_c@u
-                 + hb_k@u
-                 + nonlinear_force
-                 - load_factor*f
+        print("Starting harmonic balancing simulation")
+        for frequency_index, frequency in enumerate(frequencies):
+            f = self._get_load_vector(
+                dirichlet_nodes,
+                dirichlet_values[:, frequency_index]
             )
 
-        # Nonlinear forces based on starting field guess
-        nonlinear_force = self.calculate_nonlinear_force(
-            current_u,
-            fem_lu,
-            number_of_nodes
-        )
+            # Get initial value
+            if frequency_index > 0:
+                u_i = u[frequency_index-1, :]
+            else:
+                u_i = u[frequency_index, :]
 
-        # best_field tracks the field with the best norm
-        # best norm tracks the value of the norm itself
-        # Calculate the first norms based on the starting field guess
-        best_field = current_u.copy()
-        best_norm = np.linalg.norm(residual(best_field, nonlinear_force))
+            # Check if initial value is already sufficient
+            best_norm = scipy.linalg.norm(self.residual(
+                m, c, k, u_i, f, frequency
+            ))
+            if best_norm < tolerance:
+                u[frequency_index, :] = u_i
+                continue
+            best_u_i = u_i
 
-        # Check if the initial value already suffices the tolerance condition
-        #if best_norm < tolerance:
-        #    print(f"Initial value is already best {best_norm}")
-        #    self.u = best_field
-        #    return
-
-        # Run Newton method
-        for iteration_count in range(max_iter):
-            if iteration_count > 0:
-                # Does not need to be updated at step 0
-                nonlinear_force = self.calculate_nonlinear_force(
-                    current_u,
-                    fem_lu,
-                    number_of_nodes
+            # Newton iteration
+            converged = False
+            for i in range(max_iter):
+                # Calculate next guess for u using tangent matrix
+                tangent_matrix = self.tangent_matrix(
+                    u_i,
+                    m,
+                    c,
+                    k,
+                    frequency
                 )
-
-            # Calculate tangential stiffness matrix
-            k_tangent = self.calculate_tangent_matrix_analytical(
-                    current_u,
-                    hb_m,
-                    hb_c,
-                    hb_k
-            )
-
-            # Solve for displacement increment
-            delta_u = linalg.spsolve(
-                k_tangent,
-                residual(current_u, nonlinear_force)
-            )
-
-            # Update step
-            next_u = current_u - alpha * delta_u
-
-            # Check for convergence
-            norm = scipy.linalg.norm(residual(next_u, nonlinear_force))
-            if norm < tolerance:
-                print(
-                    f"Newton found solution after {iteration_count+1} "
-                    f"steps with residual {norm}"
+                delta_u = slin.spsolve(
+                    tangent_matrix.tocsc(),
+                    self.residual(m, c, k, u_i, f, frequency)
                 )
-                self.u = next_u
-                return
-            elif norm < best_norm:
-                best_norm = norm
-                best_field = next_u.copy()
+                u_i_next = u_i - delta_u
 
-            if iteration_count % 100 == 0 and iteration_count > 0:
-                print("Iteration:", iteration_count)
+                # Check for convergence
+                norm = scipy.linalg.norm(self.residual(
+                    m, c, k, u_i_next, f, frequency
+                ))
+                if norm < tolerance:
+                    # Newton converged
+                    u[frequency_index, :] = u_i_next
+                    converged = True
+                    print(f"Frequency step {frequency_index} converged after "
+                        f"iteration {i+1}"
+                    )
+                    break
+                elif norm < best_norm:
+                    best_norm = norm
+                    best_u_i = u_i_next
 
-            # Update for next iteration
-            current_u = next_u
+                if i % 100 == 0 and i > 0:
+                    print("Iteration:", i)
 
-        print("Simulation did not converge")
-        print("Error from best iteration:", best_norm)
+            if not converged:
+                print("Newton did not converge at frequency index "
+                    f"{frequency_index}. Choosing best value: {best_norm}")
+                u[frequency_index, :] = best_u_i
 
-        self.u = best_field
+        self.u = u
 
-    def calculate_nonlinear_force(
-        self,
-        u: npt.NDArray,
-        fem_lu: sparse.lil_array,
-        number_of_nodes: int
-    ) -> npt.NDArray:
-        """Calculates the forces due to the nonlinearity.
+    def residual(self, m, c, k, u, f, frequency):
+        number_of_nodes = len(self.mesh_data.nodes)
+        res = np.zeros(self.hb_order*3*number_of_nodes, dtype=np.complex128)
+        angular_frequency = 2*np.pi*frequency
 
-        Parameters:
-            u: Current solution vector.
-            fem_lu: FEM nonlinearity matrix.
-            number_of_nodes: Number of nodes of the mesh.
+        for n in range(self.hb_order):
+            u_n = u[n*3*number_of_nodes:(n+1)*3*number_of_nodes]
+            f_n = f[n*3*number_of_nodes:(n+1)*3*number_of_nodes]
+            res[n*3*number_of_nodes:(n+1)*3*number_of_nodes] = (
+                - angular_frequency**2*(n+1)**2*m@u_n
+                + 1j*angular_frequency*(n+1)*c@u_n
+                + k@u_n
+                - f_n
+            )
 
-        Returns:
-            Vector of nonlinear forces.
-        """
-        # TODO Currently only for third order nonlinearity
+        # Add nonlinearity
+        if self.hb_order >= 3:
+            u_3 = u[2*3*number_of_nodes:3*3*number_of_nodes]
+            res[2*3*number_of_nodes:3*3*number_of_nodes] += \
+                self.nonlinearity.evaluate_force_vector(u_3, m, c, k)
 
-        u_c = u[::2]
-        u_s = u[1::2]
+        return res
 
-        lu_c = fem_lu.dot(
-            3/4*u_c**3+3/4*np.multiply(u_c, u_s**2)
-        )
-        lu_s = fem_lu.dot(
-            3/4*u_s**3+3/4*np.multiply(u_s, u_c**2)
-        )
+    def tangent_matrix(self, u, m, c, k, frequency):
+        angular_frequency = 2*np.pi*frequency
+        number_of_nodes = len(self.mesh_data.nodes)
 
-        nonlinear_force = np.zeros(2*3*number_of_nodes)
-        nonlinear_force[::2] = lu_c
-        nonlinear_force[1::2] = lu_s
+        blocks =  []
+        for n in range(self.hb_order):
+            u_n = u[n*3*number_of_nodes:(n+1)*3*number_of_nodes]
+            blocks.append(
+                - angular_frequency**2*(n+1)**2*m
+                + 1j*angular_frequency*(n+1)*c
+                + k
+                + self.nonlinearity.evaluate_jacobian(u_n, m, c, k)
+            )
 
-        """
-        nonlinear_force = np.zeros(2*3*number_of_nodes)
-        for i in range(3*number_of_nodes):
-            a = u[2*i]
-            b = u[2*i+1]
-            nonlinear_force[2*i:2*i+2] = fem_lu[i,i]*np.array([
-                3/4*(a**3+a*b**2),
-                3/4*(a**2*b+b**3)
-            ])
-        """
+        # Add nonlinearity
+        if self.hb_order >= 3:
+            u_3 = u[2*3*number_of_nodes:3*3*number_of_nodes]
+            blocks[2] += self.nonlinearity.evaluate_jacobian(u_3, m, c, k)
 
-        # Add dirichlet boundary conditions
-        nonlinear_force[self.dirichlet_nodes] = 0
+        return sparse.block_diag(blocks)
 
-        return nonlinear_force
-
-    def get_harmonic_balancing_matrices(
-        self,
-        fem_m: sparse.lil_array,
-        fem_c: sparse.lil_array,
-        fem_k: sparse.lil_array,
-        angular_frequency: float
-    ) -> Tuple[sparse.lil_array, sparse.lil_array, sparse.lil_array]:
-        """Calculates the harmonic balancing matrices from the FEM matrices.
-        The matrices are getting bigger by a factor of (2*harmonic_order)**2
-
-        Parameters:
-            fem_m: FEM mass matrix.
-            fem_c: FEM damping matrix.
-            fem_k: FEM stiffness matrix.
-
-        Returns:
-            Tuple of HB mass matrix, HB damping matrix and HB stiffness
-            matrix.
-        """
-        harmonic_order = self.harmonic_order
-
-        # Create harmonic balance derivative matrices
-        nabla_m = np.zeros(shape=(2*harmonic_order, 2*harmonic_order))
-        nabla_c = np.zeros(shape=(2*harmonic_order, 2*harmonic_order))
-        nabla_k = np.zeros(shape=(2*harmonic_order, 2*harmonic_order))
-        for i in range(harmonic_order):
-            k = i + 1
-            nabla_m[2*i:2*i+2, 2*i:2*i+2] = np.array([
-                [-(angular_frequency**2*k**2), 0],
-                [0, -(angular_frequency**2*k**2)]
-            ])
-            nabla_c[2*i:2*i+2, 2*i:2*i+2] = np.array([
-                [0, angular_frequency*k],
-                [-(angular_frequency*k), 0]
-            ])
-            nabla_k[2*i:2*i+2, 2*i:2*i+2] = np.array([
-                [1, 0],
-                [0, 1]
-            ])
-
-        # Apply HB derivative matrices on FEM matrices
-        fem_m = sparse.kron(fem_m, nabla_m, format='lil').tolil()
-        fem_c = sparse.kron(fem_c, nabla_c, format='lil').tolil()
-        fem_k = sparse.kron(fem_k, nabla_k, format='lil').tolil()
-
-        return fem_m, fem_c, fem_k
-
-    def get_load_vector(
+    def _get_load_vector(
         self,
         nodes: npt.NDArray,
-        values: npt.NDArray,
+        values: npt.NDArray
     ) -> npt.NDArray:
         """Calculates the load vector (right hand side) vector for the
         simulation.
@@ -363,105 +219,15 @@ class NLPiezoHB:
 
         # Can be initialized to 0 because external load and volume
         # charge density is 0.
-        f = np.zeros(
-            3*number_of_nodes*2*self.harmonic_order,
-            dtype=np.float64
-        )
+        f = np.zeros(self.hb_order*3*number_of_nodes, dtype=np.float64)
 
-        for node, value in zip(nodes, values):
-            f[node] = value
+        # Set dirichlet bc
+        f[nodes] = values
 
         return f
 
-    def calculate_tangent_matrix_analytical(
+    def _apply_dirichlet_bc(
         self,
-        u: npt.NDArray,
-        hb_m: sparse.lil_array,
-        hb_c: sparse.lil_array,
-        hb_k: sparse.lil_array
-    ) -> sparse.csc_array:
-        """Calculates the tangent matrix using a priori analytical
-        calculations.
-
-        Parameters:
-            u: Solution vector containing mechanical and electrical field
-                values.
-            hb_m: Harmonic balancing mass matrix.
-            hb_c: Harmonic balancing damping matrix.
-            hb_k: Harmonic balancing stiffness matrix.
-
-        Returns:
-            The tangent stiffness matrix.
-        """
-        # TODO Only valid for harmonic_order = 1 and nonlinearity_order = 3
-        fem_lu = self.lu
-        lu_diag = fem_lu.diagonal()
-        number_of_nodes = len(self.mesh_data.nodes)
-        size = number_of_nodes*3*self.harmonic_order*2
-
-        center_diag = np.zeros(size)
-        for i in range(len(lu_diag)):
-            diag_value_first = 3/4*lu_diag[i]*(3*u[2*i]**2+u[2*i+1]**2)
-            diag_value_second = 3/4*lu_diag[i]*(u[2*i]**2+3*u[2*i+1]**2)
-
-            center_diag[2*i] = diag_value_first
-            center_diag[2*i+1] = diag_value_second
-
-        left_diag = np.zeros(size-1)
-        left_diag[::2] = np.multiply(u[1::2], lu_diag)
-
-        right_diag = np.zeros(size-1)
-        right_diag[::2] = np.multiply(u[:-1:2], lu_diag)
-
-        return hb_m + hb_c + hb_k + sparse.diags(
-            diagonals=[
-                left_diag,
-                center_diag,
-                right_diag,
-            ],
-            offsets=[-1, 0, 1],
-            format="csc"
-        )
-
-
-    # -------- Static functions --------
-
-    @staticmethod
-    def calculate_tangent_matrix_numerical(
-        u: npt.NDArray,
-        nonlinear_force: npt.NDArray,
-        residual: Callable
-    ) -> sparse.csc_array:
-        """Calculates the tanget stiffness matrix numerically using a first
-        order finite difference approximation.
-        Important note: Calculation is very slow.
-
-        Parameters:
-            u: Current solution vector.
-            nonlinear_force: Vector of nonlinear forces.
-            residual: Residual function.
-
-        Returns:
-            Tangential stiffness matrix in sparse csc format.
-        """
-        h = 1e-14
-        k_tangent = sparse.lil_matrix(
-            (len(u), len(u)),
-            dtype=np.float64
-        )
-        for i in range(len(u)):
-            e_m = np.zeros(len(u))
-            e_m[i] = h
-            k_tangent[:, i] = (
-                residual(u+e_m, nonlinear_force)
-                 - residual(u, nonlinear_force)
-            )/h
-
-        return k_tangent.tocsc()
-
-
-    @staticmethod
-    def apply_dirichlet_bc(
         m: sparse.lil_array,
         c: sparse.lil_array,
         k: sparse.lil_array,
@@ -471,33 +237,10 @@ class NLPiezoHB:
         sparse.csc_array,
         sparse.csc_array
     ]:
-        """Applies dirichlet boundary conditions to the given matrix based on
-        the given nodes. Essentially the rows of the m c and k matrices at the
-        node indices are set to 0. The element of the k matrix at position
-        (node_index, node_index) is set to 1.
-
-        Parameters:
-            m: Mass matrix.
-            c: Damping matrix.
-            k: Stiffness matrix.
-            nodes: Nodes at which the dirichlet boundary conditions shall be
-                applied.
-
-        Returns:
-            Modified mass, damping and stiffness matrix.
-        """
         # Set rows of matrices to 0 and diagonal of K to 1 (at node points)
-        # Matrices for u_r component
-        for node in nodes:
-            # Set rows to 0
-            if m is not None:
-                m[node, :] = 0
-            if c is not None:
-                c[node, :] = 0
-            if k is not None:
-                k[node, :] = 0
-
-                # Set diagonal values to 1
-                k[node, node] = 1
+        m[nodes, :] = 0
+        c[nodes, :] = 0
+        k[nodes, :] = 0
+        k[nodes, nodes] = 1
 
         return m.tocsc(), c.tocsc(), k.tocsc()

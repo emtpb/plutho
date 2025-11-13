@@ -18,6 +18,7 @@ class SolverType(Enum):
     PiezoTime = "PiezoTime",
     ThermoPiezoTime = "ThermoPiezoTime",
     ThermoTime = "ThermoTime"
+    PiezoHB = "PiezoHarmonicBalance"
 
 
 class NonlinearType(Enum):
