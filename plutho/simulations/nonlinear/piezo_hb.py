@@ -47,6 +47,7 @@ class NLPiezoHB(FEMSolver):
         self.nonlinearity = nonlinearity
         self.nonlinearity.set_mesh_data(self.mesh_data, self.node_points)
         self.hb_order = hb_order
+        self.u_hb = []
 
     def assemble(self):
         """Redirect to general nonlinear assembly function"""
@@ -87,12 +88,22 @@ class NLPiezoHB(FEMSolver):
 
         # Prepare array
         u = np.zeros(
-            (len(frequencies), 3*self.hb_order*number_of_nodes),
-            dtype=np.complex128
+            (len(frequencies), 2*3*self.hb_order*number_of_nodes)
         )
+
+        # Linear tangent matrix can be created beforehand and scaled with
+        # frequency later
+        tan_k, tan_a1, tan_a2 = self.tangent_linear(m, c, k)
 
         print("Starting harmonic balancing simulation")
         for frequency_index, frequency in enumerate(frequencies):
+            # Construct whole linear tangent matrix
+            angular_frequency = 2*np.pi*frequency
+            tangent_linear = (
+                tan_k + angular_frequency * tan_a1 +
+                angular_frequency**2 * tan_a2
+            ).tocsc()
+
             f = self._get_load_vector(
                 dirichlet_nodes,
                 dirichlet_values[:, frequency_index]
@@ -105,10 +116,10 @@ class NLPiezoHB(FEMSolver):
                 u_i = u[frequency_index, :]
 
             # Check if initial value is already sufficient
-            best_norm = scipy.linalg.norm(self.residual(
-                m, c, k, u_i, f, frequency
-            ))
+            residual = self.residual(tangent_linear, u_i, f, frequency)
+            best_norm = np.linalg.norm(residual)
             if best_norm < tolerance:
+                print("Initial value already sufficient")
                 u[frequency_index, :] = u_i
                 continue
             best_u_i = u_i
@@ -117,23 +128,30 @@ class NLPiezoHB(FEMSolver):
             converged = False
             for i in range(max_iter):
                 # Calculate next guess for u using tangent matrix
-                tangent_matrix = self.tangent_matrix(
-                    u_i,
-                    m,
-                    c,
-                    k,
-                    frequency
-                )
-                delta_u = slin.spsolve(
-                    tangent_matrix.tocsc(),
-                    self.residual(m, c, k, u_i, f, frequency)
-                )
+                # tangent_matrix = self.tangent_matrix_nl(
+                #     u_i,
+                #     m,
+                #     c,
+                #     k,
+                #     frequency
+                # ) + tangent_linear
+                tangent_matrix = tangent_linear
+
+                # delta_u = slin.spsolve(
+                #     tangent_matrix,
+                #     self.residual(tangent_linear, u_i, f, frequency)
+                # )
+                lu = slin.splu(tangent_matrix)
+                delta_u = lu.solve(residual)
                 u_i_next = u_i - delta_u
 
+                #  Update residual
+                residual = self.residual(
+                    tangent_linear, u_i_next, f, frequency
+                )
+
                 # Check for convergence
-                norm = scipy.linalg.norm(self.residual(
-                    m, c, k, u_i_next, f, frequency
-                ))
+                norm = np.linalg.norm(residual)
                 if norm < tolerance:
                     # Newton converged
                     u[frequency_index, :] = u_i_next
@@ -154,51 +172,80 @@ class NLPiezoHB(FEMSolver):
                     f"{frequency_index}. Choosing best value: {best_norm}")
                 u[frequency_index, :] = best_u_i
 
-        self.u = u
-
-    def residual(self, m, c, k, u, f, frequency):
-        number_of_nodes = len(self.mesh_data.nodes)
-        res = np.zeros(self.hb_order*3*number_of_nodes, dtype=np.complex128)
-        angular_frequency = 2*np.pi*frequency
-
         for n in range(self.hb_order):
-            u_n = u[n*3*number_of_nodes:(n+1)*3*number_of_nodes]
-            f_n = f[n*3*number_of_nodes:(n+1)*3*number_of_nodes]
-            res[n*3*number_of_nodes:(n+1)*3*number_of_nodes] = (
-                - angular_frequency**2*(n+1)**2*m@u_n
-                + 1j*angular_frequency*(n+1)*c@u_n
-                + k@u_n
-                - f_n
+            idx = 2*n
+            self.u_hb.append(
+                u[:, idx*3*number_of_nodes:(idx+1)*3*number_of_nodes]
+                + 1j*u[:, (idx+1)*3*number_of_nodes:(idx+2)*3*number_of_nodes]
             )
 
-        # Add nonlinearity
-        if self.hb_order >= 3:
-            u_3 = u[2*3*number_of_nodes:3*3*number_of_nodes]
-            res[2*3*number_of_nodes:3*3*number_of_nodes] += \
-                self.nonlinearity.evaluate_force_vector(u_3, m, c, k)
+        self.u = self.u_hb[0]
 
-        return res
+    def residual(self, res_matrix, u, f):
+        return res_matrix.dot(u)-f
 
-    def tangent_matrix(self, u, m, c, k, frequency):
-        angular_frequency = 2*np.pi*frequency
-        number_of_nodes = len(self.mesh_data.nodes)
+    def tangent_linear(self, m, c, k):
+        k_blocks = [
+            [None for _ in range(2*self.hb_order)]
+            for _ in range(2*self.hb_order)
+        ]
 
-        blocks =  []
+        a1_blocks = [
+            [None for _ in range(2*self.hb_order)]
+            for _ in range(2*self.hb_order)
+        ]
+
+        a2_blocks = [
+            [None for _ in range(2*self.hb_order)]
+            for _ in range(2*self.hb_order)
+        ]
+
         for n in range(self.hb_order):
-            u_n = u[n*3*number_of_nodes:(n+1)*3*number_of_nodes]
-            blocks.append(
-                - angular_frequency**2*(n+1)**2*m
-                + 1j*angular_frequency*(n+1)*c
-                + k
-                + self.nonlinearity.evaluate_jacobian(u_n, m, c, k)
-            )
+            i = 2*n
+            j = 2*n + 1
+            np1 = n + 1
 
-        # Add nonlinearity
-        if self.hb_order >= 3:
-            u_3 = u[2*3*number_of_nodes:3*3*number_of_nodes]
-            blocks[2] += self.nonlinearity.evaluate_jacobian(u_3, m, c, k)
+            # constant part (k)
+            k_blocks[i][i] = k
+            k_blocks[j][j] = k
 
-        return sparse.block_diag(blocks)
+            # ω part (c)
+            a1_blocks[i][j] =  np1 * c
+            a1_blocks[j][i] = -np1 * c
+
+            # ω² part (m)
+            a2_blocks[i][i] = -(np1**2) * m
+            a2_blocks[j][j] = -(np1**2) * m
+
+        # Convert to sparse once
+        k  = sparse.block_array(k_blocks, format="csc")
+        a1 = sparse.block_array(a1_blocks, format="csc")
+        a2 = sparse.block_array(a2_blocks, format="csc")
+
+        return k, a1, a2
+
+    def tangent_nonlinear(self, u, m, c, k, frequency):
+        number_of_nodes = len(self.mesh_data.nodes)
+        angular_frequency = 2*np.pi*frequency
+
+        blocks = [
+            [None for _ in range(2*self.hb_order)]
+            for _ in range(2*self.hb_order)
+        ]
+        # This can be done beforehand and not every iteration
+        for n in range(self.hb_order):
+            # cos eq derived after cos part
+            blocks[2*n][2*n] = -(n+1)**2*angular_frequency**2*m+k
+            # cos eq derived after sin part
+            blocks[2*n][2*n+1] = (n+1)*angular_frequency*c
+            # sin eq derived after cos part
+            blocks[2*n+1][2*n] = -(n+1)*angular_frequency*c
+            # sin eq derived after sin part
+            blocks[2*n+1][2*n+1] = -(n+1)**2*angular_frequency**2*m+k
+
+        # TODO Add nonlinarity
+
+        return sparse.block_array(blocks)
 
     def _get_load_vector(
         self,
@@ -219,8 +266,9 @@ class NLPiezoHB(FEMSolver):
 
         # Can be initialized to 0 because external load and volume
         # charge density is 0.
-        f = np.zeros(self.hb_order*3*number_of_nodes, dtype=np.float64)
+        f = np.zeros(2*self.hb_order*3*number_of_nodes, dtype=np.float64)
 
+        # TODO Right now only the base frequency cosine part is set
         # Set dirichlet bc
         f[nodes] = values
 

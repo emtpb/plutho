@@ -34,18 +34,16 @@ pic181_small_1 = plutho.MaterialData(
 )
 
 
-def simulate_hb(CWD, mesh, frequencies):
+def simulate_hb(CWD, mesh, frequencies, zeta, amplitude):
     # Simulation parameters
-    ZETA = 10
-    AMPLITUDE = 1
-    HB_ORDER = 3
+    HB_ORDER = 1
 
     nonlinearity = plutho.Nonlinearity()
-    nonlinearity.set_cubic_rayleigh(ZETA)
+    nonlinearity.set_cubic_rayleigh(zeta)
 
     # Create simulation
     sim = plutho.NLPiezoHB(
-        sim_name,
+        "HB_Test",
         mesh,
         nonlinearity,
         HB_ORDER
@@ -61,7 +59,7 @@ def simulate_hb(CWD, mesh, frequencies):
     sim.add_dirichlet_bc(
         plutho.FieldType.PHI,
         "Electrode",
-        AMPLITUDE*np.ones(len(frequencies))
+        amplitude*np.ones(len(frequencies))
     )
     sim.add_dirichlet_bc(
         plutho.FieldType.PHI,
@@ -71,7 +69,7 @@ def simulate_hb(CWD, mesh, frequencies):
 
     # Run simulation
     sim.assemble()
-    sim.simulate(frequencies, tolerance=1e-5)
+    sim.simulate(frequencies)
     sim.calculate_charge("Electrode", is_complex=True)
 
     # Save results
@@ -86,48 +84,17 @@ def simulate_hb(CWD, mesh, frequencies):
     return sim.q
 
 
-def simulate_piezo_freq(mesh, frequencies):
-    sim = plutho.PiezoFreq(
-        simulation_name="pincic_test",
-        mesh=mesh
-    )
+def plot_impedances(charges, amplitudes, frequencies):
+    for charge, amplitude in zip(charges, amplitudes):
+        impedance = np.abs(amplitude/(1j*2*np.pi*frequencies*charge))
+        plt.plot(frequencies/1e6, impedance, label=f"{amplitude} V")
 
-    sim.add_material(
-        material_name="pic181",
-        material_data=pic181,
-        physical_group_name=""
-    )
-
-    sim.add_dirichlet_bc(
-        field_type=plutho.FieldType.PHI,
-        physical_group_name="Electrode",
-        values=np.ones(len(frequencies))
-    )
-    sim.add_dirichlet_bc(
-        field_type=plutho.FieldType.PHI,
-        physical_group_name="Ground",
-        values=np.zeros(len(frequencies))
-    )
-
-    sim.assemble()
-    sim.simulate(
-        frequencies,
-        False
-    )
-
-    sim.calculate_charge("Electrode", is_complex=True)
-
-    return sim.q
-
-
-def plot_impedances(charge_pincic, charge_plutho, frequencies):
-    impedance_pincic = np.abs(1/(1j*2*np.pi*frequencies*charge_pincic))
-    impedance_plutho = np.abs(1/(1j*2*np.pi*frequencies*charge_plutho))
-    plt.plot(frequencies/1e6, impedance_pincic, label="Pincic")
-    plt.plot(frequencies/1e6, impedance_plutho, "--", label="Plutho")
+    plt.xlabel("Frequency / kHz")
+    plt.ylabel("Impedance / $\\Omega$")
     plt.legend()
     plt.grid()
     plt.show()
+
 
 if __name__ == "__main__":
     CWD = os.path.join(
@@ -150,14 +117,22 @@ if __name__ == "__main__":
         )
     mesh = plutho.Mesh(mesh_file, element_order=1)
 
-    sim_name = "hb_test"
-    hb_wd = os.path.join(CWD, sim_name)
-
-    frequencies = np.linspace(122e3, 128e3, num=500)
+    frequencies = np.linspace(100e3, 120e3, num=500)
 
     ## Simulate
+    # simulate_nonlinear_stationary(CWD)
+    ZETA = 00
+    amplitudes = [0.7, 3.6, 6.6]
     if True:
-        # simulate_nonlinear_stationary(CWD)
-        q_hb = simulate_hb(hb_wd, mesh, frequencies)
-        q_piezo = simulate_piezo_freq(mesh, frequencies)
-        plot_impedances(q_hb, q_piezo, frequencies)
+        charges = []
+        for amplitude in amplitudes[:1]:
+            hb_wd = os.path.join(CWD, f"hb_test_{amplitude}")
+            charges.append(simulate_hb(hb_wd, mesh, frequencies, ZETA, amplitude))
+
+    if True:
+        charges = []
+        for amplitude in amplitudes[:1]:
+            hb_wd = os.path.join(CWD, f"hb_test_{amplitude}")
+            charge = np.load(os.path.join(hb_wd, "q.npy"))
+            charges.append(charge)
+        plot_impedances(charges, amplitudes, frequencies)
