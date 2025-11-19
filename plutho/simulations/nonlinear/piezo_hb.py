@@ -60,7 +60,7 @@ class NLPiezoHB(FEMSolver):
         self.c = c
         self.k = k
 
-        self.nonlinearity.assemble(m, c, k)
+        self.nonlinearity.assemble(k)
 
     def simulate_linear(
         self,
@@ -97,7 +97,7 @@ class NLPiezoHB(FEMSolver):
 
         # Calculate system matrix
         angular_frequency = 2*np.pi*frequency
-        m, c, k = self.get_linear_system_matrix(m, c, k)
+        m, c, k = self.linear_system_matrix(m, c, k)
         s = m*angular_frequency**2+c*angular_frequency+k
 
         # Solve system
@@ -148,7 +148,7 @@ class NLPiezoHB(FEMSolver):
         # frequency later
         # Since its linear it is equal to the tangent matrix for the linear
         # part
-        m_tan, c_tan, k_tan = self.get_linear_system_matrix(m, c, k)
+        m_tan, c_tan, k_tan = self.linear_system_matrix(m, c, k)
 
         print("Starting harmonic balancing simulation")
         for frequency_index, frequency in enumerate(frequencies):
@@ -238,7 +238,7 @@ class NLPiezoHB(FEMSolver):
             u, frequency
         )
 
-    def get_linear_system_matrix(
+    def linear_system_matrix(
         self,
         m_fem: sparse.csc_array,
         c_fem: sparse.csc_array,
@@ -544,7 +544,7 @@ class NLPiezoHB(FEMSolver):
         k = sparse.random(dof, dof, density=0.3, format='csc')
 
         # Analytical jacobian
-        hb_m, hb_c, hb_k = self.get_linear_system_matrix(m, c, k)
+        hb_m, hb_c, hb_k = self.linear_system_matrix(m, c, k)
         hb_s = angular_frequency**2*hb_m+angular_frequency*hb_c+hb_k
         J_analytical = hb_s + self.tangent_nonlinear(u, frequency)
 
@@ -574,7 +574,10 @@ class NLPiezoHB(FEMSolver):
 
     def calculate_charge(self, electrode_name: str, is_complex: bool = True):
         """Calculate the charge of hb method. Resulting charge is saved in
-        self.q.
+        self.q. The cos and sin parts of the HB displacement are combined to
+        one complex value. The resultin charge has 2 dimensions, the first
+        dimension is the harmonic order and the second dimension the
+        frequencies.
 
         Parameters:
             electrode_name: Name of the electrode phyiscal group.

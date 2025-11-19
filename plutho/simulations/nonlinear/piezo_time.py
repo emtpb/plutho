@@ -55,7 +55,7 @@ class NLPiezoTime(FEMSolver):
         self.c = c
         self.k = k
 
-        self.nonlinearity.assemble(m, c, k)
+        self.nonlinearity.assemble(k)
 
     def simulate(
         self,
@@ -127,10 +127,7 @@ class NLPiezoTime(FEMSolver):
                 m@(a1*(next_u-current_u)-a2*v-a3*a)
                 + c@(a4*(next_u-current_u)+a5*v+a6*a)
                 + k@next_u+self.nonlinearity.evaluate_force_vector(
-                    next_u,
-                    m,
-                    c,
-                    k
+                    next_u
                 )-f
             )
 
@@ -175,8 +172,6 @@ class NLPiezoTime(FEMSolver):
                     # Calculate tangential stiffness matrix
                     tangent_matrix = self._calculate_tangent_matrix(
                         u_i,
-                        m,
-                        c,
                         k
                     )
                     delta_u = linalg.spsolve(
@@ -285,8 +280,6 @@ class NLPiezoTime(FEMSolver):
     def _calculate_tangent_matrix(
         self,
         u: npt.NDArray,
-        m: sparse.csc_array,
-        c: sparse.csc_array,
         k: sparse.csc_array
     ):
         # TODO Duplicate function in piezo_stationary.py
@@ -296,11 +289,8 @@ class NLPiezoTime(FEMSolver):
         Parameters:
             u: Current mechanical displacement.
             k: FEM stiffness matrix.
-            ln: FEM nonlinear stiffness matrix.
         """
         linear = k
-        nonlinear = self.nonlinearity.evaluate_jacobian(
-            u, m, c, k
-        )
+        nonlinear = self.nonlinearity.evaluate_jacobian(u)
 
         return (linear + nonlinear).tocsc()

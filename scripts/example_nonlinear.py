@@ -1,4 +1,4 @@
-"""Implements an example on how to run a staionary nonlinear simulation."""
+"""Implements an example on how to run a time-domain nonlinear simulation."""
 
 # Python standard libraries
 import os
@@ -89,12 +89,12 @@ def simulate_nl_time(CWD, mesh, delta_t, number_of_time_steps):
     # Simulation parameters
     GAMMA = 0.5
     BETA = 0.25
-    ZETA = 10
+    ZETA = 100
     AMPLITUDE = 10
     FREQUENCY = 2.07e6
     NEWTON_DAMPING = 0.25
-    MAX_ITER = 1000
-    TOLERANCE = 5e-9
+    MAX_ITER = 100
+    TOLERANCE = 1e-10
 
     nonlinearity = plutho.Nonlinearity()
     nonlinearity.set_cubic_rayleigh(ZETA)
@@ -110,7 +110,7 @@ def simulate_nl_time(CWD, mesh, delta_t, number_of_time_steps):
     sim.add_material(
         material_name="pic181",
         material_data=pic181,
-        physical_group_name=""  # Means all elements
+        physical_group_name=""
     )
 
     # Set boundary conditions
@@ -149,12 +149,11 @@ def simulate_nl_time(CWD, mesh, delta_t, number_of_time_steps):
     if not os.path.isdir(CWD):
         os.makedirs(CWD)
 
-    print(u[:2*node_count])
-
     u_file = os.path.join(CWD, "u.npy")
     q_file = os.path.join(CWD, "q.npy")
     np.save(u_file, sim.u)
-    np.save(q_file, sim.q)
+    if sim.q is not None:
+        np.save(q_file, sim.q)
 
 
 def plot_displacement_spectrum(
@@ -203,14 +202,14 @@ if __name__ == "__main__":
     DELTA_T = 1e-8
     NUMBER_OF_TIME_STEPS = 20000
 
-    nl_time_sim_name = "nonlinear_20000_1e8_10"
+    nl_time_sim_name = "nonlinear_cube_time_20000_1e8_10"
     nl_time_wd = os.path.join(CWD, nl_time_sim_name)
 
     ## Simulate
-    if False:
+    if True:
         # simulate_nonlinear_stationary(CWD)
         simulate_nl_time(nl_time_wd, mesh, DELTA_T, NUMBER_OF_TIME_STEPS)
 
     ## Plot
-    if True:
+    if False:
         plot_displacement_spectrum(nl_time_wd, DELTA_T, NUMBER_OF_TIME_STEPS)
