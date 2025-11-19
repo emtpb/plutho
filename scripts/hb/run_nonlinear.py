@@ -1,4 +1,6 @@
-"""Implements an example on how to run a staionary nonlinear simulation."""
+"""Implements an example script for the finite element method harmonic
+balacing simulation.
+"""
 
 # Python standard libraries
 import os
@@ -6,7 +8,7 @@ import os
 # Third party libraries
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy import signal
+from multiprocessing import Pool
 
 # Local libraries
 import plutho
@@ -34,10 +36,7 @@ pic181_small_1 = plutho.MaterialData(
 )
 
 
-def simulate_hb(CWD, mesh, frequencies, zeta, amplitude):
-    # Simulation parameters
-    HB_ORDER = 1
-
+def simulate_hb(CWD, mesh, frequencies, amplitude, zeta, hb_order):
     nonlinearity = plutho.Nonlinearity()
     nonlinearity.set_cubic_rayleigh(zeta)
 
@@ -46,7 +45,7 @@ def simulate_hb(CWD, mesh, frequencies, zeta, amplitude):
         "HB_Test",
         mesh,
         nonlinearity,
-        HB_ORDER
+        hb_order
     )
 
     # Set materials
@@ -79,9 +78,8 @@ def simulate_hb(CWD, mesh, frequencies, zeta, amplitude):
     u_file = os.path.join(CWD, "u.npy")
     q_file = os.path.join(CWD, "q.npy")
     np.save(u_file, sim.u)
-    np.save(q_file, sim.q)
-
-    return sim.q
+    if sim.q is not None:
+        np.save(q_file, sim.q)
 
 
 def plot_impedances(charges, amplitudes, frequencies):
@@ -99,6 +97,7 @@ def plot_impedances(charges, amplitudes, frequencies):
 if __name__ == "__main__":
     CWD = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
+        "..", "..",
         "simulations"
     )
 
@@ -117,22 +116,36 @@ if __name__ == "__main__":
         )
     mesh = plutho.Mesh(mesh_file, element_order=1)
 
-    frequencies = np.linspace(100e3, 120e3, num=500)
-
-    ## Simulate
-    # simulate_nonlinear_stationary(CWD)
-    ZETA = 00
+    # Simulation parameters
+    HB_ORDER = 3
+    frequencies = np.linspace(90e3, 120e3, num=1000)
+    zetas = [0, 1, 10, 50, 100, 500, 1000, 5000]
     amplitudes = [0.7, 3.6, 6.6]
-    if True:
-        charges = []
-        for amplitude in amplitudes[:1]:
-            hb_wd = os.path.join(CWD, f"hb_test_{amplitude}")
-            charges.append(simulate_hb(hb_wd, mesh, frequencies, ZETA, amplitude))
 
+    # Simulate
     if True:
+        args = []
+        for zeta in zetas:
+            for amplitude in amplitudes:
+                args.append((
+                    f"hb_test_{amplitude}_{zeta}",
+                    mesh,
+                    frequencies,
+                    amplitude,
+                    zeta,
+                    HB_ORDER
+                ))
+
+        with Pool() as p:
+            p.starmap(simulate_hb, args)
+
+    # Plot
+    if False:
+        zeta = 5000
+
         charges = []
-        for amplitude in amplitudes[:1]:
-            hb_wd = os.path.join(CWD, f"hb_test_{amplitude}")
+        for amplitude in amplitudes:
+            hb_wd = os.path.join(CWD, f"hb_test_{amplitude}_{zeta}")
             charge = np.load(os.path.join(hb_wd, "q.npy"))
             charges.append(charge)
         plot_impedances(charges, amplitudes, frequencies)
