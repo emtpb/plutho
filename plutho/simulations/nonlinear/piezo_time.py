@@ -44,7 +44,7 @@ class NLPiezoTime(FEMSolver):
         self.nonlinearity.set_mesh_data(self.mesh_data, self.node_points)
 
     def assemble(self):
-        """Redirect to general nonlinear assembly function"""
+        """Assembles the matrices based on the set material and mesh."""
         self.material_manager.initialize_materials()
 
         m, c, k = assemble(
@@ -191,11 +191,10 @@ class NLPiezoTime(FEMSolver):
                     ))
 
                     if norm < tolerance:
-                        # print(
-                        #     f"Newton converged at time step {time_index} "
-                        #     f"after {i+1} iteration(s)"
-                        # )
-                        # print(u_i_next)
+                        print(
+                            f"Newton converged at time step {time_index} "
+                            f"after {i+1} iteration(s)"
+                        )
                         next_u = u_i_next
                         self.converged = True
                         break

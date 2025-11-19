@@ -305,9 +305,6 @@ class Nonlinearity:
     def evaluate_force_vector(
         self,
         u: npt.NDArray,
-        m: sparse.csc_array,
-        c: sparse.csc_array,
-        k: sparse.csc_array
     ) -> npt.NDArray:
         """Evaluates the nonlinear force vector based on the previously set
         nonlinearity and the given displacement field u and the FEM matrices.
@@ -350,9 +347,6 @@ class Nonlinearity:
     def evaluate_jacobian(
         self,
         u: npt.NDArray,
-        m: sparse.csc_array,
-        c: sparse.csc_array,
-        k: sparse.csc_array
     ):
         """Evaluates the jacobian of the nonlinear force vector based on the
         current displacement u and the FEM matrices.
@@ -423,6 +417,9 @@ class Nonlinearity:
             c: FEM damping matrix.
             k: FEM stiffness matrix.
         """
+        nodes = self.mesh_data.nodes
+        number_of_nodes = len(nodes)
+
         if self.nonlinear_type is None:
             raise ValueError("Cannot assemble matrices, since no \
                 nonlinear type is set")
@@ -430,7 +427,11 @@ class Nonlinearity:
         match self.nonlinear_type:
             case NonlinearType.QuadraticRayleigh | \
                     NonlinearType.CubicRayleigh:
-                self.ln = k*self.zeta
+                self.ln = sparse.lil_array(
+                        (3*number_of_nodes, 3*number_of_nodes)
+                )
+                self.ln[:2*number_of_nodes, :2*number_of_nodes] = \
+                    k[:2*number_of_nodes, :2*number_of_nodes]*self.zeta
             case NonlinearType.QuadraticCustom:
                 self._assemble_quadratic_custom()
             case NonlinearType.CubicCustom:
