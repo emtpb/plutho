@@ -321,35 +321,38 @@ class Nonlinearity:
             case NonlinearType.QuadraticRayleigh:
                 return self.ln@(u**2)
             case NonlinearType.QuadraticCustom:
-                # Use jit compiler --> wimp?
-                """
-                result = np.zeros(3*number_of_nodes)
+                # Use jit compiler --> wimp? or inline c?
+                number_of_nodes = len(self.mesh_data.nodes)
+                res = np.zeros(3*number_of_nodes)
 
                 for index in range(3*number_of_nodes):
-                    L_k = L[index*3*number_of_nodes:(index+1)*3*number_of_nodes, :]
+                    L_k = self.ln[
+                        index*3*number_of_nodes:(index+1)*3*number_of_nodes,
+                        :
+                    ]
 
-                    result[index] = u @ (L_k @ u)
+                    res[index] = u @ (L_k @ u)
 
-                return result
-                """
-                raise NotImplementedError()
+                return res
             case NonlinearType.CubicRayleigh:
                 return self.ln@(u**3)
             case NonlinearType.CubicCustom:
                 raise NotImplementedError()
 
-    def evaluate_jacobian(self, u: npt.NDArray) -> sparse.csc_array:
+    def evaluate_jacobian(
+        self,
+        u: npt.NDArray,
+        k: sparse.csc_array
+    ) -> sparse.csc_array:
         """Evaluates the jacobian of the nonlinear force vector based on the
         current displacement u and the FEM matrices.
 
         Parameters:
             u: Current displacement vector.
-            m: FEM mass matrix.
-            c: FEM damping matrix.
             k: FEM stiffness matrix.
 
         Returns:
-            Jacobian matrix for set nonlinearity type.
+            Jacobian for nonlinearity.
         """
         if self.nonlinear_type is None:
             raise ValueError("Cannot evaluate jacobian, since no \
@@ -408,8 +411,7 @@ class Nonlinearity:
         Parameters:
             k: FEM stiffness matrix.
         """
-        nodes, _ = self.mesh_data.nodes
-        number_of_nodes = len(nodes)
+        number_of_nodes = len(self.mesh_data.nodes)
 
         if self.nonlinear_type is None:
             raise ValueError("Cannot assemble matrices, since no \

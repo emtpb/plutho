@@ -63,8 +63,8 @@ class NLPiezoTime(FEMSolver):
         number_of_time_steps: int,
         gamma: float,
         beta: float,
-        tolerance: float = 1e-11,
-        max_iter: int = 300,
+        tolerance: float = 1e-6,
+        max_iter: int = 100,
         newton_damping: float = 1,
         u_start: Union[npt.NDArray, None] = None
     ):
@@ -77,6 +77,8 @@ class NLPiezoTime(FEMSolver):
             beta: Newmark integration parameter.
             tolerance: Tolerance of the newton iteration.
             max_iter: Maximum number of iterations for newton raphson.
+            newton_damping: Multiplied with the newton iteration steps to
+                reduces the step size.
             u_start: Initial field for u.
         """
         dirichlet_nodes = np.array(self.dirichlet_nodes)
@@ -197,9 +199,6 @@ class NLPiezoTime(FEMSolver):
                         best_norm = norm
                         best_u_i = u_i_next
 
-                    if i % 100 == 0 and i > 0:
-                        print("Iteration:", i)
-
                     # Update for next iteration
                     u_i = u_i_next
                 if not self.converged:
@@ -291,6 +290,6 @@ class NLPiezoTime(FEMSolver):
             k: FEM stiffness matrix.
         """
         linear = k
-        nonlinear = self.nonlinearity.evaluate_jacobian(u)
+        nonlinear = self.nonlinearity.evaluate_jacobian(u, k)
 
         return (linear + nonlinear).tocsc()

@@ -107,8 +107,9 @@ class NLPiezoHB(FEMSolver):
     def simulate(
         self,
         frequencies: npt.NDArray,
-        tolerance: float = 1e-11,
-        max_iter: int = 300
+        tolerance: float = 1e-6,
+        max_iter: int = 100,
+        newton_damping: float = 1
     ):
         """Runs the nonlinear simulation at the given frequencies.
 
@@ -116,6 +117,8 @@ class NLPiezoHB(FEMSolver):
             frequencies: Frequencies for which the simulation is done.
             tolerance: Tolerance for the residual norm.
             max_iter: Maximum number of iterations for each frequency.
+            newton_damping: Multiplied with the newton iteration steps to
+                reduces the step size.
         """
         dirichlet_nodes = np.array(self.dirichlet_nodes)
         dirichlet_values = np.array(self.dirichlet_values)
@@ -164,62 +167,63 @@ class NLPiezoHB(FEMSolver):
                 dirichlet_values[:, frequency_index]
             )
 
-            # Get initial value
-            if frequency_index > 0:
-                u_i = u[frequency_index-1, :]
-            else:
-                u_i = u[frequency_index, :]
-
-            # Check if initial value is already sufficient
-            residual = self.residual(
-                tangent_linear, u_i, f, frequency
-            )
-            best_norm = np.linalg.norm(residual)
-            if best_norm < tolerance:
-                print("Initial value already sufficient")
-                u[frequency_index, :] = u_i
-                continue
-            best_u_i = u_i
-
             # Newton iteration
             converged = False
-            for i in range(max_iter):
-                # Calculate next guess for u using tangent matrix
-                tangent_matrix = tangent_linear + self.tangent_nonlinear(
-                    u_i, frequency
-                )
+            current_damping = newton_damping
+            while True:
+                # Get initial value
+                if frequency_index > 0:
+                    u_i = u[frequency_index-1, :]
+                else:
+                    u_i = u[frequency_index, :]
 
-                # TODO Faster than slin.spsolve? -> Change in other solvers?
-                lu = slin.splu(tangent_matrix)
-                delta_u = lu.solve(residual)
-                u_i_next = u_i - delta_u
-
-                #  Update residual
+                # Check if initial value is already sufficient
                 residual = self.residual(
-                    tangent_linear, u_i_next, f, frequency
+                    tangent_linear, u_i, f, frequency
                 )
-
-                # Check for convergence
                 norm = np.linalg.norm(residual)
                 if norm < tolerance:
-                    # Newton converged
-                    u[frequency_index, :] = u_i_next
-                    converged = True
-                    print(f"Frequency step {frequency_index} converged after "
-                        f"iteration {i+1}"
-                    )
+                    print("Initial value already sufficient")
+                    u[frequency_index, :] = u_i
                     break
-                elif norm < best_norm:
-                    best_norm = norm
-                    best_u_i = u_i_next
 
-                if i % 100 == 0 and i > 0:
-                    print("Iteration:", i)
+                for i in range(max_iter):
+                    # Calculate next guess for u using tangent matrix
+                    tangent_matrix = tangent_linear + self.tangent_nonlinear(
+                        u_i, frequency
+                    )
 
-            if not converged:
-                print("Newton did not converge at frequency index "
-                    f"{frequency_index}. Choosing best value: {best_norm}")
-                u[frequency_index, :] = best_u_i
+                    # TODO Faster than slin.spsolve? -> Change in other solvers?
+                    lu = slin.splu(tangent_matrix)
+                    delta_u = lu.solve(residual)
+                    u_i_next = u_i - delta_u * current_damping
+
+                    #  Update residual
+                    residual = self.residual(
+                        tangent_linear, u_i_next, f, frequency
+                    )
+
+                    # Check for convergence
+                    norm = np.linalg.norm(residual)
+                    if norm < tolerance:
+                        # Newton converged
+                        u[frequency_index, :] = u_i_next
+                        converged = True
+                        print(f"Frequency step {frequency_index} converged after "
+                            f"iteration {i+1}"
+                        )
+                        break
+
+                    # Update for next iteration
+                    u_i = u_i_next
+
+                if not converged:
+                    print("Tryping again with lower damping at "
+                        f"{frequency_index}")
+                    current_damping *= 0.5
+                else:
+                    current_damping = newton_damping
+                    break
 
         self.u = u
 
@@ -431,7 +435,7 @@ class NLPiezoHB(FEMSolver):
             u_time += np.outer(u[(2*n+1)*dof:(2*n+2)*dof], sin_basis[n, :])
 
         # Build jacobian from sub-blocks and calculate dft of df_du_time
-        df_du_time = u_time ** 2
+        df_du_time = 3 * u_time ** 2
         blocks = []
         for i in range(self.hb_order):
             # Cos part
@@ -441,13 +445,13 @@ class NLPiezoHB(FEMSolver):
                 integrand = df_du_time * cos_basis[i, :] * cos_basis[j, :]
                 cc_diag = (2/N) * np.sum(integrand, axis=1)
                 cc_diag_sparse = sparse.diags_array([cc_diag], offsets=[0])
-                cc = 3*self.nonlinearity.ln@cc_diag_sparse
+                cc = self.nonlinearity.ln@cc_diag_sparse
 
                 # Cos sin part
                 integrand = df_du_time * cos_basis[i, :] * sin_basis[j, :]
                 cs_diag = (2/N) * np.sum(integrand, axis=1)
                 cs_diag_sparse = sparse.diags_array([cs_diag], offsets=[0])
-                cs = 3*self.nonlinearity.ln@cs_diag_sparse
+                cs = self.nonlinearity.ln@cs_diag_sparse
 
                 row_blocks.append(cc)
                 row_blocks.append(cs)
@@ -461,13 +465,13 @@ class NLPiezoHB(FEMSolver):
                 integrand = df_du_time * sin_basis[i, :] * cos_basis[j, :]
                 sc_diag = (2/N) * np.sum(integrand, axis=1)
                 sc_diag_sparse = sparse.diags_array([sc_diag], offsets=[0])
-                sc = 3*self.nonlinearity.ln@sc_diag_sparse
+                sc = self.nonlinearity.ln@sc_diag_sparse
 
                 # Sin sin part
                 integrand = df_du_time * sin_basis[i, :] * sin_basis[j, :]
                 ss_diag = (2/N) * np.sum(integrand, axis=1)
                 ss_diag_sparse = sparse.diags_array([ss_diag], offsets=[0])
-                ss = 3*self.nonlinearity.ln@ss_diag_sparse
+                ss = self.nonlinearity.ln@ss_diag_sparse
 
                 row_blocks.append(sc)
                 row_blocks.append(ss)
@@ -535,13 +539,13 @@ class NLPiezoHB(FEMSolver):
         # Create test data
         nodes, _ = self.mesh.get_mesh_nodes_and_elements()
         dof = 3*len(nodes)
-        frequency = np.random.randn(1)[0] * 1e6
+        frequency = np.random.randn(1)[0] * 1e6 + 1
         angular_frequency = 2*np.pi*frequency
         u = np.random.randn(2*self.hb_order*dof) * 0.01
         f = np.random.randn(2*self.hb_order*dof) * 0.01
-        m = sparse.random(dof, dof, density=0.3, format='csc')
-        c = sparse.random(dof, dof, density=0.3, format='csc')
-        k = sparse.random(dof, dof, density=0.3, format='csc')
+        m = sparse.random(dof, dof, density=0.1, format='csc')
+        c = sparse.random(dof, dof, density=0.1, format='csc')
+        k = sparse.random(dof, dof, density=0.1, format='csc')
 
         # Analytical jacobian
         hb_m, hb_c, hb_k = self.linear_system_matrix(m, c, k)
@@ -553,12 +557,13 @@ class NLPiezoHB(FEMSolver):
         J_fd = np.zeros((n, n))
 
         for i in range(n):
-            u_perturbed = u.copy()
-            u_perturbed[i] += epsilon
-            Fp = self.residual(hb_s, u_perturbed, f, frequency)
+            u_plus = u.copy()
+            u_plus[i] += epsilon
+            Fp = self.residual(hb_s, u_plus, f, frequency)
 
-            u_perturbed[i] -= epsilon
-            Fm = self.residual(hb_s, u_perturbed, f, frequency)
+            u_minus = u.copy()
+            u_minus[i] -= epsilon
+            Fm = self.residual(hb_s, u_minus, f, frequency)
 
             J_fd[:, i] = (Fp - Fm) / (2*epsilon)
 
