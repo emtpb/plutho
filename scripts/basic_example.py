@@ -396,6 +396,7 @@ def simulate_thermo_time(base_directory):
 if __name__ == "__main__":
     CWD = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
+        "..",
         "simulations"
     )
 

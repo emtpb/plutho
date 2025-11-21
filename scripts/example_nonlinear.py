@@ -89,10 +89,10 @@ def simulate_nl_time(CWD, mesh, delta_t, number_of_time_steps):
     # Simulation parameters
     GAMMA = 0.5
     BETA = 0.25
-    ZETA = 100
+    ZETA = 1e12
     AMPLITUDE = 10
     FREQUENCY = 2.07e6
-    NEWTON_DAMPING = 0.25
+    NEWTON_DAMPING = 0.8
     MAX_ITER = 100
     TOLERANCE = 1e-10
 
@@ -164,8 +164,8 @@ def plot_displacement_spectrum(
     node_index = 129
 
     u = np.load(os.path.join(working_directory, "u.npy"))
-    u_r = u[2*node_index, :]
-    u_z = u[2*node_index+1, :]
+    u_r = u[:, 2*node_index]
+    u_z = u[:, 2*node_index+1]
     U_r_jw = np.fft.fft(u_r)
 
     frequencies = np.fft.fftfreq(number_of_time_steps, delta_t)
@@ -189,27 +189,26 @@ if __name__ == "__main__":
 
     # Load/create ring mesh
     mesh_file = os.path.join(CWD, "ring_mesh.msh")
-    if not os.path.exists(mesh_file):
-        plutho.Mesh.generate_rectangular_mesh(
-            mesh_file,
-            width=0.00635,
-            height=0.001,
-            x_offset=0.0026,
-            mesh_size=0.0001
-        )
+    plutho.Mesh.generate_rectangular_mesh(
+        mesh_file,
+        width=0.00635,
+        height=0.001,
+        x_offset=0.0026,
+        mesh_size=0.0001
+    )
     mesh = plutho.Mesh(mesh_file, element_order=1)
 
     DELTA_T = 1e-8
     NUMBER_OF_TIME_STEPS = 20000
 
-    nl_time_sim_name = "nonlinear_cube_time_20000_1e8_10"
+    nl_time_sim_name = "nonlinear_time_test"
     nl_time_wd = os.path.join(CWD, nl_time_sim_name)
 
     ## Simulate
-    if True:
+    if False:
         # simulate_nonlinear_stationary(CWD)
         simulate_nl_time(nl_time_wd, mesh, DELTA_T, NUMBER_OF_TIME_STEPS)
 
     ## Plot
-    if False:
+    if True:
         plot_displacement_spectrum(nl_time_wd, DELTA_T, NUMBER_OF_TIME_STEPS)

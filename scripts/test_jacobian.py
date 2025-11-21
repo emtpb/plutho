@@ -49,7 +49,7 @@ if __name__ == "__main__":
             mesh_size=0.0001
         )
 
-    ZETA = 1
+    ZETA = 1e12
     HB_ORDER = 3
 
     mesh = plutho.Mesh(mesh_file, element_order=1)
@@ -74,4 +74,5 @@ if __name__ == "__main__":
 
     sim.assemble()
 
-    sim.test_jacobian()
+    for i in range(10):
+        sim.test_jacobian()
