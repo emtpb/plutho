@@ -167,63 +167,60 @@ class NLPiezoHB(FEMSolver):
                 dirichlet_values[:, frequency_index]
             )
 
+            # Get initial value
+            if frequency_index > 0:
+                u_i = u[frequency_index-1, :]
+            else:
+                u_i = u[frequency_index, :]
+
+            # Check if initial value is already sufficient
+            residual = self.residual(
+                tangent_linear, u_i, f, frequency
+            )
+            norm = np.linalg.norm(residual)
+            if norm < tolerance:
+                print("Initial value already sufficient")
+                u[frequency_index, :] = u_i
+                continue
+
             # Newton iteration
             converged = False
-            current_damping = newton_damping
-            while True:
-                # Get initial value
-                if frequency_index > 0:
-                    u_i = u[frequency_index-1, :]
-                else:
-                    u_i = u[frequency_index, :]
-
-                # Check if initial value is already sufficient
-                residual = self.residual(
-                    tangent_linear, u_i, f, frequency
+            for i in range(max_iter):
+                # Calculate next guess for u using tangent matrix
+                tangent_matrix = tangent_linear + self.tangent_nonlinear(
+                    u_i, frequency
                 )
+
+                # TODO Faster than slin.spsolve? -> Change in other solvers?
+                lu = slin.splu(tangent_matrix)
+                delta_u = lu.solve(residual)
+                u_i_next = u_i - delta_u * newton_damping
+
+                #  Update residual
+                residual = self.residual(
+                    tangent_linear, u_i_next, f, frequency
+                )
+
+                # Check for convergence
                 norm = np.linalg.norm(residual)
                 if norm < tolerance:
-                    print("Initial value already sufficient")
-                    u[frequency_index, :] = u_i
+                    # Newton converged
+                    u[frequency_index, :] = u_i_next
+                    converged = True
+                    print(f"Frequency step {frequency_index} converged after "
+                        f"iteration {i+1}"
+                    )
                     break
 
-                for i in range(max_iter):
-                    # Calculate next guess for u using tangent matrix
-                    tangent_matrix = tangent_linear + self.tangent_nonlinear(
-                        u_i, frequency
-                    )
+                # Update for next iteration
+                u_i = u_i_next
 
-                    # TODO Faster than slin.spsolve? -> Change in other solvers?
-                    lu = slin.splu(tangent_matrix)
-                    delta_u = lu.solve(residual)
-                    u_i_next = u_i - delta_u * current_damping
-
-                    #  Update residual
-                    residual = self.residual(
-                        tangent_linear, u_i_next, f, frequency
-                    )
-
-                    # Check for convergence
-                    norm = np.linalg.norm(residual)
-                    if norm < tolerance:
-                        # Newton converged
-                        u[frequency_index, :] = u_i_next
-                        converged = True
-                        print(f"Frequency step {frequency_index} converged after "
-                            f"iteration {i+1}"
-                        )
-                        break
-
-                    # Update for next iteration
-                    u_i = u_i_next
-
-                if not converged:
-                    print("Tryping again with lower damping at "
-                        f"{frequency_index}")
-                    current_damping *= 0.5
-                else:
-                    current_damping = newton_damping
-                    break
+            if not converged:
+                self.u = u
+                return
+                print("Not converged, just using previous value at "
+                    f"{frequency_index}")
+                u[frequency_index, :] = u[frequency_index-1, :]
 
         self.u = u
 
