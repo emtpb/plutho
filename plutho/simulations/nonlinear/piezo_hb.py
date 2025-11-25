@@ -2,7 +2,7 @@
 harmonic balancing method."""
 
 # Python standard libraries
-from typing import Tuple
+from typing import Tuple, Callable
 
 # Third party libraries
 import numpy as np
@@ -104,6 +104,153 @@ class NLPiezoHB(FEMSolver):
         lu = slin.splu(s)
         return lu.solve(f)
 
+    @staticmethod
+    def newton_arclength(
+        u_init: npt.NDArray,
+        P: npt.NDArray,
+        rhs_fun: Callable,
+        tangent_fun: Callable,
+        max_iter: int,
+        tolerance: float,
+        u_last: npt.NDArray,
+        load_last: float
+    ):
+        # Set initial value
+        u_0 = u_init
+        arc_length = 0
+
+        # Check if initial value is already sufficient
+        residual = rhs_fun(u_0)
+        norm = np.linalg.norm(residual)
+        if norm < tolerance:
+            print("Initial value already sufficient")
+            return u_0
+
+        # Residual function
+        def G(u, load):
+            return rhs_fun(u) - load*P
+
+        # RIKS arc-length constraint
+        def riks(u, u_prev, load, load_prev):
+            return (u_0-u_prev).T@(u-u_0)+(load_0-load_prev)*(load-load_0)
+
+        # RIKS arc-length constrained derived after load
+        def riks_dload(load_prev):
+            return load_0-load_prev
+
+        # RIKS arc-length constrained derived after u
+        def riks_du(u_prev):
+            return u_0-u_prev
+
+        converged = False
+        while not converged:
+            # Predictor step
+            k_t = tangent_fun(u_0)
+            lu = slin.splu(k_t)
+            u_p_0 = lu.solve(P) * 0.1  # Scale down initial predictor
+            load_0 = load_last + arc_length/np.linalg.norm(u_p_0)
+
+            # Initial guess for arc_length
+            if arc_length == 0:
+                arc_length = 0.01 * np.linalg.norm(u_p_0)
+            else:
+                arc_length *= 0.25
+
+            # Set iteration variables to intials
+            u_i = u_0
+            load_i = load_0
+
+            # Iterate
+            for i in range(max_iter):
+                print(f"Load {load_i}")
+                # Compute increments
+                u_p_next = lu.solve(P)
+                u_g_next = lu.solve(-G(u_i, load_i))
+
+                delta_load_i = - (
+                    riks(u_i, u_last, load_i, load_last)
+                    + riks_du(u_last)@u_g_next
+                )/(
+                    riks_dload(load_last)
+                    + riks_du(u_last)@u_p_next
+                )
+                delta_u_i = delta_load_i*u_p_next+u_g_next
+
+                # Increment
+                load_i_next = load_i + delta_load_i
+                u_i_next = u_i + delta_u_i
+
+                #  Update residual
+                residual = G(u_i_next, load_i_next)
+
+                # Check for convergence
+                norm = np.linalg.norm(residual)
+                if norm < tolerance:
+                    # Newton converged
+                    print(f"Newton converged after {i+1} iterations")
+                    return u_i_next, load_i_next
+                elif np.abs(norm) > 1e20:
+                    break
+
+                # Update for next iteration
+                u_i = u_i_next
+                load_i = load_i_next
+                lu = slin.splu(tangent_fun(u_i))
+
+            print(f"Newton did not converged: Maximum iteration ({norm})"
+                " retrying with lower arc-length"
+            )
+
+        print(f"Newton did not converge: Maximum iteration ({norm})")
+        return u_i, load_i
+
+    @staticmethod
+    def newton(
+        u_init: npt.NDArray,
+        residual_fun: Callable,
+        tangent_fun: Callable,
+        max_iter: int,
+        tolerance: float,
+        newton_damping: float
+    ):
+        # Set initial value
+        u_i = u_init
+
+        # Check if initial value is already sufficient
+        residual = residual_fun(u_i)
+        norm = np.linalg.norm(residual)
+        if norm < tolerance:
+            print("Initial value already sufficient")
+            return u_i
+
+        # Run the iteration
+        converged = False
+        for i in range(max_iter):
+            # Calculate next guess for u using tangent matrix
+            tangent_matrix = tangent_fun(u_i)
+
+            # TODO Faster than slin.spsolve? -> Change in other solvers?
+            lu = slin.splu(tangent_matrix)
+            delta_u = lu.solve(residual)
+            u_i_next = u_i - delta_u * newton_damping
+
+            #  Update residual
+            residual = residual_fun(u_i)
+
+            # Check for convergence
+            norm = np.linalg.norm(residual)
+            if norm < tolerance:
+                # Newton converged
+                print(f"Newton converged after {i} iterations")
+                return u_i_next
+
+            # Update for next iteration
+            u_i = u_i_next
+
+        if not converged:
+            print(f"Newton did not converge: Maximum iteration ({norm})")
+            return u_i
+
     def simulate(
         self,
         frequencies: npt.NDArray,
@@ -141,11 +288,7 @@ class NLPiezoHB(FEMSolver):
         u = np.zeros(
             (len(frequencies), 2*3*self.hb_order*number_of_nodes)
         )
-        u[0, :] = self.simulate_linear(
-            frequencies[0],
-            dirichlet_nodes,
-            dirichlet_values[:, 0]
-        )
+        loads = np.zeros(len(frequencies))
 
         # Linear tangent matrix can be created beforehand and scaled with
         # frequency later
@@ -155,6 +298,7 @@ class NLPiezoHB(FEMSolver):
 
         print("Starting harmonic balancing simulation")
         for frequency_index, frequency in enumerate(frequencies):
+            print(f"Frequency index: {frequency_index}")
             # Construct whole linear tangent matrix using the current frequency
             angular_frequency = 2*np.pi*frequency
             tangent_linear = (
@@ -162,65 +306,62 @@ class NLPiezoHB(FEMSolver):
                 angular_frequency**2 * m_tan
             ).tocsc()
 
+            # Get load vector
             f = self._get_load_vector(
                 dirichlet_nodes,
                 dirichlet_values[:, frequency_index]
             )
 
+            # Define residual and tangent functions for newton
+            def residual_fun(u):
+                return self.residual(
+                    tangent_linear,
+                    u,
+                    f,
+                    frequency
+                )
+            def rhs_arc_len_fun(u):
+                return residual_fun(u) + f
+
+            def tangent_fun(u):
+                return tangent_linear + self.tangent_nonlinear(
+                    u, frequency
+                )
+
             # Get initial value
             if frequency_index > 0:
-                u_i = u[frequency_index-1, :]
+                u_init = u[frequency_index-1, :]
             else:
-                u_i = u[frequency_index, :]
+                u_init = self.simulate_linear(
+                    frequencies[0],
+                    dirichlet_nodes,
+                    dirichlet_values[:, 0]
+                )
 
-            # Check if initial value is already sufficient
-            residual = self.residual(
-                tangent_linear, u_i, f, frequency
+            # Solve newton normal
+            """
+            u[frequency_index, :] = NLPiezoHB.newton(
+                u_init,
+                residual_fun,
+                tangent_fun,
+                max_iter,
+                tolerance,
+                newton_damping
             )
-            norm = np.linalg.norm(residual)
-            if norm < tolerance:
-                print("Initial value already sufficient")
-                u[frequency_index, :] = u_i
-                continue
-
-            # Newton iteration
-            converged = False
-            for i in range(max_iter):
-                # Calculate next guess for u using tangent matrix
-                tangent_matrix = tangent_linear + self.tangent_nonlinear(
-                    u_i, frequency
-                )
-
-                # TODO Faster than slin.spsolve? -> Change in other solvers?
-                lu = slin.splu(tangent_matrix)
-                delta_u = lu.solve(residual)
-                u_i_next = u_i - delta_u * newton_damping
-
-                #  Update residual
-                residual = self.residual(
-                    tangent_linear, u_i_next, f, frequency
-                )
-
-                # Check for convergence
-                norm = np.linalg.norm(residual)
-                if norm < tolerance:
-                    # Newton converged
-                    u[frequency_index, :] = u_i_next
-                    converged = True
-                    print(f"Frequency step {frequency_index} converged after "
-                        f"iteration {i+1}"
-                    )
-                    break
-
-                # Update for next iteration
-                u_i = u_i_next
-
-            if not converged:
-                self.u = u
-                return
-                print("Not converged, just using previous value at "
-                    f"{frequency_index}")
-                u[frequency_index, :] = u[frequency_index-1, :]
+            """
+            # Solve newton arclen
+            u_res, load_res = NLPiezoHB.newton_arclength(
+                u_init,
+                f,
+                rhs_arc_len_fun,
+                tangent_fun,
+                max_iter,
+                tolerance,
+                u[frequency_index-1, :],
+                loads[frequency_index-1]
+            )
+            u[frequency_index, :] = u_res
+            loads[frequency_index] = load_res
 
         self.u = u
 
@@ -498,7 +639,7 @@ class NLPiezoHB(FEMSolver):
         # charge density is 0.
         f = np.zeros(2*self.hb_order*3*number_of_nodes, dtype=np.float64)
 
-        # TODO Right now only the base frequency cosine part is set
+        # TODO: Right now only the base frequency cosine part is set
         # Set dirichlet bc
         f[nodes] = values
 
@@ -533,6 +674,7 @@ class NLPiezoHB(FEMSolver):
         Returns:
             Tuple of absolute and relative errors.
         """
+        # TODO: Rework and make class independent
         # Create test data
         nodes, _ = self.mesh.get_mesh_nodes_and_elements()
         dof = 3*len(nodes)

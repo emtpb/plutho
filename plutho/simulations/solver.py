@@ -168,6 +168,7 @@ class FEMSolver(ABC):
             elif field_type is FieldType.U_Z:
                 real_index = 2*node_index+1
 
+            # TODO: Flip the indices in dirichlet_values: [freq, nodes]
             self.dirichlet_nodes.append(real_index)
             self.dirichlet_values.append(values)
 
