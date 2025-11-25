@@ -358,28 +358,27 @@ class Nonlinearity:
             raise ValueError("Cannot evaluate jacobian, since no \
                 nonlinear type is set")
 
+        number_of_nodes = len(self.mesh_data.nodes)
+
         match self.nonlinear_type:
             case NonlinearType.QuadraticRayleigh:
                 return 2*self.ln@sparse.diags_array(u)
             case NonlinearType.QuadraticCustom:
-                """
                 k_tangent = sparse.lil_matrix((
                     3*number_of_nodes, 3*number_of_nodes
                 ))
-
-                k_tangent += k
 
                 m = np.arange(3*number_of_nodes)
 
                 # TODO This calculation is very slow
                 for i in range(3*number_of_nodes):
-                    l_k = ln[3*number_of_nodes*i:3*number_of_nodes*(i+1), :]
-                    l_i = ln[3*number_of_nodes*m+i, :]
+                    l_k = self.ln[3*number_of_nodes*i:3*number_of_nodes*(i+1), :]
+                    l_i = self.ln[3*number_of_nodes*m+i, :]
 
                     k_tangent += (l_k*u[i]).T
                     k_tangent += (l_i*u[i]).T
-                """
-                raise NotImplementedError()
+
+                return k_tangent.tocsc()
             case NonlinearType.CubicRayleigh:
                 return 3*self.ln@sparse.diags_array(u**2)
             case NonlinearType.CubicCustom:
@@ -392,13 +391,15 @@ class Nonlinearity:
             raise ValueError("Cannot apply dirichlet boundary \
                 conditions, since no nonlinear type is set")
 
-        # TODO Is a different handling for nonlinear types necessary?
+        number_of_nodes = len(self.mesh_data.nodes)
+
         match self.nonlinear_type:
             case NonlinearType.QuadraticRayleigh | \
                     NonlinearType.CubicRayleigh:
                 self.ln[dirichlet_nodes, :] = 0
             case NonlinearType.QuadraticCustom:
-                raise NotImplementedError()
+                for i in range(3*number_of_nodes):
+                    self.ln[dirichlet_nodes+i*3*number_of_nodes, :] = 0
             case NonlinearType.CubicCustom:
                 raise NotImplementedError()
 
