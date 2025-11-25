@@ -66,7 +66,7 @@ class NLPiezoHB(FEMSolver):
         self,
         frequency: float,
         dirichlet_nodes: npt.NDArray,
-        dirichlet_values: npt.NDArray
+        amplitude: float
     ) -> npt.NDArray:
         """Runs a linear simulation for one frequency and returns the whole
         u vector.
@@ -92,7 +92,7 @@ class NLPiezoHB(FEMSolver):
         # Prepare arrays
         f = self._get_load_vector(
             dirichlet_nodes,
-            dirichlet_values
+            amplitude
         )
 
         # Calculate system matrix
@@ -103,106 +103,6 @@ class NLPiezoHB(FEMSolver):
         # Solve system
         lu = slin.splu(s)
         return lu.solve(f)
-
-    @staticmethod
-    def newton_arclength(
-        u_init: npt.NDArray,
-        P: npt.NDArray,
-        rhs_fun: Callable,
-        tangent_fun: Callable,
-        max_iter: int,
-        tolerance: float,
-        u_last: npt.NDArray,
-        load_last: float
-    ):
-        # Set initial value
-        u_0 = u_init
-        arc_length = 0
-
-        # Check if initial value is already sufficient
-        residual = rhs_fun(u_0)
-        norm = np.linalg.norm(residual)
-        if norm < tolerance:
-            print("Initial value already sufficient")
-            return u_0
-
-        # Residual function
-        def G(u, load):
-            return rhs_fun(u) - load*P
-
-        # RIKS arc-length constraint
-        def riks(u, u_prev, load, load_prev):
-            return (u_0-u_prev).T@(u-u_0)+(load_0-load_prev)*(load-load_0)
-
-        # RIKS arc-length constrained derived after load
-        def riks_dload(load_prev):
-            return load_0-load_prev
-
-        # RIKS arc-length constrained derived after u
-        def riks_du(u_prev):
-            return u_0-u_prev
-
-        converged = False
-        while not converged:
-            # Predictor step
-            k_t = tangent_fun(u_0)
-            lu = slin.splu(k_t)
-            u_p_0 = lu.solve(P) * 0.1  # Scale down initial predictor
-            load_0 = load_last + arc_length/np.linalg.norm(u_p_0)
-
-            # Initial guess for arc_length
-            if arc_length == 0:
-                arc_length = 0.01 * np.linalg.norm(u_p_0)
-            else:
-                arc_length *= 0.25
-
-            # Set iteration variables to intials
-            u_i = u_0
-            load_i = load_0
-
-            # Iterate
-            for i in range(max_iter):
-                print(f"Load {load_i}")
-                # Compute increments
-                u_p_next = lu.solve(P)
-                u_g_next = lu.solve(-G(u_i, load_i))
-
-                delta_load_i = - (
-                    riks(u_i, u_last, load_i, load_last)
-                    + riks_du(u_last)@u_g_next
-                )/(
-                    riks_dload(load_last)
-                    + riks_du(u_last)@u_p_next
-                )
-                delta_u_i = delta_load_i*u_p_next+u_g_next
-
-                # Increment
-                load_i_next = load_i + delta_load_i
-                u_i_next = u_i + delta_u_i
-
-                #  Update residual
-                residual = G(u_i_next, load_i_next)
-
-                # Check for convergence
-                norm = np.linalg.norm(residual)
-                if norm < tolerance:
-                    # Newton converged
-                    print(f"Newton converged after {i+1} iterations")
-                    return u_i_next, load_i_next
-                elif np.abs(norm) > 1e20:
-                    break
-
-                # Update for next iteration
-                u_i = u_i_next
-                load_i = load_i_next
-                lu = slin.splu(tangent_fun(u_i))
-
-            print(f"Newton did not converged: Maximum iteration ({norm})"
-                " retrying with lower arc-length"
-            )
-
-        print(f"Newton did not converge: Maximum iteration ({norm})")
-        return u_i, load_i
 
     @staticmethod
     def newton(
@@ -250,6 +150,217 @@ class NLPiezoHB(FEMSolver):
         if not converged:
             print(f"Newton did not converge: Maximum iteration ({norm})")
             return u_i
+
+    @staticmethod
+    def newton_arclength(
+        u_last: npt.NDArray,
+        freq_last: float,
+        freq_load_last: float,
+        load_vector: npt.NDArray,
+        tangent_fun: Callable,
+        rhs_fun: Callable,
+        tolerance: float,
+        max_iter: int
+    ):
+        # Set initial value
+        u_0 = u_last
+
+        # Predictor step
+        lu = slin.splu(tangent_fun(u_0, freq_last, freq_load_last))
+        delta_u_p_0 = lu.solve(load_vector)
+        u_p = u_last + delta_u_p_0
+
+        # Compute frequency load increment
+        arc_length = 1000 * np.linalg.norm(u_p)
+        delta_freq_load_0 = arc_length/(np.linalg.norm(delta_u_p_0))
+        ## Calculate direction
+        current_stiffness_parameter = load_vector@u_p/np.linalg.norm(u_p)
+        if current_stiffness_parameter < 0:
+            delta_freq_load_0 *= -1
+        freq_load_0 = freq_load_last + delta_freq_load_0
+
+        # Check if initial value is already sufficient
+        residual = rhs_fun(u_0, freq_last, freq_load_0)
+        norm = np.linalg.norm(residual)
+        if norm < tolerance:
+            print("Initial value already sufficient")
+            return u_0
+
+        # Set initial values for iteraion
+        u_i = u_0
+        freq_load_i = freq_load_0
+        for i in range(max_iter):
+            # Residual function
+            def G(u, freq_load):
+                return rhs_fun(u, freq_last, freq_load) - load_vector
+
+            # RIKS arc-length constraint
+            def riks(u, freq_load):
+                return (
+                    (u_0-u_last).T@(u-u_0)
+                    + (freq_load_0-freq_load_last)*(freq_load-freq_load_0)
+                )
+
+            # RIKS arc-length constrained derived after load
+            def riks_dload():
+                return freq_load_0-freq_load_last
+
+            # RIKS arc-length constrained derived after u
+            def riks_du():
+                return u_0-u_last
+
+            # Solve for increments
+            u_p_next = lu.solve(load_vector)
+            u_g_next = lu.solve(-G(u_i, freq_load_i))
+
+            # Calculate increments
+            denominator = riks_dload()+riks_du()@u_p_next
+            print(denominator)
+            if denominator < 1e-14:
+                print("Singular system")
+                break
+            delta_freq_load_i = - (
+                riks(u_i, freq_load_i)
+                + riks_du()@u_g_next
+            )/denominator
+            delta_u_i = delta_freq_load_i*u_p_next+u_g_next
+
+            # Increment
+            freq_load_i_next = freq_load_i + delta_freq_load_i
+            u_i_next = u_i + delta_u_i
+
+            # Update residual
+            residual = G(u_i_next, freq_load_i_next)
+
+            # Check for convergence
+            norm = np.linalg.norm(residual)
+            if norm < tolerance:
+                # Newton converged
+                print(f"Newton converged after {i+1} iterations")
+                return u_i_next, freq_load_i_next
+            elif np.abs(norm) > 1e10:
+                print("Newton diverged")
+                break
+
+            # Update for next iteration
+            u_i = u_i_next
+            freq_load_i = freq_load_i_next
+            lu = slin.splu(tangent_fun(u_i, freq_last, freq_load_i))
+
+        print(f"Newton did not converged: Maximum iteration (norm: {norm})")
+        return u_i, freq_load_i
+
+    def simulate_path(
+        self,
+        frequency_start: float,
+        frequency_steps: int,
+        frequency_default_step: float,
+        amplitude: float,
+        tolerance: float = 1e-6,
+        max_iter: int = 100,
+    ):
+        dirichlet_nodes = np.array(self.dirichlet_nodes)
+        number_of_nodes = len(self.mesh_data.nodes)
+
+        m = self.m.copy()
+        c = self.c.copy()
+        k = self.k.copy()
+
+        # Apply dirichlet bc to matrices
+        m, c, k = self._apply_dirichlet_bc(
+            m,
+            c,
+            k,
+            dirichlet_nodes
+        )
+        self.nonlinearity.apply_dirichlet_bc(dirichlet_nodes)
+
+        # Prepare array and guess initial value using linear simulation
+        u = np.zeros(
+            (frequency_steps, 2*3*self.hb_order*number_of_nodes)
+        )
+        u[0, :] = self.simulate_linear(
+            frequency_start,
+            dirichlet_nodes,
+            amplitude
+        )
+        frequency_loads = np.zeros(frequency_steps)
+        frequency_loads[0] = 1
+        frequencies = np.zeros(frequency_steps+1)
+        frequencies[0] = frequency_start
+
+        # Linear tangent matrix can be created beforehand and scaled with
+        # frequency later
+        # Since its linear it is equal to the tangent matrix for the linear
+        # part
+        m_tan, c_tan, k_tan = self.linear_system_matrix(m, c, k)
+
+        print("Starting harmonic balancing simulation")
+        for index in range(frequency_steps):
+            frequency = frequencies[index]
+            print(f"Frequency index: {index}, Frequency: {frequency}")
+
+            # Get load vector
+            load_vector = self._get_load_vector(
+                dirichlet_nodes,
+                amplitude
+            )
+
+            # Define residual and tangent functions for newton
+            def residual_fun(u, frequency, frequency_load):
+                angular_frequency = 2*np.pi*frequency*frequency_load
+                tangent_linear = (
+                    k_tan
+                    + angular_frequency * c_tan
+                    + angular_frequency**2 * m_tan
+                )
+
+                return self.residual(
+                    tangent_linear,
+                    u,
+                    load_vector,
+                    frequency
+                )
+
+            def rhs_arc_len_fun(u, frequency, frequency_load):
+                return residual_fun(u, frequency, frequency_load) + load_vector
+
+            def tangent_fun(u, frequency, frequency_load):
+                angular_frequency = 2*np.pi*frequency*frequency_load
+                return (
+                    k_tan
+                    + angular_frequency * c_tan
+                    + angular_frequency**2 * m_tan
+                    + self.tangent_nonlinear(u, frequency)
+                ).tocsc()
+
+            if index > 0:
+                u_last = u[index-1, :]
+            else:
+                u_last = self.simulate_linear(
+                    frequency,
+                    dirichlet_nodes,
+                    amplitude
+                )
+
+            # Solve newton arclen
+            u_res, frequency_load = NLPiezoHB.newton_arclength(
+                u_last,
+                frequencies[index],
+                frequency_loads[index],
+                load_vector,
+                tangent_fun,
+                rhs_arc_len_fun,
+                tolerance,
+                max_iter
+            )
+            u[index, :] = u_res
+            frequency_loads[index] = frequency_load
+            frequencies[index+1] = frequency_load*frequency
+
+        self.u = u
+        self.frequencies = frequencies[:-1]
+
 
     def simulate(
         self,
@@ -335,7 +446,7 @@ class NLPiezoHB(FEMSolver):
                 u_init = self.simulate_linear(
                     frequencies[0],
                     dirichlet_nodes,
-                    dirichlet_values[:, 0]
+                    amplitude
                 )
 
             # Solve newton normal
@@ -621,7 +732,7 @@ class NLPiezoHB(FEMSolver):
     def _get_load_vector(
         self,
         nodes: npt.NDArray,
-        values: npt.NDArray
+        amplitude: float
     ) -> npt.NDArray:
         """Calculates the load vector (right hand side) vector for the
         simulation.
@@ -641,7 +752,7 @@ class NLPiezoHB(FEMSolver):
 
         # TODO: Right now only the base frequency cosine part is set
         # Set dirichlet bc
-        f[nodes] = values
+        f[nodes] = amplitude
 
         return f
 
