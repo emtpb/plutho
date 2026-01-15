@@ -238,7 +238,8 @@ class ThermoPiezoTime(FEMSolver):
             self.dirichlet_nodes
         )
 
-        k_star = (k+gamma/(beta*delta_t)*c+1/(beta*delta_t**2)*m).tocsr()
+        k_star = (k+gamma/(beta*delta_t)*c+1/(beta*delta_t**2)*m).tocsc()
+        lu = slin.splu(k_star)
 
         # Mechanical loss calculated during simulation (for thermal field)
         mech_loss = np.zeros(
@@ -303,12 +304,13 @@ class ThermoPiezoTime(FEMSolver):
             )
 
             # Solve for next time step
-            u[time_index+1, :] = slin.spsolve(
-                k_star, (
+            u[time_index+1, :] = lu.solve(
+                (
                     f
                     - c*v_tilde
                     + (1/(beta*delta_t**2)*m
-                    + gamma/(beta*delta_t)*c)*u_tilde)
+                    + gamma/(beta*delta_t)*c)*u_tilde
+                )
             )
             # Perform corrector step
             a[time_index+1, :] = (u[time_index+1, :]-u_tilde)/(beta*delta_t**2)
