@@ -3,14 +3,13 @@ name = "plutho"
 description = "Python library for coupled thermo-piezoelectric simulations"
 dynamic = ["version"]
 authors = [
-    { name="Jonas Hoelscher", email="hoelscher@emt.uni-paderborn.de" }
+    { name = "Jonas Hoelscher", email = "hoelscher@emt.uni-paderborn.de" }
 ]
-license = { file = "LICENSE" }
+license-files = ["LICENSE"]
 readme = "README.md"
 classifiers = [
     "Developement Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved ::: BSD License",
     "Programming Language ::; Python :: 3",
     "Topic :: Scientific/Engineering"
 ]
@@ -22,18 +21,6 @@ dependencies = [
     "gmsh==4.13.1",
     "python-dotenv",
     "pyyaml",
-    "flake8>=7.2.0",
-    "ruff>=0.12.0",
-]
-
-[project.optional-dependencies]
-doc = [
-    "setuptools_scm",
-    "sphinx",
-    "sphinx-rtd-theme"
-]
-test = [
-    "pytest"
 ]
 
 [proect.urls]
@@ -43,13 +30,19 @@ homepage = "https://emt.uni-paderborn.de"
 requires = ["setuptools>=41", "wheel", "setuptools_scm"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools_scm]
-
-[tool.uv.sources]
-plutho = { workspace = true }
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["plutho"]
 
 [dependency-groups]
-dev = [
-    "plutho",
-    "pytest>=8.4.1",
+test = [
+    "pytest"
+]
+lint = [
+    "ruff"
+]
+ruff =  [
+    "setuptools_scm",
+    "sphinx",
+    "sphinx-rtd-theme"
 ]
