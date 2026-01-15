@@ -156,9 +156,9 @@ class NLPiezoHB(FEMSolver):
         u_last: npt.NDArray,
         freq_last: float,
         freq_load_last: float,
-        load_vector: npt.NDArray,
-        tangent_fun: Callable,
-        rhs_fun: Callable,
+        tangent_u_fun: Callable,
+        tangent_vec_freq_load_fun: Callable,
+        residual_fun: Callable,
         tolerance: float,
         max_iter: int
     ):
@@ -166,34 +166,32 @@ class NLPiezoHB(FEMSolver):
         u_0 = u_last
 
         # Predictor step
-        lu = slin.splu(tangent_fun(u_0, freq_last, freq_load_last))
-        delta_u_p_0 = lu.solve(load_vector)
+        lu = slin.splu(tangent_u_fun(u_0, freq_last, freq_load_last))
+        P = -tangent_vec_freq_load_fun(u_last, freq_last, freq_load_last)
+        delta_u_p_0 = lu.solve(P)
         u_p = u_last + delta_u_p_0
 
         # Compute frequency load increment
-        arc_length = 1000 * np.linalg.norm(u_p)
+        arc_length = 1.1
         delta_freq_load_0 = arc_length/(np.linalg.norm(delta_u_p_0))
         ## Calculate direction
-        current_stiffness_parameter = load_vector@u_p/np.linalg.norm(u_p)
+        current_stiffness_parameter = P@u_p/np.linalg.norm(u_p)
         if current_stiffness_parameter < 0:
             delta_freq_load_0 *= -1
         freq_load_0 = freq_load_last + delta_freq_load_0
 
         # Check if initial value is already sufficient
-        residual = rhs_fun(u_0, freq_last, freq_load_0)
+        residual = residual_fun(u_0, freq_last, freq_load_0)
         norm = np.linalg.norm(residual)
         if norm < tolerance:
             print("Initial value already sufficient")
-            return u_0
+            return u_0, freq_load_0
 
         # Set initial values for iteraion
         u_i = u_0
         freq_load_i = freq_load_0
-        for i in range(max_iter):
-            # Residual function
-            def G(u, freq_load):
-                return rhs_fun(u, freq_last, freq_load) - load_vector
 
+        for i in range(max_iter):
             # RIKS arc-length constraint
             def riks(u, freq_load):
                 return (
@@ -209,9 +207,39 @@ class NLPiezoHB(FEMSolver):
             def riks_du():
                 return u_0-u_last
 
+            # tmp: Test Tangent matrix
+            k_tan = tangent_u_fun(u_i, freq_last, freq_load_i)
+            P = tangent_vec_freq_load_fun(u_i, freq_last, freq_load_i)
+            P_mat = P.reshape(-1, 1)
+            du = riks_du()
+            du_mat = sparse.csc_matrix(du.reshape(1, -1))
+            dl_mat = sparse.csc_matrix([[riks_dload()]])
+            blocks = [
+                [k_tan, -P_mat],
+                [du_mat, dl_mat]
+            ]
+            t = sparse.block_array(blocks, format="csc")
+            x = np.zeros(u_0.shape[0]+1)
+            x[:-1] = u_i
+            x[-1] = freq_load_i
+
+            def res_fun(u):
+                x = np.zeros(u.shape[0])
+                x[:-1] = residual_fun(u[:-1], freq_last, freq_load_i)
+                x[-1] = riks(u[:-1], freq_load_i)
+                return x
+    
+            print("Testing jacobian")
+            NLPiezoHB.test_jacobian_static(
+                t,
+                x,
+                res_fun
+            )
+
             # Solve for increments
-            u_p_next = lu.solve(load_vector)
-            u_g_next = lu.solve(-G(u_i, freq_load_i))
+            P = -tangent_vec_freq_load_fun(u_i, freq_last, freq_load_i)
+            u_p_next = lu.solve(P)
+            u_g_next = lu.solve(-residual_fun(u_i, freq_last, freq_load_i))
 
             # Calculate increments
             denominator = riks_dload()+riks_du()@u_p_next
@@ -230,7 +258,7 @@ class NLPiezoHB(FEMSolver):
             u_i_next = u_i + delta_u_i
 
             # Update residual
-            residual = G(u_i_next, freq_load_i_next)
+            residual = residual_fun(u_i_next, freq_last, freq_load_i_next)
 
             # Check for convergence
             norm = np.linalg.norm(residual)
@@ -245,7 +273,7 @@ class NLPiezoHB(FEMSolver):
             # Update for next iteration
             u_i = u_i_next
             freq_load_i = freq_load_i_next
-            lu = slin.splu(tangent_fun(u_i, freq_last, freq_load_i))
+            lu = slin.splu(tangent_u_fun(u_i, freq_last, freq_load_i))
 
         print(f"Newton did not converged: Maximum iteration (norm: {norm})")
         return u_i, freq_load_i
@@ -322,17 +350,22 @@ class NLPiezoHB(FEMSolver):
                     frequency
                 )
 
-            def rhs_arc_len_fun(u, frequency, frequency_load):
-                return residual_fun(u, frequency, frequency_load) + load_vector
-
             def tangent_fun(u, frequency, frequency_load):
                 angular_frequency = 2*np.pi*frequency*frequency_load
                 return (
                     k_tan
-                    + angular_frequency * c_tan
-                    + angular_frequency**2 * m_tan
+                    + angular_frequency*c_tan
+                    + angular_frequency**2*m_tan
                     + self.tangent_nonlinear(u, frequency)
                 ).tocsc()
+
+            def dresidual_df(u, frequency, frequency_load):
+                # Residual derived after frequency load factor
+                angular_frequency = 2*np.pi*frequency
+                return (
+                    2*frequency_load*angular_frequency**2*m_tan
+                    + angular_frequency*c_tan
+                )@u
 
             if index > 0:
                 u_last = u[index-1, :]
@@ -348,9 +381,9 @@ class NLPiezoHB(FEMSolver):
                 u_last,
                 frequencies[index],
                 frequency_loads[index],
-                load_vector,
                 tangent_fun,
-                rhs_arc_len_fun,
+                dresidual_df,
+                residual_fun,
                 tolerance,
                 max_iter
             )
@@ -774,6 +807,49 @@ class NLPiezoHB(FEMSolver):
         k[nodes, nodes] = 1
 
         return m.tocsc(), c.tocsc(), k.tocsc()
+
+    @staticmethod
+    def test_jacobian_static(
+        k_tan_analytic,
+        u,
+        residual_fun,
+        epsilon: float = 1e-6
+    ) -> Tuple[float, float]:
+        """Tests the analytical jacobian matrix with a jacobian calculated from
+        a finite difference approximation using the given u and epsilon.
+
+        Parameters:
+            u: Example u vector.
+
+        Returns:
+            Tuple of absolute and relative errors.
+        """
+        # TODO: Rework and make class independent
+        # Create test data
+        # Finite difference jacobian
+        n = len(u)
+        J_fd = np.zeros((n, n))
+
+        for i in range(n):
+            u_plus = u.copy()
+            u_plus[i] += epsilon
+            Fp = residual_fun(u_plus)
+
+            u_minus = u.copy()
+            u_minus[i] -= epsilon
+            Fm = residual_fun(u_minus)
+
+            J_fd[:, i] = (Fp - Fm) / (2*epsilon)
+
+        # Vergleiche
+        diff = np.abs(k_tan_analytic.toarray() - J_fd)
+        max_diff = np.max(diff)
+        rel_diff = max_diff / (np.max(np.abs(J_fd)) + 1e-10)
+
+        print(f"Max absolute difference: {max_diff}")
+        print(f"Max relative difference: {rel_diff}")
+
+        return max_diff, rel_diff
 
     def test_jacobian(self, epsilon: float = 1e-6) -> Tuple[float, float]:
         """Tests the analytical jacobian matrix with a jacobian calculated from
