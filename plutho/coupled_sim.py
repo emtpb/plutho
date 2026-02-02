@@ -198,10 +198,10 @@ class CoupledThermoPiezoTime:
         # Calculate mech losses which are sources in heat cond sim
         avg_mech_loss = np.mean(
             self.thermo_piezo_sim.mech_loss[
-                :,
-                -averaging_time_step_count:
+                -averaging_time_step_count:,
+                :
             ],
-            axis=1
+            axis=0
         )
         self.thermo_sim.set_constant_volume_heat_source(
             avg_mech_loss,
