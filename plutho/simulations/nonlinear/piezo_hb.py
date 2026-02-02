@@ -31,7 +31,6 @@ class NLPiezoHB(FEMSolver):
     # Harmonic balancing
     hb_order: int
 
-
     def __init__(
         self,
         simulation_name: str,
@@ -174,7 +173,7 @@ class NLPiezoHB(FEMSolver):
         # Compute frequency load increment
         arc_length = 1.1
         delta_freq_load_0 = arc_length/(np.linalg.norm(delta_u_p_0))
-        ## Calculate direction
+        # Calculate direction
         current_stiffness_parameter = P@u_p/np.linalg.norm(u_p)
         if current_stiffness_parameter < 0:
             delta_freq_load_0 *= -1
@@ -228,7 +227,7 @@ class NLPiezoHB(FEMSolver):
                 x[:-1] = residual_fun(u[:-1], freq_last, freq_load_i)
                 x[-1] = riks(u[:-1], freq_load_i)
                 return x
-    
+
             print("Testing jacobian")
             NLPiezoHB.test_jacobian_static(
                 t,
@@ -394,10 +393,10 @@ class NLPiezoHB(FEMSolver):
         self.u = u
         self.frequencies = frequencies[:-1]
 
-
     def simulate(
         self,
         frequencies: npt.NDArray,
+        amplitude: float,
         tolerance: float = 1e-6,
         max_iter: int = 100,
         newton_damping: float = 1
@@ -432,7 +431,6 @@ class NLPiezoHB(FEMSolver):
         u = np.zeros(
             (len(frequencies), 2*3*self.hb_order*number_of_nodes)
         )
-        loads = np.zeros(len(frequencies))
 
         # Linear tangent matrix can be created beforehand and scaled with
         # frequency later
@@ -464,8 +462,6 @@ class NLPiezoHB(FEMSolver):
                     f,
                     frequency
                 )
-            def rhs_arc_len_fun(u):
-                return residual_fun(u) + f
 
             def tangent_fun(u):
                 return tangent_linear + self.tangent_nonlinear(
@@ -483,7 +479,6 @@ class NLPiezoHB(FEMSolver):
                 )
 
             # Solve newton normal
-            """
             u[frequency_index, :] = NLPiezoHB.newton(
                 u_init,
                 residual_fun,
@@ -492,20 +487,6 @@ class NLPiezoHB(FEMSolver):
                 tolerance,
                 newton_damping
             )
-            """
-            # Solve newton arclen
-            u_res, load_res = NLPiezoHB.newton_arclength(
-                u_init,
-                f,
-                rhs_arc_len_fun,
-                tangent_fun,
-                max_iter,
-                tolerance,
-                u[frequency_index-1, :],
-                loads[frequency_index-1]
-            )
-            u[frequency_index, :] = u_res
-            loads[frequency_index] = load_res
 
         self.u = u
 
@@ -570,7 +551,7 @@ class NLPiezoHB(FEMSolver):
             k_blocks[j][j] = k_fem
 
             # ω part (c)
-            c_blocks[i][j] =  np1 * c_fem
+            c_blocks[i][j] = np1 * c_fem
             c_blocks[j][i] = -np1 * c_fem
 
             # ω² part (m)
