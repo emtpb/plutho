@@ -29,7 +29,6 @@ class NLPiezoTime(FEMSolver):
     # Nonlinear simulation
     nonlinearity: Nonlinearity
 
-
     def __init__(
         self,
         simulation_name: str,
@@ -203,8 +202,8 @@ class NLPiezoTime(FEMSolver):
                     u_i = u_i_next
                 if not self.converged:
                     print(
-                        f"Newton did not converge at time index: {time_index}. "
-                        f"Choosing best value: {best_norm}"
+                        f"Newton did not converge at time index:"
+                        f" {time_index}. Choosing best value: {best_norm}"
                     )
                     next_u = best_u_i
             else:

@@ -311,7 +311,7 @@ class FEMSolver(ABC):
             physical_group_name = bc["physical_group_name"]
             values = np.array(list(bc["values"]))
 
-            sim.add_dirichlet_bc(field_type, physical_group_name,values)
+            sim.add_dirichlet_bc(field_type, physical_group_name, values)
 
         return sim
 
