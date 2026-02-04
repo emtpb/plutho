@@ -249,12 +249,11 @@ class Nonlinearity:
         """Sets a quadratic nonlinearity with a custom material tensor.
 
         Parameters:
-            nonlinear_data: Nonlinear material tensor.
+            nonlinear_data: Nonlinear material tensor (6x6x6).
         """
         self.nonlinear_type = NonlinearType.QuadraticCustom
 
         # Reduce to axisymmetric 4x4x4 matrix
-        # TODO Update this for order 3 or make it n dimensional
         voigt_map = [0, 1, 3, 2]
         nm_reduced = np.zeros(shape=(4, 4, 4))
         for i_new, i_old in enumerate(voigt_map):
@@ -281,14 +280,13 @@ class Nonlinearity:
         """Sets a cubic nonlinearity with a custom nonlinear material tensor
 
         Parameters:
-            nonlinear_data: Nonlinear material tensor.
+            nonlinear_data: Nonlinear material tensor (6x6x6x6).
         """
         self.nonlinear_type = NonlinearType.CubicCustom
 
-        # Reduce to axisymmetric 4x4x4 matrix
-        # TODO Update this for order 3 or make it n dimensional
+        # Reduce to axisymmetric 4x4x4x4 matrix
         voigt_map = [0, 1, 3, 2]
-        nm_reduced = np.zeros(shape=(4, 4, 4))
+        nm_reduced = np.zeros(shape=(4, 4, 4, 4))
         for i_new, i_old in enumerate(voigt_map):
             for j_new, j_old in enumerate(voigt_map):
                 for k_new, k_old in enumerate(voigt_map):
@@ -305,19 +303,12 @@ class Nonlinearity:
     def evaluate_force_vector(
         self,
         u: npt.NDArray,
-        m: sparse.csc_array,
-        c: sparse.csc_array,
-        k: sparse.csc_array
     ) -> npt.NDArray:
         """Evaluates the nonlinear force vector based on the previously set
         nonlinearity and the given displacement field u and the FEM matrices.
 
-
         Parameters:
             u: Current displacement field.
-            m: FEM mass matrix.
-            c: FEM damping matrix.
-            k: FEM stiffness matrix.
 
         Returns:
             Vector of nonlinear forces.
@@ -330,18 +321,19 @@ class Nonlinearity:
             case NonlinearType.QuadraticRayleigh:
                 return self.ln@(u**2)
             case NonlinearType.QuadraticCustom:
-                # Use jit compiler --> wimp
-                """
-                result = np.zeros(3*number_of_nodes)
+                # Use jit compiler --> wimp? or inline c?
+                number_of_nodes = len(self.mesh_data.nodes)
+                res = np.zeros(3*number_of_nodes)
 
                 for index in range(3*number_of_nodes):
-                    L_k = L[index*3*number_of_nodes:(index+1)*3*number_of_nodes, :]
+                    L_k = self.ln[
+                        index*3*number_of_nodes:(index+1)*3*number_of_nodes,
+                        :
+                    ]
 
-                    result[index] = u @ (L_k @ u)
+                    res[index] = u @ (L_k @ u)
 
-                return result
-                """
-                raise NotImplementedError()
+                return res
             case NonlinearType.CubicRayleigh:
                 return self.ln@(u**3)
             case NonlinearType.CubicCustom:
@@ -350,79 +342,78 @@ class Nonlinearity:
     def evaluate_jacobian(
         self,
         u: npt.NDArray,
-        m: sparse.csc_array,
-        c: sparse.csc_array,
         k: sparse.csc_array
-    ):
+    ) -> sparse.csc_array:
         """Evaluates the jacobian of the nonlinear force vector based on the
         current displacement u and the FEM matrices.
 
         Parameters:
             u: Current displacement vector.
-            m: FEM mass matrix.
-            c: FEM damping matrix.
             k: FEM stiffness matrix.
+
+        Returns:
+            Jacobian for nonlinearity.
         """
         if self.nonlinear_type is None:
             raise ValueError("Cannot evaluate jacobian, since no \
                 nonlinear type is set")
 
+        number_of_nodes = len(self.mesh_data.nodes)
+
         match self.nonlinear_type:
             case NonlinearType.QuadraticRayleigh:
                 return 2*self.ln@sparse.diags_array(u)
             case NonlinearType.QuadraticCustom:
-                """
                 k_tangent = sparse.lil_matrix((
                     3*number_of_nodes, 3*number_of_nodes
                 ))
-
-                k_tangent += k
 
                 m = np.arange(3*number_of_nodes)
 
                 # TODO This calculation is very slow
                 for i in range(3*number_of_nodes):
-                    l_k = ln[3*number_of_nodes*i:3*number_of_nodes*(i+1), :]
-                    l_i = ln[3*number_of_nodes*m+i, :]
+                    l_k = self.ln[3*number_of_nodes*i:3*number_of_nodes*(i+1), :]
+                    l_i = self.ln[3*number_of_nodes*m+i, :]
 
                     k_tangent += (l_k*u[i]).T
                     k_tangent += (l_i*u[i]).T
-                """
-                raise NotImplementedError()
+
+                return k_tangent.tocsc()
             case NonlinearType.CubicRayleigh:
                 return 3*self.ln@sparse.diags_array(u**2)
             case NonlinearType.CubicCustom:
                 raise NotImplementedError()
 
     def apply_dirichlet_bc(self, dirichlet_nodes: npt.NDArray):
-        """Applies the dirichlet boundary conditions on the nonlinear matrix."""
+        """Applies the dirichlet boundary conditions on the nonlinear matrix.
+        """
         if self.nonlinear_type is None:
             raise ValueError("Cannot apply dirichlet boundary \
                 conditions, since no nonlinear type is set")
 
-        # TODO Is a different handling for nonlinear types necessary?
+        number_of_nodes = len(self.mesh_data.nodes)
+
         match self.nonlinear_type:
             case NonlinearType.QuadraticRayleigh | \
                     NonlinearType.CubicRayleigh:
                 self.ln[dirichlet_nodes, :] = 0
             case NonlinearType.QuadraticCustom:
-                raise NotImplementedError()
+                for i in range(3*number_of_nodes):
+                    self.ln[dirichlet_nodes+i*3*number_of_nodes, :] = 0
             case NonlinearType.CubicCustom:
                 raise NotImplementedError()
 
     def assemble(
         self,
-        m: sparse.lil_array,
-        c: sparse.lil_array,
         k: sparse.lil_array
     ):
         """Assembles the nonlinar FEM matrix. It is saved in self.ln.
 
         Parameters:
-            m: FEM mass matrix.
-            c: FEM damping matrix.
             k: FEM stiffness matrix.
         """
+        number_of_nodes = len(self.mesh_data.nodes)
+
         if self.nonlinear_type is None:
             raise ValueError("Cannot assemble matrices, since no \
                 nonlinear type is set")
@@ -430,7 +421,12 @@ class Nonlinearity:
         match self.nonlinear_type:
             case NonlinearType.QuadraticRayleigh | \
                     NonlinearType.CubicRayleigh:
-                self.ln = k*self.zeta
+                self.ln = sparse.lil_array(
+                        (3*number_of_nodes, 3*number_of_nodes)
+                )
+                # Only take the part for the mechanical field
+                self.ln[:2*number_of_nodes, :2*number_of_nodes] = \
+                    k[:2*number_of_nodes, :2*number_of_nodes]*self.zeta
             case NonlinearType.QuadraticCustom:
                 self._assemble_quadratic_custom()
             case NonlinearType.CubicCustom:

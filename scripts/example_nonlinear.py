@@ -1,4 +1,4 @@
-"""Implements an example on how to run a staionary nonlinear simulation."""
+"""Implements an example on how to run a time-domain nonlinear simulation."""
 
 # Python standard libraries
 import os
@@ -65,7 +65,8 @@ def create_sinusoidal_excitation(
     amplitude,
     delta_t,
     number_of_time_steps,
-    frequency
+    frequency,
+    rise_steps = 0
 ):
     """Creates a sinusoidal excitation array.
 
@@ -76,17 +77,24 @@ def create_sinusoidal_excitation(
             this is the same as for the simulation
         frequency: Frequency of the sin function.
     """
-    time_steps = np.arange(number_of_time_steps)*delta_t
-    return amplitude*np.sin(2*np.pi*frequency*time_steps)
+    time = np.arange(number_of_time_steps)*delta_t
+    window = signal.windows.tukey(
+        number_of_time_steps,
+        rise_steps/number_of_time_steps*2
+    )
+    return window*amplitude*np.sin(2*np.pi*frequency*time)
 
 
 def simulate_nl_time(CWD, mesh, delta_t, number_of_time_steps):
     # Simulation parameters
     GAMMA = 0.5
     BETA = 0.25
-    ZETA = 10
+    ZETA = 1e12
     AMPLITUDE = 10
     FREQUENCY = 2.07e6
+    NEWTON_DAMPING = 0.8
+    MAX_ITER = 100
+    TOLERANCE = 1e-10
 
     nonlinearity = plutho.Nonlinearity()
     nonlinearity.set_cubic_rayleigh(ZETA)
@@ -102,7 +110,7 @@ def simulate_nl_time(CWD, mesh, delta_t, number_of_time_steps):
     sim.add_material(
         material_name="pic181",
         material_data=pic181,
-        physical_group_name=""  # Means all elements
+        physical_group_name=""
     )
 
     # Set boundary conditions
@@ -112,6 +120,7 @@ def simulate_nl_time(CWD, mesh, delta_t, number_of_time_steps):
         number_of_time_steps=number_of_time_steps,
         frequency=FREQUENCY
     )
+
     sim.add_dirichlet_bc(
         plutho.FieldType.PHI,
         "Electrode",
@@ -130,8 +139,9 @@ def simulate_nl_time(CWD, mesh, delta_t, number_of_time_steps):
         number_of_time_steps,
         GAMMA,
         BETA,
-        tolerance=5e-9,
-        max_iter=40
+        tolerance=TOLERANCE,
+        max_iter=MAX_ITER,
+        newton_damping=NEWTON_DAMPING
     )
     sim.calculate_charge("Electrode")
 
@@ -142,7 +152,8 @@ def simulate_nl_time(CWD, mesh, delta_t, number_of_time_steps):
     u_file = os.path.join(CWD, "u.npy")
     q_file = os.path.join(CWD, "q.npy")
     np.save(u_file, sim.u)
-    np.save(q_file, sim.q)
+    if sim.q is not None:
+        np.save(q_file, sim.q)
 
 
 def plot_displacement_spectrum(
@@ -153,12 +164,14 @@ def plot_displacement_spectrum(
     node_index = 129
 
     u = np.load(os.path.join(working_directory, "u.npy"))
-    u_r = u[2*node_index, :]
-    u_z = u[2*node_index+1, :]
+    u_r = u[:, 2*node_index]
+    u_z = u[:, 2*node_index+1]
     U_r_jw = np.fft.fft(u_r)
 
     frequencies = np.fft.fftfreq(number_of_time_steps, delta_t)
 
+    plt.plot(np.arange(number_of_time_steps)*delta_t, u_r)
+    plt.show()
     plt.plot(frequencies, np.abs(U_r_jw))
     plt.grid()
     plt.show()
@@ -176,27 +189,26 @@ if __name__ == "__main__":
 
     # Load/create ring mesh
     mesh_file = os.path.join(CWD, "ring_mesh.msh")
-    if not os.path.exists(mesh_file):
-        plutho.Mesh.generate_rectangular_mesh(
-            mesh_file,
-            width=0.00635,
-            height=0.001,
-            x_offset=0.0026,
-            mesh_size=0.0001
-        )
+    plutho.Mesh.generate_rectangular_mesh(
+        mesh_file,
+        width=0.00635,
+        height=0.001,
+        x_offset=0.0026,
+        mesh_size=0.0001
+    )
     mesh = plutho.Mesh(mesh_file, element_order=1)
 
-    DELTA_T = 1e-9
+    DELTA_T = 1e-8
     NUMBER_OF_TIME_STEPS = 20000
 
-    nl_time_sim_name = "nonlinear_time_dep_sim_20k_1e-9"
+    nl_time_sim_name = "nonlinear_time_test"
     nl_time_wd = os.path.join(CWD, nl_time_sim_name)
 
     ## Simulate
-    if True:
+    if False:
         # simulate_nonlinear_stationary(CWD)
         simulate_nl_time(nl_time_wd, mesh, DELTA_T, NUMBER_OF_TIME_STEPS)
 
     ## Plot
-    if False:
+    if True:
         plot_displacement_spectrum(nl_time_wd, DELTA_T, NUMBER_OF_TIME_STEPS)

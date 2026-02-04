@@ -29,7 +29,6 @@ class NLPiezoTime(FEMSolver):
     # Nonlinear simulation
     nonlinearity: Nonlinearity
 
-
     def __init__(
         self,
         simulation_name: str,
@@ -44,7 +43,7 @@ class NLPiezoTime(FEMSolver):
         self.nonlinearity.set_mesh_data(self.mesh_data, self.node_points)
 
     def assemble(self):
-        """Redirect to general nonlinear assembly function"""
+        """Assembles the matrices based on the set material and mesh."""
         self.material_manager.initialize_materials()
 
         m, c, k = assemble(
@@ -55,7 +54,7 @@ class NLPiezoTime(FEMSolver):
         self.c = c
         self.k = k
 
-        self.nonlinearity.assemble(m, c, k)
+        self.nonlinearity.assemble(k)
 
     def simulate(
         self,
@@ -63,8 +62,9 @@ class NLPiezoTime(FEMSolver):
         number_of_time_steps: int,
         gamma: float,
         beta: float,
-        tolerance: float = 1e-11,
-        max_iter: int = 300,
+        tolerance: float = 1e-6,
+        max_iter: int = 100,
+        newton_damping: float = 1,
         u_start: Union[npt.NDArray, None] = None
     ):
         """Simulates the nonlinear piezo time system.
@@ -76,6 +76,8 @@ class NLPiezoTime(FEMSolver):
             beta: Newmark integration parameter.
             tolerance: Tolerance of the newton iteration.
             max_iter: Maximum number of iterations for newton raphson.
+            newton_damping: Multiplied with the newton iteration steps to
+                reduces the step size.
             u_start: Initial field for u.
         """
         dirichlet_nodes = np.array(self.dirichlet_nodes)
@@ -97,17 +99,17 @@ class NLPiezoTime(FEMSolver):
         # Init arrays
         # Displacement u which is calculated
         u = np.zeros(
-            (3*number_of_nodes, number_of_time_steps),
+            (number_of_time_steps, 3*number_of_nodes),
             dtype=np.float64
         )
         # Displacement u derived after t (du/dt)
         v = np.zeros(
-            (3*number_of_nodes, number_of_time_steps),
+            (number_of_time_steps, 3*number_of_nodes),
             dtype=np.float64
         )
         # v derived after u (d^2u/dt^2)
         a = np.zeros(
-            (3*number_of_nodes, number_of_time_steps),
+            (number_of_time_steps, 3*number_of_nodes),
             dtype=np.float64
         )
 
@@ -126,28 +128,25 @@ class NLPiezoTime(FEMSolver):
                 m@(a1*(next_u-current_u)-a2*v-a3*a)
                 + c@(a4*(next_u-current_u)+a5*v+a6*a)
                 + k@next_u+self.nonlinearity.evaluate_force_vector(
-                    next_u,
-                    m,
-                    c,
-                    k
+                    next_u
                 )-f
             )
 
         if u_start is not None:
-            u[:, 0] = u_start
+            u[0, :] = u_start
 
         print("Starting nonlinear time domain simulation")
         for time_index in range(number_of_time_steps-1):
             # Calculate load vector
             f = self._get_load_vector(
                 dirichlet_nodes,
-                dirichlet_values[:, time_index+1]
+                dirichlet_values[:, time_index+1]  # TODO Swap indices
             )
 
             # Values of the current time step
-            current_u = u[:, time_index]
-            current_v = v[:, time_index]
-            current_a = a[:, time_index]
+            current_u = u[time_index, :]
+            current_v = v[time_index, :]
+            current_a = a[time_index, :]
 
             # Current iteration value of u of the next time step
             # as a start value this is set to the last converged u of the last
@@ -174,15 +173,13 @@ class NLPiezoTime(FEMSolver):
                     # Calculate tangential stiffness matrix
                     tangent_matrix = self._calculate_tangent_matrix(
                         u_i,
-                        m,
-                        c,
                         k
                     )
                     delta_u = linalg.spsolve(
                         (a1*m+a4*c+tangent_matrix),
                         residual(u_i, current_u, current_v, current_a, f)
                     )
-                    u_i_next = u_i - delta_u
+                    u_i_next = u_i - delta_u * newton_damping
 
                     # Check for convergence
                     norm = scipy.linalg.norm(residual(
@@ -194,7 +191,6 @@ class NLPiezoTime(FEMSolver):
                             f"Newton converged at time step {time_index} "
                             f"after {i+1} iteration(s)"
                         )
-                        # print(u_i_next)
                         next_u = u_i_next
                         self.converged = True
                         break
@@ -202,15 +198,12 @@ class NLPiezoTime(FEMSolver):
                         best_norm = norm
                         best_u_i = u_i_next
 
-                    if i % 100 == 0 and i > 0:
-                        print("Iteration:", i)
-
                     # Update for next iteration
                     u_i = u_i_next
                 if not self.converged:
                     print(
-                        "Newton did not converge.. Choosing best value: "
-                        f"{best_norm}"
+                        f"Newton did not converge at time index:"
+                        f" {time_index}. Choosing best value: {best_norm}"
                     )
                     next_u = best_u_i
             else:
@@ -218,19 +211,22 @@ class NLPiezoTime(FEMSolver):
                 next_u = best_u_i
 
             # Calculate next v and a
-            a[:, time_index+1] = (
+            a[time_index+1, :] = (
                 a1*(next_u-current_u)
                 - a2*current_v
                 - a3*current_a
             )
-            v[:, time_index+1] = (
+            v[time_index+1, :] = (
                 a4*(next_u-current_u)
                 + a5*current_v
                 + a6*current_a
             )
 
             # Set u array value
-            u[:, time_index+1] = next_u
+            u[time_index+1, :] = next_u
+
+            if (time_index > 0 and time_index % 100 == 0):
+                print(f"Time index {time_index} finished.")
 
         self.u = u
 
@@ -282,8 +278,6 @@ class NLPiezoTime(FEMSolver):
     def _calculate_tangent_matrix(
         self,
         u: npt.NDArray,
-        m: sparse.csc_array,
-        c: sparse.csc_array,
         k: sparse.csc_array
     ):
         # TODO Duplicate function in piezo_stationary.py
@@ -293,11 +287,8 @@ class NLPiezoTime(FEMSolver):
         Parameters:
             u: Current mechanical displacement.
             k: FEM stiffness matrix.
-            ln: FEM nonlinear stiffness matrix.
         """
         linear = k
-        nonlinear = self.nonlinearity.evaluate_jacobian(
-            u, m, c, k
-        )
+        nonlinear = self.nonlinearity.evaluate_jacobian(u, k)
 
         return (linear + nonlinear).tocsc()

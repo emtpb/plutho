@@ -203,7 +203,8 @@ class PiezoTime(FEMSolver):
             dirichlet_nodes
         )
 
-        k_star = (k+gamma/(beta*delta_t)*c+1/(beta*delta_t**2)*m).tocsr()
+        k_star = (k+gamma/(beta*delta_t)*c+1/(beta*delta_t**2)*m).tocsc()
+        lu = slin.splu(k_star)
 
         print("Starting simulation")
         for time_index in range(number_of_time_steps-1):
@@ -224,12 +225,12 @@ class PiezoTime(FEMSolver):
             )
 
             # Solve for next time step
-            u[time_index+1, :] = slin.spsolve(
-                k_star, (
-                    f
-                    - c*v_tilde
-                    + (1/(beta*delta_t**2)*m
-                       + gamma/(beta*delta_t)*c)*u_tilde))
+            u[time_index+1, :] = lu.solve(
+                f
+                - c*v_tilde
+                + (1/(beta*delta_t**2)*m
+                   + gamma/(beta*delta_t)*c)*u_tilde
+            )
             # Perform corrector step
             a[time_index+1, :] = (u[time_index+1, :]-u_tilde)/(beta*delta_t**2)
             v[time_index+1, :] = v_tilde + gamma*delta_t*a[time_index+1, :]

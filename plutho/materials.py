@@ -47,7 +47,8 @@ class MaterialData:
         json_dict = {}
         for attribute in fields(self.__class__):
             value = getattr(self, attribute.name)
-            if isinstance(value, float) or isinstance(value, int):
+            if isinstance(value, float) or isinstance(value, int) or \
+                    isinstance(value, list):
                 json_dict[attribute.name] = value
             elif isinstance(value, np.ndarray):
                 json_dict[attribute.name] = value.tolist()

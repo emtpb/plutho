@@ -3,37 +3,39 @@ name = "plutho"
 description = "Python library for coupled thermo-piezoelectric simulations"
 dynamic = ["version"]
 authors = [
-    { name="Jonas Hoelscher", email="hoelscher@emt.uni-paderborn.de" }
+    { name = "Jonas Hoelscher", email = "hoelscher@emt.uni-paderborn.de" }
 ]
-license = { file = "LICENSE" }
+license = {file = "LICENSE"}
 readme = "README.md"
 classifiers = [
     "Developement Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved ::: BSD License",
     "Programming Language ::; Python :: 3",
     "Topic :: Scientific/Engineering"
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "numpy",
-    "matplotlib",
-    "scipy>=1.12.0",
-    "gmsh==4.13.1",
-    "python-dotenv",
-    "pyyaml",
-    "flake8>=7.2.0",
-    "ruff>=0.12.0",
+    "gmsh>=4.13.1",
+    "matplotlib>=3.10.3",
+    "numpy>=2.2.6",
+    "python-dotenv>=1.1.0",
+    "pyyaml>=6.0.2",
+    "scipy>=1.15.3",
 ]
 
 [project.optional-dependencies]
-doc = [
-    "setuptools_scm",
-    "sphinx",
-    "sphinx-rtd-theme"
+docs = [
+    "sphinx>=8.1.3",
+    "sphinx-rtd-theme>=3.1.0",
+]
+lint = [
+    "ruff>=0.14.14",
 ]
 test = [
-    "pytest"
+    "pytest>=9.0.2",
+]
+tests = [
+    "pytest>=9.0.2",
 ]
 
 [proect.urls]
@@ -43,13 +45,7 @@ homepage = "https://emt.uni-paderborn.de"
 requires = ["setuptools>=41", "wheel", "setuptools_scm"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.packages.find]
+include = ["plutho"]
+
 [tool.setuptools_scm]
-
-[tool.uv.sources]
-plutho = { workspace = true }
-
-[dependency-groups]
-dev = [
-    "plutho",
-    "pytest>=8.4.1",
-]

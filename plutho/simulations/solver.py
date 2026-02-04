@@ -168,6 +168,7 @@ class FEMSolver(ABC):
             elif field_type is FieldType.U_Z:
                 real_index = 2*node_index+1
 
+            # TODO: Flip the indices in dirichlet_values: [freq, nodes]
             self.dirichlet_nodes.append(real_index)
             self.dirichlet_values.append(values)
 
@@ -238,6 +239,10 @@ class FEMSolver(ABC):
             q_path = os.path.join(wd, f"{prefix}q.npy")
             np.save(q_path, self.q)
 
+        if self.frequencies is not None:
+            f_path = os.path.join(wd, f"{prefix}frequencies.npy")
+            np.save(f_path, self.frequencies)
+
         match self.solver_type:
             case SolverType.ThermoPiezoTime:
                 mech_loss_path = os.path.join(wd, f"{prefix}mech_loss.npy")
@@ -306,7 +311,7 @@ class FEMSolver(ABC):
             physical_group_name = bc["physical_group_name"]
             values = np.array(list(bc["values"]))
 
-            sim.add_dirichlet_bc(field_type, physical_group_name,values)
+            sim.add_dirichlet_bc(field_type, physical_group_name, values)
 
         return sim
 
