@@ -668,7 +668,6 @@ class NLPiezoHB(FEMSolver):
         hb_u = np.copy(self.u)
         q = np.zeros(shape=(self.hb_order, hb_u.shape[0]), dtype=np.complex128)
         for n in range(self.hb_order):
-            # TODO: The imaginary part is flipped (must be a -1j here?)
             self.u = hb_u[:, 2*n*dof:(2*n+1)*dof] \
                 + 1j*hb_u[:, (2*n+1)*dof:(2*n+2)*dof]
             super().calculate_charge(electrode_name, is_complex=True)
