@@ -187,7 +187,7 @@ class NLPiezoHB(FEMSolver):
 
         # Apply dirichlet bc to matrices
         self.nonlinearity.apply_dirichlet_bc(dirichlet_nodes)
-        m_hb, c__hb, k_hb = self._apply_dirichlet_bc(
+        m_hb, c_hb, k_hb = self._apply_dirichlet_bc(
             m_hb,
             c_hb,
             k_hb,
@@ -457,6 +457,7 @@ class NLPiezoHB(FEMSolver):
             u_time += np.outer(u[(2*n+1)*dof:(2*n+2)*dof], sin_basis[n, :])
 
         # Build jacobian from sub-blocks and calculate dft of df_du_time
+        # NOTE: Explicit cubic nonlinearity
         df_du_time = 3 * u_time ** 2
         blocks = []
         for i in range(self.hb_order):

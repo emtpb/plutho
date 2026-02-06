@@ -102,7 +102,7 @@ if __name__ == "__main__":
 
     # Settings
     element_order = 1
-    frequencies = np.linspace(106.5e3, 107e3, 250)
+    frequencies = np.linspace(106e3, 110e3, 100)
 
     # Load/create ring mesh
     mesh_file = os.path.join(CWD, "mesh.msh")
@@ -117,15 +117,16 @@ if __name__ == "__main__":
     mesh = plutho.Mesh(mesh_file, element_order)
 
     sim_linear = sim_hb(mesh, frequencies, 1, 0)
-    sim_nonlinear = sim_hb(mesh, frequencies, 3, 1e14)
-
+    sim_nonlinear = sim_hb(mesh, frequencies, 3, 1.2e15)
     sim_linear.calculate_charge("Electrode")
     sim_nonlinear.calculate_charge("Electrode")
 
     impedance_linear = 1/(1j*2*np.pi*frequencies*sim_linear.q[0, :])
     impedance_nonlinear = 1/(1j*2*np.pi*frequencies*sim_nonlinear.q[0, :])
 
-    plt.plot(frequencies, np.abs(impedance_linear))
-    plt.plot(frequencies, np.abs(impedance_nonlinear))
+    plt.plot(frequencies, np.abs(impedance_linear), label="Linear")
+    plt.plot(frequencies, np.abs(impedance_nonlinear), label="Nonlinear")
 
+    plt.grid()
+    plt.legend()
     plt.show()
