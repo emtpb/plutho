@@ -46,9 +46,12 @@ def sim_hb(mesh, frequencies, hb_order, zeta):
     sim.add_material(
         material_name="pic181",
         material_data=pic181,
-        physical_group_name=""  # Means all elements
+        physical_group_name=""
     )
 
+    # NOTE: To set the amplitude, the np.ones - array can just be multiplied
+    # with a scalar
+    # NOTE: Right now the excitation is only set for the cosine part
     sim.add_dirichlet_bc(
         plutho.FieldType.PHI,
         "Electrode",
@@ -60,9 +63,19 @@ def sim_hb(mesh, frequencies, hb_order, zeta):
         np.zeros(len(frequencies))
     )
 
+    # Simulation settings
+    tolerance = 1e-7
+    max_iter = 100
+    newton_damping = 0.5
+
     # Run simulation
     sim.assemble()
-    sim.simulate(frequencies)
+    sim.simulate(
+        frequencies,
+        tolerance,
+        max_iter,
+        newton_damping
+    )
 
     return sim
 
@@ -86,7 +99,10 @@ def plot_displacement(sim, base_frequency):
 
 def plot_impedance(sim, frequencies):
     sim.calculate_charge("Electrode")
-    imp = 1/(1j*2*np.pi*frequencies*sim.q[0, :])
+
+    # NOTE: Amplitude must be set depending the excitation -> boundary condition
+    excitation_amplitude = 1
+    imp = excitation_amplitude/(1j*2*np.pi*frequencies*sim.q[0, :])
 
     plt.plot(frequencies, np.abs(imp))
 
@@ -117,7 +133,7 @@ if __name__ == "__main__":
     mesh = plutho.Mesh(mesh_file, element_order)
 
     sim_linear = sim_hb(mesh, frequencies, 1, 0)
-    sim_nonlinear = sim_hb(mesh, frequencies, 3, 1.2e15)
+    sim_nonlinear = sim_hb(mesh, frequencies, 6, 1.2e15)
     sim_linear.calculate_charge("Electrode")
     sim_nonlinear.calculate_charge("Electrode")
 
