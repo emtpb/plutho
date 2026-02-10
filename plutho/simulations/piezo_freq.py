@@ -183,6 +183,7 @@ class PiezoFreq(FEMSolver):
             calculate_mech_loss: Set to true if the mechanical losses shall be
                 calculated. They are saved in self.mech_loss.
         """
+        self.frequencies = frequencies
         m = self.m
         c = self.c
         k = self.k

@@ -239,10 +239,6 @@ class FEMSolver(ABC):
             q_path = os.path.join(wd, f"{prefix}q.npy")
             np.save(q_path, self.q)
 
-        if self.frequencies is not None:
-            f_path = os.path.join(wd, f"{prefix}frequencies.npy")
-            np.save(f_path, self.frequencies)
-
         match self.solver_type:
             case SolverType.ThermoPiezoTime:
                 mech_loss_path = os.path.join(wd, f"{prefix}mech_loss.npy")
@@ -250,8 +246,10 @@ class FEMSolver(ABC):
             case SolverType.ThermoTime:
                 theta_path = os.path.join(wd, f"{prefix}theta.npy")
                 np.save(theta_path, self.theta)
-            case _:
-                pass
+            case SolverType.PiezoFreq:
+                if self.frequencies is not None:
+                    f_path = os.path.join(wd, f"{prefix}frequencies.npy")
+                    np.save(f_path, self.frequencies)
 
     @classmethod
     def load_simulation_settings(cls, simulation_folder: str):
