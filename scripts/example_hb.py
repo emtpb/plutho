@@ -31,7 +31,7 @@ pic181 = plutho.MaterialData(
 )
 
 
-def sim_hb(mesh, frequencies, hb_order, zeta):
+def sim_hb(mesh, frequencies, amplitude, hb_order, zeta):
     nonlinearity = plutho.Nonlinearity()
     nonlinearity.set_cubic_rayleigh(zeta)
 
@@ -55,7 +55,7 @@ def sim_hb(mesh, frequencies, hb_order, zeta):
     sim.add_dirichlet_bc(
         plutho.FieldType.PHI,
         "Electrode",
-        np.ones(len(frequencies))
+        amplitude*np.ones(len(frequencies))
     )
     sim.add_dirichlet_bc(
         plutho.FieldType.PHI,
@@ -66,7 +66,7 @@ def sim_hb(mesh, frequencies, hb_order, zeta):
     # Simulation settings
     tolerance = 1e-7
     max_iter = 100
-    newton_damping = 0.5
+    newton_damping = 1
 
     # Run simulation
     sim.assemble()
@@ -118,7 +118,7 @@ if __name__ == "__main__":
 
     # Settings
     element_order = 1
-    frequencies = np.linspace(106e3, 110e3, 100)
+    frequencies = np.linspace(98.7e3, 100e3, 100)
 
     # Load/create ring mesh
     mesh_file = os.path.join(CWD, "mesh.msh")
@@ -132,16 +132,44 @@ if __name__ == "__main__":
     )
     mesh = plutho.Mesh(mesh_file, element_order)
 
-    sim_linear = sim_hb(mesh, frequencies, 1, 0)
-    sim_nonlinear = sim_hb(mesh, frequencies, 6, 1.2e15)
+    # Run simulations
+    sim_linear = sim_hb(mesh, frequencies, 1, 1, 0)
+    sim_nonlinear_0_7v = sim_hb(mesh, frequencies, 0.7, 3, 1e7)
+    sim_nonlinear_3_6v = sim_hb(mesh, frequencies, 3.6, 3, 1e7)
+    sim_nonlinear_6_6v = sim_hb(mesh, frequencies, 6.6, 3, 1e7)
+
     sim_linear.calculate_charge("Electrode")
-    sim_nonlinear.calculate_charge("Electrode")
+    sim_nonlinear_0_7v.calculate_charge("Electrode")
+    sim_nonlinear_3_6v.calculate_charge("Electrode")
+    sim_nonlinear_6_6v.calculate_charge("Electrode")
 
     impedance_linear = 1/(1j*2*np.pi*frequencies*sim_linear.q[0, :])
-    impedance_nonlinear = 1/(1j*2*np.pi*frequencies*sim_nonlinear.q[0, :])
+    impedance_nonlinear_0_7v = 0.7/(
+        1j*2*np.pi*frequencies*sim_nonlinear_0_7v.q[0, :]
+    )
+    impedance_nonlinear_3_6v = 3.3/(
+        1j*2*np.pi*frequencies*sim_nonlinear_3_6v.q[0, :]
+    )
+    impedance_nonlinear_6_6v = 6.6/(
+        1j*2*np.pi*frequencies*sim_nonlinear_6_6v.q[0, :]
+    )
 
     plt.plot(frequencies, np.abs(impedance_linear), label="Linear")
-    plt.plot(frequencies, np.abs(impedance_nonlinear), label="Nonlinear")
+    plt.plot(
+        frequencies,
+        np.abs(impedance_nonlinear_0_7v),
+        label="NL $0.7 \\mathrm{V}$"
+    )
+    plt.plot(
+        frequencies,
+        np.abs(impedance_nonlinear_3_6v),
+        label="NL $3.3 \\mathrm{V}$"
+    )
+    plt.plot(
+        frequencies,
+        np.abs(impedance_nonlinear_6_6v),
+        label="NL $6.6 \\mathrm{V}$"
+    )
 
     plt.grid()
     plt.legend()
