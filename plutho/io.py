@@ -179,3 +179,27 @@ def load_temperature_dependent_material_data_pic181(files):
     )
 
     return mat_data
+
+
+def parse_charge_freq_hist_file(file_path: str):
+    """Reads the charge file from an OpenCFS simulation.
+
+    Parameters:
+        file_path: Path to the charge (*.hist) file.
+
+    Returns:
+        Tuple containing the time list and charge list read from the
+        given file.
+    """
+    lines = []
+    with open(file_path, "r", encoding="UTF-8") as fd:
+        lines = fd.readlines()[3:]
+
+    frequencies = []
+    charge = []
+    for line in lines:
+        current_frequency, current_charge, _ = line.split()
+        frequencies.append(float(current_frequency))
+        charge.append(float(current_charge))
+
+    return np.array(frequencies), np.array(charge)
