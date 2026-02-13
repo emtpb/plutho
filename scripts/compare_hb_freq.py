@@ -1,12 +1,13 @@
 
-# Standard libraries
+# Python standard libraries
 import os
+import time
 
-# Third party libraries
+# Thid party libraries
 import numpy as np
-
-# Local libraries
 import plutho
+import json
+import matplotlib.pyplot as plt
 
 
 pic181 = plutho.MaterialData(
@@ -21,7 +22,7 @@ pic181 = plutho.MaterialData(
         "e33": 14.149818966822629,
         "eps11": 1.3327347064648263e-08,
         "eps33": 5.380490373139249e-09,
-        "alpha_m": 0.0,
+        "alpha_m": 12758.833098284977,
         "alpha_k": 1.289813815258054e-10,
         "thermal_conductivity": 1.1,
         "heat_capacity": 350,
@@ -31,17 +32,41 @@ pic181 = plutho.MaterialData(
 )
 
 
-def sim_hb(mesh, frequencies):
+def save_mesh_data(
+    file_path: str,
+    mesh_data: plutho.MeshData
+):
+    node_indices = mesh.get_nodes_by_physical_groups([
+        "Electrode", "Ground"
+    ])
+    dirichlet_nodes_electrode = node_indices["Electrode"]
+    dirichlet_nodes_ground = node_indices["Ground"]
+
+    content = ""
+    content = {
+        "nodes": mesh_data.nodes.tolist(),
+        "elements": mesh_data.elements.tolist(),
+        "electrode_nodes": dirichlet_nodes_electrode.tolist(),
+        "ground_nodes": dirichlet_nodes_ground.tolist()
+    }
+
+    with open(file_path, "w", encoding="UTF-8") as fd:
+        json.dump(content, fd, indent=2)
+
+
+def simulate_hb(mesh, frequencies):
+    # Simulation parameters
     HB_ORDER = 1
 
     nonlinearity = plutho.Nonlinearity()
     nonlinearity.set_cubic_rayleigh(0)
 
+    # Create simulation
     sim = plutho.NLPiezoHB(
         "HB_Test",
         mesh,
         nonlinearity,
-        1
+        HB_ORDER
     )
 
     # Set materials
@@ -64,14 +89,13 @@ def sim_hb(mesh, frequencies):
 
     # Run simulation
     sim.assemble()
-    u = np.zeros(shape=(len(frequencies), 6*len(sim.mesh_data.nodes)))
-    for index, frequency in enumerate(frequencies):
-        u[index, :] = sim.simulate_linear(frequency)
+    sim.simulate(frequencies)
+    sim.calculate_charge("Electrode", is_complex=True)
 
-    print(u[1, :])
+    return sim.q
 
 
-def sim_piezo_freq(mesh, frequencies):
+def simulate_plutho(mesh, frequencies):
     sim = plutho.PiezoFreq(
         simulation_name="pincic_test",
         mesh=mesh
@@ -79,7 +103,7 @@ def sim_piezo_freq(mesh, frequencies):
 
     sim.add_material(
         material_name="pic181",
-            material_data=pic181,
+        material_data=pic181,
         physical_group_name=""
     )
 
@@ -99,10 +123,19 @@ def sim_piezo_freq(mesh, frequencies):
         frequencies,
         False
     )
+    sim.calculate_charge("Electrode", is_complex=True)
 
-    u = sim.u
-    print(np.real(u[1, :]))
-    print(np.imag(u[1, :]))
+    return sim.q
+
+
+def plot_impedances(charge_hb, charge_linear, frequencies):
+    impedance_hb = np.abs(1/(1j*2*np.pi*frequencies*charge_hb[0, :]))
+    impedance_linear = np.abs(1/(1j*2*np.pi*frequencies*charge_linear))
+    plt.plot(frequencies/1e6, impedance_hb, label="NLPiezoHB")
+    plt.plot(frequencies/1e6, impedance_linear, "--", label="PiezoFreq")
+    plt.legend()
+    plt.grid()
+    plt.show()
 
 
 if __name__ == "__main__":
@@ -116,7 +149,7 @@ if __name__ == "__main__":
 
     # Settings
     element_order = 1
-    frequencies = np.linspace(0, 1e7, 10)[1:]
+    frequencies = np.linspace(0, 1e7, 1000)[1:]
 
     # Load/create ring mesh
     mesh_file = os.path.join(CWD, "mesh.msh")
@@ -125,11 +158,21 @@ if __name__ == "__main__":
         width=0.00635,
         height=0.001,
         x_offset=0.0026,
-        mesh_size=0.01,
+        mesh_size=0.0001,
         element_order=element_order
     )
+
     mesh = plutho.Mesh(mesh_file, element_order)
 
-    sim_hb(mesh, frequencies)
-    sim_piezo_freq(mesh, frequencies)
+    start_time = time.time()
+    charge_hb = simulate_hb(mesh, frequencies)
+    hb_time = time.time() - start_time
 
+    start_time = time.time()
+    charge_piezo_freq = simulate_plutho(mesh, frequencies)
+    plutho_time = time.time() - start_time
+
+    print(f"harmonic balancing took {hb_time}s to simulate.")
+    print(f"piezo freq took {plutho_time}s to simulate.")
+
+    plot_impedances(charge_hb, charge_piezo_freq, frequencies)   plt.show()

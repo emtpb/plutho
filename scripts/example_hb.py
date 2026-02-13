@@ -80,33 +80,6 @@ def sim_hb(mesh, frequencies, amplitude, hb_order, zeta):
     return sim
 
 
-def plot_displacement(sim, base_frequency):
-    dof = 3*len(sim.mesh_data.nodes)
-    hb_order = sim.hb_order
-    node_index = 128
-
-    frequencies = [base_frequency*(i+1) for i in range(hb_order)]
-    u = []
-    for i in range(hb_order):
-        u_cos = sim.u[0, 2*i*dof:(2*i+1)*dof]
-        u_sin = sim.u[0, (2*i+1)*dof:(2*i+2)*dof]
-        u.append(u_cos[2*node_index] + 1j*u_sin[2*node_index])
-
-    print(np.max(np.abs(np.array(u))))
-    plt.scatter(frequencies, np.abs(np.array(u)))
-    plt.show()
-
-
-def plot_impedance(sim, frequencies):
-    sim.calculate_charge("Electrode")
-
-    # NOTE: Amplitude must be set depending the excitation -> boundary condition
-    excitation_amplitude = 1
-    imp = excitation_amplitude/(1j*2*np.pi*frequencies*sim.q[0, :])
-
-    plt.plot(frequencies, np.abs(imp))
-
-
 if __name__ == "__main__":
     CWD = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
@@ -118,7 +91,7 @@ if __name__ == "__main__":
 
     # Settings
     element_order = 1
-    frequencies = np.linspace(98.7e3, 100e3, 100)
+    frequencies = np.linspace(98.7e3, 100e3, 10)
 
     # Load/create ring mesh
     mesh_file = os.path.join(CWD, "mesh.msh")
@@ -134,9 +107,9 @@ if __name__ == "__main__":
 
     # Run simulations
     sim_linear = sim_hb(mesh, frequencies, 1, 1, 0)
-    sim_nonlinear_0_7v = sim_hb(mesh, frequencies, 0.7, 3, 1e7)
-    sim_nonlinear_3_6v = sim_hb(mesh, frequencies, 3.6, 3, 1e7)
-    sim_nonlinear_6_6v = sim_hb(mesh, frequencies, 6.6, 3, 1e7)
+    sim_nonlinear_0_7v = sim_hb(mesh, frequencies, 0.7, 3, 1e14)
+    sim_nonlinear_3_6v = sim_hb(mesh, frequencies, 3.6, 3, 1e14)
+    sim_nonlinear_6_6v = sim_hb(mesh, frequencies, 6.6, 3, 1e14)
 
     sim_linear.calculate_charge("Electrode")
     sim_nonlinear_0_7v.calculate_charge("Electrode")
